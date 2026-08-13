@@ -1,0 +1,461 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SuperAdmin {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  avatar    String?
+  phone     String?
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Institution {
+  id          String   @id @default(cuid())
+  name        String
+  password    String   @unique
+  address     String?
+  phone       String?
+  email       String?
+  logo        String?
+  currentYear String   @default("2024-2025")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users         User[]
+  classes       Class[]
+  schoolConfigs SchoolConfig[]
+  schoolYears   SchoolYear[]
+}
+
+model SchoolYear {
+  id            String   @id @default(cuid())
+  label         String   @unique
+  startDate     String
+  endDate       String
+  isActive      Boolean  @default(true)
+  institutionId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  institution Institution? @relation(fields: [institutionId], references: [id])
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  username      String?  @unique
+  password      String
+  name          String
+  role          String   @default("student") // admin, teacher, student, parent, staff
+  avatar        String?
+  phone         String?
+  userCode      String?
+  institutionId String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  institution       Institution?   @relation(fields: [institutionId], references: [id])
+  student           Student?
+  teacher           Teacher?
+  parent            Parent?
+  staff             Staff?
+  sentMessages      Message[]      @relation("SentMessages")
+  receivedMessages  Message[]      @relation("ReceivedMessages")
+  sentAnnouncements Announcement[] @relation("AnnouncementAuthor")
+  sessions          UserSession[]
+  notifications     Notification[]
+}
+
+model UserSession {
+  id        String   @id @default(cuid())
+  userId    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Student {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  firstName      String
+  lastName       String
+  dateOfBirth    String?
+  gender         String?
+  address        String?
+  enrollmentDate String  @default("2024-01-01")
+  parentContact  String?
+  classId        String?
+  parentPhone    String?
+  image          String? // URL or path to student photo
+  parentId       String?
+  status         String  @default("active") // active, abandoned, migrated, deceased
+  statusDate     String? // Date à laquelle le statut (abandon/migration/décès) a été constaté (YYYY-MM-DD)
+
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class       Class?               @relation(fields: [classId], references: [id])
+  parent      Parent?              @relation(fields: [parentId], references: [id])
+  grades      Grade[]
+  payments    Payment[]
+  attendances Attendance[]
+  bulletins   Bulletin[]
+  submissions HomeworkSubmission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Teacher {
+  id            String  @id @default(cuid())
+  userId        String  @unique
+  firstName     String
+  lastName      String
+  subject       String
+  phone         String?
+  qualification String?
+  hireDate      String  @default("2024-01-01")
+  image         String? // URL or path to teacher photo
+  status        String  @default("active") // active, abandoned, migrated, deceased
+  statusDate    String? // Date à laquelle le statut (abandon/migration/décès) a été constaté (YYYY-MM-DD)
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedules Schedule[]
+  classes   ClassTeacher[]
+  homeworks Homework[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Parent {
+  id        String  @id @default(cuid())
+  userId    String  @unique
+  firstName String
+  lastName  String
+  phone     String?
+  address   String?
+  image     String? // URL or path to parent photo
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  children Student[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Staff {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  firstName String
+  lastName  String
+  fonction  String?
+  phone     String?
+  email     String?
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Class {
+  id            String  @id @default(cuid())
+  name          String
+  level         String // e.g., "6ème", "5ème", "Terminale"
+  section       String? // e.g., "A", "B", "C"
+  capacity      Int     @default(30)
+  schoolYear    String  @default("2024-2025")
+  room          String?
+  institutionId String?
+
+  institution Institution?   @relation(fields: [institutionId], references: [id])
+  students    Student[]
+  teachers    ClassTeacher[]
+  schedules   Schedule[]
+  events      EventClass[]
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  homework  Homework[]
+}
+
+model ClassTeacher {
+  id        String @id @default(cuid())
+  classId   String
+  teacherId String
+  subject   String
+
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subject {
+  id          String @id @default(cuid())
+  name        String
+  code        String @unique
+  coefficient Int    @default(1)
+
+  grades    Grade[]
+  homeworks Homework[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Grade {
+  id         String  @id @default(cuid())
+  studentId  String
+  subjectId  String
+  classId    String?
+  teacherId  String?
+  value      Float
+  maxValue   Float   @default(20)
+  type       String // "devoir", "examen", "controle"
+  trimester  String // "1er", "2eme", "3eme"
+  schoolYear String  @default("2024-2025")
+  comment    String?
+  date       String
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Schedule {
+  id        String  @id @default(cuid())
+  classId   String
+  teacherId String?
+  subject   String
+  dayOfWeek Int // 1=Monday, 5=Friday
+  startTime String // "08:00"
+  endTime   String // "09:00"
+  room      String?
+
+  class   Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher Teacher? @relation(fields: [teacherId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Payment {
+  id          String  @id @default(cuid())
+  studentId   String
+  amount      Float
+  type        String // "tuition", "registration", "exam_fee", "other"
+  method      String // "cash", "mobile_money", "bank_transfer"
+  status      String  @default("pending") // "pending", "completed", "failed"
+  reference   String?
+  description String?
+  schoolYear  String  @default("2024-2025")
+  paymentDate String?
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Attendance {
+  id        String  @id @default(cuid())
+  studentId String
+  date      String
+  status    String // "present", "absent", "late", "excused"
+  comment   String?
+  schoolYear String @default("2024-2025")
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Bulletin {
+  id           String  @id @default(cuid())
+  studentId    String
+  classId      String?
+  trimester    String
+  schoolYear   String  @default("2024-2025")
+  average      Float?
+  rank         Int?
+  appreciation String?
+  generatedAt  String?
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Announcement {
+  id       String @id @default(cuid())
+  title    String
+  content  String
+  type     String @default("general") // "general", "urgent", "academic", "event"
+  target   String @default("all") // "all", "teachers", "students", "parents"
+  authorId String
+  priority Int    @default(0)
+  mediaUrl  String? // optional image/video attachment URL (e.g. /api/media/...)
+  mediaType String? // "image" | "video" | null
+  schoolYear String @default("2024-2025")
+
+  author User @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Message {
+  id         String  @id @default(cuid())
+  senderId   String
+  receiverId String
+  content    String
+  read       Boolean @default(false)
+  schoolYear String  @default("2024-2025")
+  // Optional attachment (image / video / audio / generic file)
+  attachmentUrl  String?
+  attachmentType String? // "image" | "video" | "audio" | "file"
+  attachmentName String?
+  attachmentSize Int?
+
+  sender   User @relation("SentMessages", fields: [senderId], references: [id])
+  receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SchoolConfig {
+  id                  String  @id @default(cuid())
+  schoolName          String  @default("École Internationale")
+  address             String?
+  phone               String?
+  email               String?
+  logo                String?
+  currentYear         String  @default("2024-2025")
+  institutionId       String?
+  institutionPassword String?
+
+  institution Institution? @relation(fields: [institutionId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Homework {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  subjectId     String?
+  classId       String
+  teacherId     String?
+  dueDate       String
+  assignedDate  String   @default("2024-01-01")
+  type          String   @default("homework") // "homework", "project", "exam_prep"
+  status        String   @default("active") // "active", "closed", "graded"
+  schoolYear    String   @default("2024-2025")
+  institutionId String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  class       Class                @relation(fields: [classId], references: [id])
+  teacher     Teacher?             @relation(fields: [teacherId], references: [id])
+  subject     Subject?             @relation(fields: [subjectId], references: [id])
+  submissions HomeworkSubmission[]
+}
+
+model HomeworkSubmission {
+  id          String   @id @default(cuid())
+  homeworkId  String
+  studentId   String
+  content     String?
+  status      String   @default("submitted") // "submitted", "graded", "late", "missing"
+  grade       Float?
+  maxGrade    Float?
+  comment     String?
+  submittedAt String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  homework Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  student  Student  @relation(fields: [studentId], references: [id])
+
+  @@unique([homeworkId, studentId])
+}
+
+model Notification {
+  id            String   @id @default(cuid())
+  userId        String?
+  title         String
+  message       String
+  type          String   @default("info") // "info", "warning", "success", "error", "homework", "event"
+  category      String   @default("general") // "general", "homework", "event", "payment", etc.
+  link          String? // ModuleKey: "homework", "events", "payments", etc.
+  linkParams    String? // e.g., homework.id for deep linking
+  icon          String? // Lucide icon name
+  read          Boolean  @default(false)
+  institutionId String
+  schoolYear    String   @default("2024-2025")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model SchoolEvent {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  date          String
+  endDate       String?
+  type          String   @default("other") // "holiday", "exam", "meeting", "celebration", "deadline", "other"
+  schoolYear    String   @default("2024-2025")
+  isGlobal      Boolean  @default(true)
+  institutionId String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  classes EventClass[]
+}
+
+model EventClass {
+  id        String   @id @default(cuid())
+  eventId   String
+  classId   String
+  createdAt DateTime @default(now())
+
+  event SchoolEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  class Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, classId])
+}
+
+model MediaFile {
+  id            String   @id @default(cuid())
+  filename      String
+  mimeType      String
+  data          String // base64-encoded file content
+  size          Int // file size in bytes
+  institutionId String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MASOMO",
+  "version": "1.28.9",
+  "identifier": "com.masomo.app",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "node scripts/prepare-tauri-resources.mjs",
+    "frontendDist": "resources/placeholder"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "MASOMO - Système de Gestion Scolaire",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 600,
+        "resizable": true,
+        "decorations": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": {
+      "resources/server/": "server/"
+    },
+    "externalBin": [],
+    "icon": [
+      "icons/icon-512x512.png",
+      "icons/icon-192x192.png",
+      "icons/icon-128x128.png",
+      "icons/icon-32x32.png",
+      "icons/favicon.ico"
+    ],
+    "category": "Education",
+    "shortDescription": "MASOMO - Gestion Scolaire",
+    "longDescription": "Système complet de gestion scolaire - Elèves, Enseignants, Classes, Notes, Paiements",
+    "publisher": "MASOMO",
+    "copyright": "© 2024 MASOMO",
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": null
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libc6"]
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    }
+  }
+}

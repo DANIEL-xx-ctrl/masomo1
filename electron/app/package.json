@@ -1,0 +1,9 @@
+{
+  "name": "masomo-app",
+  "version": "1.29.0",
+  "description": "MASOMO — Système de Gestion Scolaire",
+  "main": "main.js",
+  "author": "MASOMO",
+  "license": "UNLICENSED",
+  "private": true
+}

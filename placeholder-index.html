@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MASOMO - Démarrage...</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 560px;
+      text-align: center;
+    }
+    .logo {
+      font-size: 2.5rem;
+      font-weight: 800;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, #10b981, #059669);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(16, 185, 129, 0.2);
+      border-top-color: #10b981;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 1.5rem auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      color: #94a3b8;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+    .error-box {
+      margin-top: 2rem;
+      padding: 1rem;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      text-align: left;
+      font-size: 0.85rem;
+      color: #fca5a5;
+    }
+    .error-box strong { color: #fecaca; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">MASOMO</div>
+    <div class="spinner" id="spinner"></div>
+    <div class="title" id="title">Démarrage du serveur...</div>
+    <div class="subtitle" id="subtitle">
+      MASOMO démarre son serveur local. Cela peut prendre quelques secondes.
+    </div>
+    <div class="error-box hidden" id="errorBox">
+      <strong>⚠️ Le serveur n'a pas pu démarrer.</strong><br><br>
+      Causes possibles :<br>
+      1. Node.js n'est pas installé sur cet ordinateur.<br>
+      &nbsp;&nbsp;&nbsp;→ Téléchargez Node.js LTS sur https://nodejs.org/<br>
+      2. Le serveur a planté (erreur Prisma / base de données).<br><br>
+      Consultez le fichier de log :<br>
+      <code>%APPDATA%\com.masomo.app\masomo-server.log</code>
+    </div>
+  </div>
+  <script>
+    // After 15 seconds, if we're still on this page, show the error box
+    // (the Rust code should have redirected us by now if the server is up)
+    setTimeout(function() {
+      if (window.location.protocol === 'tauri:' || window.location.href.indexOf('placeholder') !== -1) {
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('title').innerText = 'Échec du démarrage';
+        document.getElementById('subtitle').style.display = 'none';
+        document.getElementById('errorBox').classList.remove('hidden');
+      }
+    }, 15000);
+  </script>
+</body>
+</html>

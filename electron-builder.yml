@@ -1,0 +1,120 @@
+# ============================================================================
+# electron-builder configuration for MASOMO
+#
+# BULLETPROOF ARCHITECTURE (fixes the Windows "Visual Studio not found" error):
+#
+# The app is packaged from a CLEAN directory (electron/app/) that contains
+# ONLY main.js, preload.js, and a minimal package.json with ZERO dependencies.
+# There is NO node_modules inside electron/app/, so @electron/rebuild finds
+# nothing to rebuild — regardless of npmRebuild setting. This eliminates the
+# need for Visual Studio Build Tools on Windows, Xcode on macOS, or
+# build-essential on Linux.
+#
+# The Next.js standalone server (with its OWN node_modules + node binary) is
+# bundled separately via extraResources, and runs as a child process — NOT
+# inside the Electron process.
+# ============================================================================
+
+appId: com.masomo.app
+productName: MASOMO
+copyright: Copyright © 2024 MASOMO
+
+# Explicit Electron version — electron-builder downloads the binary itself,
+# it does NOT need electron in the project's node_modules.
+electronVersion: 33.4.11
+
+directories:
+  # CRITICAL: Package from the clean app dir (no node_modules here!)
+  app: electron/app
+  output: electron/dist
+  buildResources: electron/build
+
+# Do NOT rebuild native modules. (Also unnecessary now: the app dir has no deps.)
+# Kept for belt-and-suspenders safety.
+npmRebuild: false
+buildDependenciesFromSource: false
+nodeGypRebuild: false
+
+# Files to include in the asar — paths are relative to directories.app.
+# Only the Electron main process files go here (they use Node.js built-ins only).
+files:
+  - main.js
+  - preload.js
+  - package.json
+
+# Bundle the Next.js standalone server + Node.js binary + database.
+# `from` is relative to the project root (where electron-builder runs).
+extraResources:
+  - from: electron/resources/server
+    to: server
+    filter: ["**/*"]
+
+# Windows NSIS installer + portable exe
+win:
+  icon: public/icon-512x512.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  artifactName: MASOMO-${version}-Setup.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MASOMO
+  installerIcon: public/icon-512x512.png
+  uninstallerIcon: public/icon-512x512.png
+
+# macOS DMG (x64 + arm64)
+mac:
+  icon: public/icon-512x512.png
+  category: public.app-category.education
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  artifactName: MASOMO-${version}.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: null
+  entitlementsInherit: null
+
+dmg:
+  title: MASOMO ${version}
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# Linux deb + AppImage
+linux:
+  icon: public/icon-512x512.png
+  category: Education
+  target:
+    - target: deb
+      arch:
+        - x64
+    - target: AppImage
+      arch:
+        - x64
+  maintainer: MASOMO
+  vendor: MASOMO
+  synopsis: Système de Gestion Scolaire
+  description: MASOMO — Système de Gestion Scolaire complet (élèves, enseignants, notes, bulletins, paiements)
+
+deb:
+  priority: optional
+  compression: gz
+
+# Publish: none (we upload artifacts via GitHub Actions)
+publish: null
