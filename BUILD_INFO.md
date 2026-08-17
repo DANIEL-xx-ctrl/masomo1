@@ -1,6 +1,6 @@
 # MASOMO — Archive du code source complet (version courante)
 
-**Générée le :** 2026-08-17 12:53:06
+**Générée le :** 2026-08-17 13:30:37
 **Version projet :** v1.29.0
 **Fichiers inclus :** 358
 **Source :** archive reconstruite à la volée — reflète **exactement** l'état actuel du code.
