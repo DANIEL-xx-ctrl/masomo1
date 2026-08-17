@@ -607,12 +607,14 @@ export default function MessagesModule() {
   // running, or the Caddy gateway might be unavailable. In that case
   // the socket never connects and the user would never see incoming
   // messages. This poller refetches the active conversation + the
-  // conversation list every 5 seconds when the socket is offline, so
+  // conversation list every 10 seconds when the socket is offline, so
   // messaging still works (just not instantaneously).
   useEffect(() => {
     if (connected) return // socket is live — no need to poll
     if (!me) return
     const interval = setInterval(() => {
+      // Skip when tab is hidden — saves serverless invocations.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       // Refresh the conversation list (picks up new messages from anyone)
       fetchConversations()
       // Refresh the active thread (picks up new messages from partner)
@@ -637,7 +639,7 @@ export default function MessagesModule() {
           })
           .catch(() => { /* ignore poll errors */ })
       }
-    }, 5000)
+    }, 10_000)
     return () => clearInterval(interval)
   }, [connected, me, schoolYear, fetchConversations])
 

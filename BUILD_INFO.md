@@ -1,15 +1,95 @@
-# EduGest — Archive du code source complet (version courante)
+# MASOMO — Archive du code source complet (version courante)
 
-**Générée le :** 2026-07-24 11:35:18
-**Version projet :** v1.28.4
-**Fichiers inclus :** 339
+**Générée le :** 2026-08-17 12:53:06
+**Version projet :** v1.29.0
+**Fichiers inclus :** 358
 **Source :** archive reconstruite à la volée — reflète **exactement** l'état actuel du code.
+
+---
+
+## Nouveautés v1.28.5 — Rebranding MASOMO + Mode hors ligne + Confettis + Labels flottants
+
+### Renommage EduGest → MASOMO
+- **Tous les visibles "EduGest" renommés en "MASOMO"** dans toute l'interface :
+  titre de la page, en-tête de la barre latérale, pied de page, page de connexion,
+  prompts PWA, manifeste, service worker, bulletins PDF, exports HTML, etc.
+- `package.json` : `name` passé de `edugest` à `masomo`, version bumpée à 1.28.5.
+- Clé de stockage Zustand : `edugest-storage` → `masomo-storage` (migration
+  transparente — l'ancienne clé est simplement ignorée, l'utilisateur se
+  reconnecte une fois).
+- Événement global avatar : `edugest:avatar-changed` → `masomo:avatar-changed`.
+- Cache du service worker : `edugest-v1` → `masomo-v1` (l'ancien cache est
+  automatiquement purgé au prochain activate).
+- **Note :** les emails de démonstration (`superadmin@edugest.com`,
+  `admin@ecole.com`, etc.) sont conservés intact car ce sont des
+  **données persistées en base** — les modifier casserait les logins existants.
+
+### Mode hors ligne (offline-first) — write-behind + cache de lecture
+- **Objectif :** l'application doit fonctionner même sans connexion internet.
+  On peut parcourir les enregistrements (GET) et en créer/modifier (POST/PUT/DELETE)
+  en local ; quand la connexion est rétablie, les écritures sont automatiquement
+  synchronisées vers le serveur.
+- **Architecture :**
+  - **`src/lib/offline-queue.ts` (nouveau) :** file d'attente persistante dans
+    IndexedDB (`masomo-offline` → stores `queue` + `responses`). Les requêtes
+    d'écriture sont stockées avec leurs headers d'auth et leur body, puis
+    rejouées en FIFO quand le réseau revient.
+  - **`src/components/fetch-interceptor.tsx` (réécrit) :** intercepte maintenant
+    trois choses en plus de l'injection des headers d'auth :
+    1. **Cache des GET réussis** dans IndexedDB (store `responses`) — utilisé
+       comme fallback quand le réseau échoue.
+    2. **Mise en file des écritures (POST/PUT/PATCH/DELETE)** quand
+       `navigator.onLine === false` — retourne une Response synthétique 202
+       `{ queued: true, offline: true }` pour que l'UI continue à fonctionner
+       sans erreur.
+    3. **Repli sur le cache** pour les GET quand le réseau échoue (la réponse
+       est taguée avec `X-Masomo-Offline-Cache: 1`).
+  - **`src/hooks/use-offline.ts` (étendu) :** expose maintenant `{ isOnline,
+    wasOffline, pending, pendingCount }` en plus du statut online/offline.
+    Souscrit aux événements `masomo:queue-changed` et `masomo:queue-flushed`.
+  - **`src/components/offline-badge.tsx` (nouveau) :** pastille flottante en
+    bas à gauche qui affiche :
+    - ambre « Hors ligne · N en attente » quand offline,
+    - bleu « Synchronisation · N » pendant le flush,
+    - émeraude « N en attente — cliquez pour synchroniser » quand online avec
+      des requêtes en file.
+    Clic = flush manuel.
+- **Flush automatique :** déclenché par (1) l'événement `online` du navigateur,
+  (2) un intervalle de 30 s pendant que l'app est online, (3) un clic sur la
+  pastille. Après un flush réussi, un événement `masomo:queue-flushed` est
+  diffusé pour que les composants puissent rafraîchir leurs données.
+- **Gestion d'erreur :** les 4xx (sauf 408) sont retirés de la file (requête
+  invalide — pas de boucle infinie) ; les 5xx et erreurs réseau restent dans
+  la file pour un retry ultérieur.
+- **Exclusions :** les endpoints d'auth (`/api/auth/login`, `/api/auth/signup`,
+  `/api/auth/me`, etc.), `/api/seed`, `/api/ensure-superadmin`,
+  `/api/heartbeat` et `/api/dashboard` ne sont **jamais** mis en file — ils
+  doivent toujours atteindre le serveur.
+
+### Page de connexion — labels flottants + confettis
+- **Labels flottants animés :** les placeholders des champs Email et Mot de
+  passe se transforment en petits labels majuscules qui **montent** (animation
+  de translation + réduction de taille + couleur émeraude) quand le champ
+  reçoit le focus ou contient une valeur. Transition CSS de 200ms ease-out.
+  Composant `FloatingInput` réutilisable dans `src/components/login.tsx`.
+- **Confettis à la connexion :** un feu d'artifice de ~140 confettis multicolores
+  (émeraude, teal, ambre, rouge, bleu, violet, orange, rose) est déclenché
+  immédiatement après un login réussi. Implémentation `src/lib/confetti.ts` —
+  canvas unique fixé au viewport, gravité + rotation + dérive, auto-nettoyage
+  après 2,4 s. Aucune dépendance externe ajoutée.
+- **Suppression des zones multi-institutions et inscription self-service :**
+  - Le panneau latéral gauche (qui présentait « Multi-institutions » et
+    « Inscription self-service ») est supprimé.
+  - Le mode « Créer mon établissement » (signup) est supprimé — le formulaire
+    ne contient plus que Email + Mot de passe + bouton Super Admin.
+  - L'écran de connexion passe d'un layout 2 panneaux (45%/55%) à un panneau
+    unique centré (max-w-md) avec le logo MASOMO en en-tête.
 
 ---
 
 ## Contenu de l'archive
 
-Cette archive contient **l'intégralité du code source actuel** du projet EduGest
+Cette archive contient **l'intégralité du code source actuel** du projet MASOMO
 (générée à la volée à partir du répertoire de travail courant, aucun fichier
 n'est pré-compilé ni mis en cache) :
 

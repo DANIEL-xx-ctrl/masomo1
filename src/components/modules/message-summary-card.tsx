@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '@/lib/store'
 import { useChat, type ChatMessagePayload } from '@/hooks/use-chat'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessagesSquare, ArrowRight, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { avatarUrl } from '@/lib/utils'
+import { dedupedFetch, isTabHidden } from '@/lib/api-cache'
 
 // ============================================================
 // MessageSummaryCard — compact messaging preview shown on the
@@ -79,25 +80,39 @@ export function MessageSummaryCard() {
 
   const me = currentUser
 
-  const fetchConversations = useCallback(async () => {
-    if (!me || me.role === 'super_admin') {
+  // Keep latest user in a ref so the polling interval doesn't reset on
+  // every store update (profile refresh, avatar change, etc.). This was
+  // a major cause of the Vercel "container exceed concurrency threshold"
+  // error — each store update recreated fetchConversations, which re-ran
+  // the effect, which immediately fired a new HTTP request.
+  const meRef = useRef(me)
+  useEffect(() => {
+    meRef.current = me
+  }, [me])
+
+  const fetchConversations = useCallback(async (opts?: { force?: boolean }) => {
+    const user = meRef.current
+    if (!user || user.role === 'super_admin') {
       setLoading(false)
       return
     }
+    // Skip background polling when the tab is hidden.
+    if (!opts?.force && isTabHidden()) return
     try {
-      const res = await fetch(
-        `/api/messages?userId=${me.id}&schoolYear=${encodeURIComponent(me.schoolYear || '2024-2025')}`,
-        { headers: { 'x-user-id': me.id, 'x-institution-id': me.institutionId || '', 'x-user-role': me.role } }
+      const res = await dedupedFetch(
+        `/api/messages?userId=${user.id}&schoolYear=${encodeURIComponent(user.schoolYear || '2024-2025')}`,
+        { headers: { 'x-user-id': user.id, 'x-institution-id': user.institutionId || '', 'x-user-role': user.role } },
+        { ttl: 10_000 }
       )
       if (!res.ok) return
       const data = await res.json()
       const msgs: ChatMessagePayload[] = data.messages || []
       const map = new Map<string, ConvPreview>()
       for (const m of msgs) {
-        const partnerId = m.senderId === me.id ? m.receiverId : m.senderId
-        const partnerInfo = m.senderId === me.id ? m.receiver : m.sender
+        const partnerId = m.senderId === user.id ? m.receiverId : m.senderId
+        const partnerInfo = m.senderId === user.id ? m.receiver : m.sender
         if (!partnerInfo) continue
-        const isUnread = !m.read && m.receiverId === me.id
+        const isUnread = !m.read && m.receiverId === user.id
         const existing = map.get(partnerId)
         if (!existing) {
           map.set(partnerId, {
@@ -125,20 +140,37 @@ export function MessageSummaryCard() {
     } finally {
       setLoading(false)
     }
-  }, [me])
+  }, [])
 
   useEffect(() => {
     fetchConversations()
-    const interval = setInterval(fetchConversations, 30000)
-    return () => clearInterval(interval)
+    // 60s poll (was 30s) + skip when hidden → far fewer serverless calls.
+    const interval = setInterval(() => fetchConversations(), 60_000)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchConversations({ force: true })
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [fetchConversations])
+
+  // Trigger an immediate fetch when the user ID changes (login / switch).
+  // fetchConversations is stable (reads from ref), so we need this effect
+  // to kick off the first load instead of waiting up to 60s for the interval.
+  useEffect(() => {
+    if (me?.id) fetchConversations()
+  }, [me?.id, fetchConversations])
 
   // Real-time updates via chat socket (we only need connection state +
   // refresh on new message to keep the preview fresh)
   useChat({
     onMessage: () => {
       // Refresh the preview list when a new message arrives
-      fetchConversations()
+      fetchConversations({ force: true })
     },
   })
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Bell,
   Check,
@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/popover'
 import { useAppStore } from '@/lib/store'
 import { NOTIFICATION_TYPE_ICONS } from '@/lib/constants'
+import { dedupedFetch, isTabHidden } from '@/lib/api-cache'
 import type { Notification, NotificationType, ModuleKey } from '@/lib/types'
 
 // Icon map for notification types
@@ -82,39 +83,80 @@ export default function NotificationDropdown() {
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
 
-  const fetchNotifications = useCallback(async () => {
-    if (!currentUser) return
+  // Keep the latest currentUser in a ref so the polling interval doesn't
+  // reset every time the store updates the user object (e.g. on profile
+  // refresh). This prevents the burst of re-fetches that caused the
+  // Vercel "ResourceExhausted: container exceed concurrency threshold" error.
+  const userRef = useRef(currentUser)
+  useEffect(() => {
+    userRef.current = currentUser
+  }, [currentUser])
+
+  const fetchNotifications = useCallback(async (opts?: { force?: boolean }) => {
+    const user = userRef.current
+    if (!user) return
+    // Skip polling when the tab is hidden — the user can't see the bell
+    // badge anyway, so we avoid spawning serverless invocations for nothing.
+    if (!opts?.force && isTabHidden()) return
     try {
-      setLoading(true)
-      const res = await fetch('/api/notifications?limit=30', {
-        headers: { 'x-user-id': currentUser.id, 'x-institution-id': currentUser.institutionId || '', 'x-user-role': currentUser.role },
-      })
+      if (opts?.force) setLoading(true)
+      const res = await dedupedFetch(
+        '/api/notifications?limit=30',
+        {
+          headers: {
+            'x-user-id': user.id,
+            'x-institution-id': user.institutionId || '',
+            'x-user-role': user.role,
+          },
+        },
+        // Cache for 10s so the interval poll + popover open + other
+        // components all share one HTTP call.
+        { ttl: 10_000 }
+      )
       if (res.ok) {
         const json = await res.json()
-        // The GET /api/notifications route returns the list under the
-        // `notifications` key (and `unreadCount` separately). An earlier
-        // version read `json.data`, which was always undefined — that's why
-        // homework and other notifications never showed up in the bell badge.
         setNotifications(json.notifications || json.data || [])
         setUnreadCount(json.unreadCount || 0)
       }
     } catch {
       // Silently fail
     } finally {
-      setLoading(false)
+      if (opts?.force) setLoading(false)
     }
-  }, [currentUser])
+  }, [])
 
-  // Fetch on mount and periodically
+  // Fetch on mount and periodically (60s instead of 30s to halve the
+  // number of serverless invocations on Vercel).
   useEffect(() => {
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 30000) // Poll every 30s
-    return () => clearInterval(interval)
+    const interval = setInterval(() => fetchNotifications(), 60_000)
+
+    // Refresh when the tab becomes visible again (catches notifications
+    // that arrived while the user was away, without polling in the background).
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchNotifications({ force: true })
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [fetchNotifications])
 
-  // Fetch when popover opens
+  // Trigger an immediate fetch when the user ID changes (login / switch).
+  // fetchNotifications is stable (reads from ref), so without this effect
+  // the first load after login would wait up to 60s for the interval.
   useEffect(() => {
-    if (open) fetchNotifications()
+    if (currentUser?.id) fetchNotifications()
+  }, [currentUser?.id, fetchNotifications])
+
+  // Fetch when popover opens — but only if the cached data is older than
+  // 10s (dedupedFetch handles this automatically via its TTL).
+  useEffect(() => {
+    if (open) fetchNotifications({ force: true })
   }, [open, fetchNotifications])
 
   const markAsRead = async (id: string) => {

@@ -10,10 +10,13 @@ out/
 # Production
 build/
 
-# Database
-prisma/*.db
-prisma/*.db-journal
+# Database (SQLite — local only, not needed on Vercel/PostgreSQL)
+*.db
+*.db-journal
+prisma/db/
 db/*.db
+db/custom.db
+public/custom.db
 
 # Environment
 .env
@@ -88,3 +91,8 @@ db/migration-data/
 
 # Schema backup (généré par migrate:switch-to-postgres)
 prisma/schema.prisma.sqlite.bak
+
+# Z.ai sandbox artifacts (ne pas pousser sur GitHub)
+skills/
+.zscripts/
+.source-zip-env.tmp

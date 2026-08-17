@@ -50,7 +50,14 @@ export async function GET(request: Request) {
       },
     })
 
-    return NextResponse.json({
+    // Cache-Control: allow Vercel's edge CDN to cache this response for a
+    // few seconds. This dramatically reduces the number of serverless
+    // function invocations when multiple browser tabs / components poll
+    // /api/notifications concurrently. `private` prevents shared proxies
+    // from caching per-user responses; `s-maxage=5` + `stale-while-revalidate=15`
+    // means the CDN serves a fresh response for 5s, then a stale one for
+    // up to 15s while it revalidates in the background.
+    const res = NextResponse.json({
       notifications,
       unreadCount,
       pagination: {
@@ -60,6 +67,8 @@ export async function GET(request: Request) {
         totalPages: Math.ceil(total / limit),
       },
     })
+    res.headers.set('Cache-Control', 'private, s-maxage=5, stale-while-revalidate=15')
+    return res
   } catch (error) {
     console.error('Get notifications error:', error)
     return NextResponse.json(

@@ -10,6 +10,16 @@ import { getInstitutionIdWithFallback } from '@/lib/api-auth'
  *
  * The dashboard counts UserSession rows with updatedAt >= now - 5 min
  * to determine "online users".
+ *
+ * FIX (migration SQLite → PostgreSQL) :
+ * Le userId envoyé par le navigateur peut être stale (ancien ID SQLite resté
+ * dans localStorage après la migration). On ne peut pas créer de UserSession
+ * pour un userId inexistant (violation FK UserSession.userId → User).
+ * On valide donc le userId avant tout create/update :
+ *   - User valide     → 200 OK + upsert UserSession
+ *   - SuperAdmin      → 200 OK SANS UserSession (la FK l'interdit, et le
+ *                       compteur "online users" est institution-scoped)
+ *   - userId stale    → 401 (le frontend nettoie localStorage et déconnecte)
  */
 export async function POST(request: Request) {
   try {
@@ -23,8 +33,35 @@ export async function POST(request: Request) {
 
     const institutionId = await getInstitutionIdWithFallback(request)
 
+    // Validate that the userId corresponds to a real User row.
+    // Stale SQLite userIds (left in browser localStorage after the PostgreSQL
+    // migration) would trigger a P2003 FK violation on UserSession.create.
+    const userExists = await db.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    })
+
+    if (!userExists) {
+      // Super admins live in the SuperAdmin table, not User. They cannot have
+      // a UserSession row (FK constraint), and they don't need to be tracked
+      // in the institution-scoped "online users" counter. Acknowledge the
+      // heartbeat without creating a session.
+      const superAdminExists = await db.superAdmin.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      })
+      if (superAdminExists) {
+        return NextResponse.json({ ok: true, institutionId, ts: Date.now() })
+      }
+
+      // Stale / unknown userId → 401 so the frontend logs out.
+      return NextResponse.json(
+        { error: 'Session expirée ou invalide.' },
+        { status: 401 }
+      )
+    }
+
     // Upsert the user's session row (one row per user).
-    // Find existing active session for this user
     const existing = await db.userSession.findFirst({
       where: { userId, isActive: true },
     })

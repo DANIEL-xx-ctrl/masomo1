@@ -133,6 +133,8 @@ export default function ConnectedUsersModule() {
   // Fallback: if socket is not connected, poll /api/sessions?online=true
   const [fallbackUsers, setFallbackUsers] = useState<PresenceUser[] | null>(null)
   const fetchFallback = useCallback(async () => {
+    // Skip when tab is hidden — the user isn't viewing this module anyway.
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
     try {
       const res = await fetch('/api/sessions?online=true', { cache: 'no-store' })
       if (!res.ok) return
@@ -170,7 +172,9 @@ export default function ConnectedUsersModule() {
     // Defer the first fetch slightly so we don't call setState synchronously
     // inside this effect body (which would trigger a cascading-render warning).
     const firstLoad = setTimeout(fetchFallback, 100)
-    const id = setInterval(fetchFallback, 5000)
+    // 15s fallback poll (was 5s) — reduces serverless load while the socket
+    // is reconnecting. The socket itself is the primary real-time source.
+    const id = setInterval(fetchFallback, 15_000)
     return () => {
       clearTimeout(firstLoad)
       clearInterval(id)
