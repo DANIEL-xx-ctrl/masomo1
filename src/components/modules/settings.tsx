@@ -40,6 +40,8 @@ import {
   BookOpen,
   Briefcase,
   UserCog,
+  Hash,
+  Copy,
   type LucideIcon,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -2578,6 +2580,12 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
   const [savingPassword, setSavingPassword] = useState(false)
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<UserWithPassword | null>(null)
   const [resettingUser, setResettingUser] = useState<string | null>(null)
+  // Toggle to reveal/hide ALL passwords in the list at once.
+  const [showAllPasswords, setShowAllPasswords] = useState(false)
+  // Loading state for the "Generate missing IDs" button.
+  const [generatingCodes, setGeneratingCodes] = useState(false)
+  // Per-user password reveal (overrides the global toggle for finer control).
+  const [revealedUserIds, setRevealedUserIds] = useState<Set<string>>(new Set())
 
   const loadUsers = useCallback(async () => {
     setLoading(true)
@@ -2698,6 +2706,69 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
     }
   }
 
+  // Generate userCodes (login IDs) for every user who doesn't have one yet.
+  // This backfills the ELV-001 / TCH-001 / STF-001 / PAR-001 / ADM-001 codes
+  // so all students and staff can log in with their short ID.
+  const handleGenerateCodes = async () => {
+    setGeneratingCodes(true)
+    try {
+      const res = await fetch('/api/users/ensure-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Échec de la génération.')
+
+      if (data.updated > 0) {
+        toast.success('Identifiants générés', {
+          description: data.message + (data.byRole
+            ? ` — ${Object.entries(data.byRole).map(([k, v]) => `${k}: ${v}`).join(', ')}`
+            : ''),
+        })
+      } else {
+        toast.info('Aucun identifiant à générer', {
+          description: 'Tous les utilisateurs ont déjà un identifiant.',
+        })
+      }
+      await loadUsers()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue'
+      toast.error('Erreur', { description: msg })
+    } finally {
+      setGeneratingCodes(false)
+    }
+  }
+
+  // Toggle per-user password reveal.
+  const toggleUserReveal = (userId: string) => {
+    setRevealedUserIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(userId)) {
+        next.delete(userId)
+      } else {
+        next.add(userId)
+      }
+      return next
+    })
+  }
+
+  // Whether a given user's password should be visible right now.
+  const isPasswordVisible = (userId: string) =>
+    showAllPasswords || revealedUserIds.has(userId)
+
+  // Copy text to clipboard with a toast notification.
+  const [copiedField, setCopiedField] = useState<string | null>(null)
+  const copyToClipboard = async (text: string, fieldKey: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedField(fieldKey)
+      toast.success('Copié', { description: text })
+      setTimeout(() => setCopiedField(null), 1500)
+    } catch {
+      toast.error('Copie impossible', { description: 'Veuillez copier manuellement.' })
+    }
+  }
+
   const getUserAvatar = (u: UserWithPassword): string | null => {
     return u.avatar || u.teacher?.image || u.student?.image || u.staff?.image || null
   }
@@ -2739,19 +2810,20 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Users className="w-5 h-5 text-indigo-600" />
-            Gestion des mots de passe
+            Comptes & Mots de passe
           </CardTitle>
           <CardDescription>
-            Modifiez, créez ou supprimez les mots de passe des enseignants, élèves, parents, etc.
+            Liste de tous les comptes avec leur identifiant (ID), email, nom et mot de passe.
+            Les élèves et le personnel peuvent se connecter avec leur ID au lieu de leur email.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Filters */}
+          {/* Filters + Actions toolbar */}
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Rechercher par nom, email ou code…"
+                placeholder="Rechercher par nom, email ou identifiant…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
@@ -2772,10 +2844,46 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
             </Select>
           </div>
 
+          {/* Action buttons: Generate IDs + Show/Hide all passwords */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleGenerateCodes}
+              disabled={generatingCodes}
+              className="h-8"
+              title="Générer un identifiant unique (ELV-001, TCH-001, STF-001…) pour chaque utilisateur qui n'en a pas encore."
+            >
+              {generatingCodes ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Hash className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              Générer les identifiants manquants
+            </Button>
+            <Button
+              size="sm"
+              variant={showAllPasswords ? 'secondary' : 'outline'}
+              onClick={() => setShowAllPasswords((s) => !s)}
+              className="h-8"
+              title={showAllPasswords ? 'Masquer tous les mots de passe' : 'Afficher tous les mots de passe'}
+            >
+              {showAllPasswords ? (
+                <EyeOff className="w-3.5 h-3.5 mr-1.5" />
+              ) : (
+                <Eye className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              {showAllPasswords ? 'Masquer les mots de passe' : 'Afficher les mots de passe'}
+            </Button>
+          </div>
+
           {/* Stats */}
           <div className="flex flex-wrap gap-2 text-xs">
             <Badge variant="outline">{users.length} utilisateur(s) au total</Badge>
             <Badge variant="outline">{filteredUsers.length} affiché(s)</Badge>
+            <Badge variant="outline">
+              {users.filter((u) => !u.userCode).length} sans identifiant
+            </Badge>
             <Badge variant="outline">
               {users.filter((u) => u.passwordStatus === 'none').length} sans mot de passe
             </Badge>
@@ -2826,8 +2934,86 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
                               <Badge variant="secondary" className="text-[9px]">Inactif</Badge>
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+
+                          {/* ID (userCode) + Email line */}
+                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                            {u.userCode ? (
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(u.userCode!, `id-${u.id}`)}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400 text-[11px] font-mono font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-950/60 transition-colors"
+                                title="Cliquer pour copier l'identifiant"
+                              >
+                                <Hash className="w-3 h-3" />
+                                {u.userCode}
+                                {copiedField === `id-${u.id}` ? (
+                                  <Check className="w-3 h-3 text-emerald-500" />
+                                ) : (
+                                  <Copy className="w-3 h-3 opacity-50" />
+                                )}
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-400 text-[11px]">
+                                <Hash className="w-3 h-3" />
+                                Pas d'ID
+                              </span>
+                            )}
+                            <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                              {u.email}
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(u.email, `email-${u.id}`)}
+                                className="opacity-40 hover:opacity-100 transition-opacity"
+                                title="Copier l'email"
+                              >
+                                {copiedField === `email-${u.id}` ? (
+                                  <Check className="w-3 h-3 text-emerald-500" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </button>
+                            </p>
+                          </div>
+
+                          {/* Password line — shows the actual password value */}
+                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-muted/60 dark:bg-muted/20 border border-muted-foreground/20 text-[11px] font-mono">
+                              <Lock className="w-3 h-3 text-muted-foreground" />
+                              {u.passwordStatus === 'none' ? (
+                                <span className="text-destructive">aucun mot de passe</span>
+                              ) : isPasswordVisible(u.id) ? (
+                                <>
+                                  <span className="text-foreground">{u.password}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(u.password, `pwd-${u.id}`)}
+                                    className="opacity-50 hover:opacity-100 transition-opacity"
+                                    title="Copier le mot de passe"
+                                  >
+                                    {copiedField === `pwd-${u.id}` ? (
+                                      <Check className="w-3 h-3 text-emerald-500" />
+                                    ) : (
+                                      <Copy className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground tracking-widest">••••••••</span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => toggleUserReveal(u.id)}
+                                className="opacity-50 hover:opacity-100 transition-opacity ml-0.5"
+                                title={isPasswordVisible(u.id) ? 'Masquer' : 'Afficher'}
+                                aria-label={isPasswordVisible(u.id) ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                              >
+                                {isPasswordVisible(u.id) ? (
+                                  <EyeOff className="w-3 h-3" />
+                                ) : (
+                                  <Eye className="w-3 h-3" />
+                                )}
+                              </button>
+                            </span>
                             <Badge variant="outline" className="text-[9px]">
                               {getRoleLabel(u.role)}
                             </Badge>
@@ -2893,9 +3079,17 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
           <div className="rounded-lg bg-muted/30 dark:bg-muted/10 p-3 space-y-1.5 border border-muted-foreground/15">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
               <Info className="w-3.5 h-3.5" />
-              Légende
+              Légende & Astuces
             </p>
             <ul className="text-xs text-muted-foreground space-y-1">
+              <li className="flex items-start gap-2">
+                <Hash className="w-3 h-3 mt-0.5 shrink-0 text-emerald-600" />
+                <span><strong>ID (ELV-001, TCH-001, STF-001…)</strong> : identifiant de connexion court. Les élèves et le personnel peuvent se connecter avec cet ID <em>au lieu de</em> leur email. Cliquez sur l&apos;ID pour le copier.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Eye className="w-3 h-3 mt-0.5 shrink-0" />
+                <span><strong>Afficher les mots de passe</strong> : révèle la valeur réelle du mot de passe de chaque compte. Utilisez l&apos;icône œil d&apos;une ligne pour révéler/cacher un seul mot de passe.</span>
+              </li>
               <li className="flex items-start gap-2">
                 <Pencil className="w-3 h-3 mt-0.5 shrink-0" />
                 <span><strong>Modifier</strong> : définit ou modifie le mot de passe de l&apos;utilisateur.</span>

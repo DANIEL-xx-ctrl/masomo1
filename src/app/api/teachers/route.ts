@@ -5,6 +5,7 @@ import {
   resolveInstitutionScope,
   requireInstitutionScope,
 } from '@/lib/institution-scope'
+import { generateUserCode } from '@/lib/user-code'
 
 export async function GET(request: Request) {
   try {
@@ -191,6 +192,9 @@ export async function POST(request: Request) {
         role: 'teacher',
         phone,
         institutionId: institutionId || null,
+        // Auto-generate a unique, human-friendly login ID (e.g. "TCH-001")
+        // so the teacher can log in with their ID instead of just their email.
+        userCode: await generateUserCode('teacher', institutionId || null),
       },
     })
 

@@ -5,6 +5,7 @@ import {
   resolveInstitutionScope,
   requireInstitutionScope,
 } from '@/lib/institution-scope'
+import { generateUserCode } from '@/lib/user-code'
 
 // Smart gender mapping: user may type "Masculin"/"Féminin" or "M"/"F" or "masculin"/"féminin"
 function mapGenderSearch(search: string): string[] {
@@ -220,6 +221,9 @@ export async function POST(request: Request) {
         role: 'student',
         phone,
         institutionId: institutionId || null,
+        // Auto-generate a unique, human-friendly login ID (e.g. "ELV-001")
+        // so the student can log in with their ID instead of just their email.
+        userCode: await generateUserCode('student', institutionId || null),
       },
     })
 
