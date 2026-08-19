@@ -130,9 +130,17 @@ function ensureEnv() {
     }
   }
 
-  // 4. Inject all .env vars into process.env (don't override existing)
+  // 4. Inject all .env vars into process.env.
+  //    DATABASE_URL is ALWAYS overridden from .env because the shell
+  //    environment may have a stale SQLite URL that doesn't match the
+  //    project's Prisma provider (postgresql). All other vars are only
+  //    set if not already present (shell env takes precedence).
   for (const [k, v] of Object.entries(envVars)) {
-    if (process.env[k] === undefined) {
+    if (k === 'DATABASE_URL') {
+      // ALWAYS use the .env value for DATABASE_URL — the shell may have
+      // a leftover SQLite URL from a different project context.
+      process.env[k] = v
+    } else if (process.env[k] === undefined) {
       process.env[k] = v
     }
   }
