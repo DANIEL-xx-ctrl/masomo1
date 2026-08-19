@@ -161,6 +161,13 @@ export default function Login() {
     setError(null)
     setLoading(true)
 
+    // Clear the Service Worker API cache BEFORE logging in so that
+    // stale responses from a previous user (e.g. admin) are never
+    // served to the new user (e.g. student).
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage('CLEAR_API_CACHE')
+    }
+
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -548,7 +555,7 @@ export default function Login() {
                 <div className="mt-4 flex items-start gap-2 p-3 rounded-xl bg-white/[0.03] border border-white/5 text-white/40 text-xs leading-relaxed">
                   <AtSign className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-400/60" />
                   <span>
-                    Vous pouvez vous connecter avec votre <strong className="text-white/60">identifiant (ID)</strong> (ex. ELV-001, TCH-001, STF-001),
+                    Vous pouvez vous connecter avec votre <strong className="text-white/60">identifiant (ID)</strong> (ex. ELV-XX, ENS-XX,…),
                     votre <strong className="text-white/60">email</strong>, votre nom d&apos;utilisateur, ou votre <strong className="text-white/60">nom complet</strong>.
                     <br />
                     <span className="text-white/30">Les identifiants sont visibles dans Paramètres → Comptes & Mots de passe.</span>
