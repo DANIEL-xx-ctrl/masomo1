@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -188,6 +188,15 @@ export default function AppShell() {
   const { activeModule, setActiveModule, currentUser, logout, sidebarOpen, toggleSidebar, setSidebarOpen, login: updateStoreUser } = useAppStore()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Wrapper around store logout that also clears the Service Worker
+  // API cache so the next user doesn't get stale responses.
+  const handleLogout = useCallback(() => {
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage('CLEAR_API_CACHE')
+    }
+    logout()
+  }, [logout])
 
   // Refresh the current user's profile from the API on mount so the
   // persisted Zustand state (avatar, name, role, etc.) stays in sync
@@ -442,7 +451,7 @@ export default function AppShell() {
                   {currentUser?.role ? ROLE_LABELS[currentUser.role] : ''}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" onClick={logout} className="shrink-0 text-muted-foreground hover:text-destructive">
+              <Button variant="ghost" size="icon" onClick={handleLogout} className="shrink-0 text-muted-foreground hover:text-destructive">
                 <LogOut className="w-4 h-4" />
               </Button>
             </div>
@@ -535,7 +544,7 @@ export default function AppShell() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={logout}
+                  onClick={handleLogout}
                   className="shrink-0 h-8 w-8 text-muted-foreground hover:text-destructive"
                 >
                   <LogOut className="w-4 h-4" />
@@ -630,7 +639,7 @@ export default function AppShell() {
                     Paramètres
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
+                  <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
                     <LogOut className="w-4 h-4 mr-2" />
                     Déconnexion
                   </DropdownMenuItem>

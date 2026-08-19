@@ -160,6 +160,13 @@ export default function Login() {
     setError(null)
     setLoading(true)
 
+    // Clear the Service Worker API cache BEFORE logging in so that
+    // stale responses from a previous user (e.g. admin) are never
+    // served to the new user (e.g. student).
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage('CLEAR_API_CACHE')
+    }
+
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
