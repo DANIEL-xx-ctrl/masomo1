@@ -195,6 +195,13 @@ export default function AppShell() {
   // avatar or password from another tab or from the Settings page.
   useEffect(() => {
     if (!currentUser?.id) return
+    // Capture the user id at the time the effect starts. If the user logs
+    // out and logs in as someone else WHILE this fetch is in flight, the
+    // store's currentUser will have a different id — we must discard the
+    // stale response, otherwise we'd overwrite the new user with the old
+    // user's profile data (the root cause of the "student dashboard shown
+    // after admin login" bug).
+    const expectedUserId = currentUser.id
     let cancelled = false
     async function refreshProfile() {
       try {
@@ -204,6 +211,11 @@ export default function AppShell() {
           if (!res.ok) return
           const data = await res.json()
           if (cancelled || !data?.superAdmin) return
+          // GUARD 1: Has the logged-in user changed while we were waiting?
+          const latestUser = useAppStore.getState().currentUser
+          if (!latestUser || latestUser.id !== expectedUserId) return
+          // GUARD 2: Does the response actually belong to this user?
+          if (data.superAdmin.id && data.superAdmin.id !== expectedUserId) return
           updateStoreUser({
             ...currentUser,
             name: data.superAdmin.name,
@@ -218,6 +230,11 @@ export default function AppShell() {
           if (!res.ok) return
           const data = await res.json()
           if (cancelled || !data?.user) return
+          // GUARD 1: Has the logged-in user changed while we were waiting?
+          const latestUser = useAppStore.getState().currentUser
+          if (!latestUser || latestUser.id !== expectedUserId) return
+          // GUARD 2: Does the response actually belong to this user?
+          if (data.user.id && data.user.id !== expectedUserId) return
           // Merge fresh fields into the existing currentUser so we keep
           // optional relation fields (student/teacher/parent/staff) that
           // /api/auth/profile doesn't return.
@@ -242,6 +259,7 @@ export default function AppShell() {
   // immediately with a cache-busted URL.
   useEffect(() => {
     if (!currentUser?.id) return
+    const expectedUserId = currentUser.id
     let cancelled = false
     async function refreshProfile() {
       try {
@@ -250,6 +268,11 @@ export default function AppShell() {
           if (!res.ok) return
           const data = await res.json()
           if (cancelled || !data?.superAdmin) return
+          // GUARD: discard if the logged-in user has changed or the response
+          // belongs to a different user.
+          const latestUser = useAppStore.getState().currentUser
+          if (!latestUser || latestUser.id !== expectedUserId) return
+          if (data.superAdmin.id && data.superAdmin.id !== expectedUserId) return
           updateStoreUser({
             ...currentUser,
             name: data.superAdmin.name,
@@ -263,6 +286,11 @@ export default function AppShell() {
           if (!res.ok) return
           const data = await res.json()
           if (cancelled || !data?.user) return
+          // GUARD: discard if the logged-in user has changed or the response
+          // belongs to a different user.
+          const latestUser = useAppStore.getState().currentUser
+          if (!latestUser || latestUser.id !== expectedUserId) return
+          if (data.user.id && data.user.id !== expectedUserId) return
           updateStoreUser({
             ...currentUser,
             ...data.user,

@@ -62,7 +62,22 @@ if (typeof window !== 'undefined' && !(window as unknown as { __fetchPatched?: b
       }
       if (!('x-school-year' in mergedHeaders) && schoolYear) mergedHeaders['x-school-year'] = schoolYear
 
-      init = { ...init, headers: mergedHeaders }
+      // CRITICAL: Force the browser to bypass its HTTP cache for ALL /api/*
+      // requests. Without this, the browser's HTTP cache (which is SEPARATE
+      // from the Service Worker Cache API and the IndexedDB offline cache)
+      // serves stale user-specific responses by URL alone — e.g. after a
+      // student logs out and an admin logs in, /api/dashboard would return
+      // the student's cached response, showing the student's dashboard to
+      // the admin.
+      //
+      // `cache: 'no-store'` tells the browser: "do not look in the HTTP
+      // cache, and do not store the response in it". This is the single most
+      // important fix for the "old user remains after logout" bug on desktop
+      // browsers where the HTTP cache is more aggressive than on mobile.
+      mergedHeaders['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+      mergedHeaders['Pragma'] = 'no-cache'
+
+      init = { ...init, headers: mergedHeaders, cache: 'no-store' }
     }
 
     // ---- 2. Offline handling ----
