@@ -12,7 +12,7 @@
 //   - API POST/PUT/DELETE:     bypass (handled by the offline write-behind queue)
 // ============================================================================
 
-const CACHE_VERSION = 'masomo-v2'
+const CACHE_VERSION = 'masomo-v3'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 const API_CACHE = `${CACHE_VERSION}-api`
@@ -31,12 +31,20 @@ const PRECACHE_URLS = [
 const RUNTIME_CACHE_LIMIT = 100
 
 // URLs that should NEVER be cached.
+// All auth endpoints + any endpoint that returns user-specific data.
+// Without this, the SW serves stale admin data to a student who logs
+// in after the admin on the same device (the cache key is the URL alone,
+// ignoring auth headers — so /api/auth/profile cached for the admin is
+// served to the student).
 const NEVER_CACHE = [
-  '/api/auth/login',
-  '/api/auth/signup',
-  '/api/auth/logout',
+  '/api/auth/',
   '/api/super-admin/login',
+  '/api/super-admin/ensure',
+  '/api/superadmin/login',
+  '/api/superadmin/ensure',
   '/api/heartbeat',
+  '/api/dashboard',
+  '/api/ensure-superadmin',
 ]
 
 // ---- Install: pre-cache the app shell ----
@@ -168,9 +176,17 @@ self.addEventListener('fetch', (event) => {
   }
 })
 
-// ---- Message handler: allow the page to trigger skipWaiting ----
+// ---- Message handler ----
 self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') {
     self.skipWaiting()
+  }
+  // Clear the API cache on login/logout so that user-specific
+  // responses (dashboard, profile, notifications…) from a previous
+  // session are never served to a different user.
+  if (event.data === 'CLEAR_API_CACHE') {
+    caches.delete(API_CACHE).then(() => {
+      console.log('[SW] API cache cleared on login/logout')
+    })
   }
 })
