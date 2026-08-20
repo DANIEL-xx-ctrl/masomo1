@@ -593,48 +593,48 @@ export default function PaymentsModule() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600">
-              <TrendingUp className="w-5 h-5" />
+          <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 shrink-0">
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total revenus</p>
-              <p className="text-lg font-bold text-foreground">{formatCurrency(totalRevenue)}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">Total revenus</p>
+              <p className="text-sm sm:text-lg font-bold text-foreground truncate">{formatCurrency(totalRevenue)}</p>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-yellow-50 dark:bg-yellow-950/50 text-yellow-600">
-              <Clock className="w-5 h-5" />
+          <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-xl bg-yellow-50 dark:bg-yellow-950/50 text-yellow-600 shrink-0">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">En attente</p>
-              <p className="text-lg font-bold text-foreground">{pendingCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600">
-              <Smartphone className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Mobile Money</p>
-              <p className="text-lg font-bold text-foreground">{mmPercent}%</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">En attente</p>
+              <p className="text-sm sm:text-lg font-bold text-foreground">{pendingCount}</p>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-green-50 dark:bg-green-950/50 text-green-600">
-              <CheckCircle2 className="w-5 h-5" />
+          <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 shrink-0">
+              <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Complétés ce mois</p>
-              <p className="text-lg font-bold text-foreground">{completedThisMonth}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">Mobile Money</p>
+              <p className="text-sm sm:text-lg font-bold text-foreground">{mmPercent}%</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-xl bg-green-50 dark:bg-green-950/50 text-green-600 shrink-0">
+              <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">Complétés ce mois</p>
+              <p className="text-sm sm:text-lg font-bold text-foreground">{completedThisMonth}</p>
             </div>
           </CardContent>
         </Card>
@@ -642,10 +642,10 @@ export default function PaymentsModule() {
 
       {/* Filter Bar */}
       <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <CardContent className="p-3 sm:p-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Statut" />
               </SelectTrigger>
               <SelectContent>
@@ -656,7 +656,7 @@ export default function PaymentsModule() {
               </SelectContent>
             </Select>
             <Select value={filterMethod} onValueChange={setFilterMethod}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Méthode" />
               </SelectTrigger>
               <SelectContent>
@@ -667,7 +667,7 @@ export default function PaymentsModule() {
               </SelectContent>
             </Select>
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -677,13 +677,13 @@ export default function PaymentsModule() {
                 ))}
               </SelectContent>
             </Select>
-            <div className="relative">
+            <div className="relative col-span-2 sm:col-span-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Rechercher..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
+                className="pl-9 w-full"
               />
             </div>
           </div>
