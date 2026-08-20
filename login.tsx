@@ -489,7 +489,7 @@ export default function Login() {
                     type="text"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Email, ID, code utilisateur ou nom complet"
+                    placeholder="Email, ID, code util ou nom complet"
                     icon={Mail}
                     autoComplete="username"
                     disabled={loading}
