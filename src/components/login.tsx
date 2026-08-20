@@ -76,22 +76,36 @@ function FloatingInput({
         // - text-base sm:text-sm: 16px on mobile prevents iOS Safari from
         //   auto-zooming on focus (zoom shifts viewport scale and makes the
         //   absolutely-positioned label overlap the typed text). 14px on sm+.
-        // - pt-6 pb-2 leading-tight: reserves 24px of top space for the
-        //   floating label so typed text sits clearly below it, with a tight
-        //   line-height so the text fits cleanly in the content area.
-        className="w-full h-14 pl-11 pr-11 pt-6 pb-2 leading-tight rounded-xl bg-[#1a2525] border border-white/5 text-white text-base sm:text-sm focus:outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20 transition-all disabled:opacity-60"
+        // - pt-7 (28px) reserves ample top space for the floating label so
+        //   typed text never overlaps with it, even on mobile where line
+        //   metrics differ from desktop.
+        // - transition-colors (not transition-all): avoids layout jank from
+        //   transitioning padding/border on focus.
+        className="w-full h-14 pl-11 pr-11 pt-7 pb-1 leading-tight rounded-xl bg-[#1a2525] border border-white/5 text-white text-base sm:text-sm focus:outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20 transition-colors disabled:opacity-60"
       />
 
       {/* Floating label — animates up & shrinks on focus/value.
           This is the ONLY placeholder; the input has no native placeholder.
-          Active position top-2 (8px) + text-[10px] leaves a clear gap above
-          the typed text (which starts at pt-6 = 24px). */}
+
+          Mobile overlap fix (CRITICAL):
+          - Use FIXED top values (top-4 inactive, top-2 active) instead of
+            top-1/2 + -translate-y-1/2. The percentage+transform combo
+            creates a feedback loop during the font-size transition: as the
+            label shrinks (text-sm → text-[10px]), its height changes, which
+            changes the -translate-y-1/2 amount, which makes the label jump
+            erratically during the 200ms transition. On mobile (slower CPU,
+            different rendering), this is visible as the label briefly
+            overlapping the input text. Fixed top values transition smoothly.
+          - right-11 + truncate: constrains long placeholders (e.g. "Email,
+            ID, code utilisateur ou nom complet") to the input's content
+            width, preventing wrapping/overflow on narrow mobile screens
+            which was another cause of text overlap. */}
       <label
         htmlFor={id}
-        className={`absolute left-11 pointer-events-none select-none transition-all duration-200 ease-out
+        className={`absolute left-11 right-11 truncate pointer-events-none select-none transition-all duration-200 ease-out
           ${active
             ? 'top-2 text-[10px] font-semibold uppercase tracking-wider text-emerald-400/90'
-            : 'top-1/2 -translate-y-1/2 text-sm text-white/35'}
+            : 'top-4 text-sm text-white/35'}
         `}
       >
         {placeholder}
