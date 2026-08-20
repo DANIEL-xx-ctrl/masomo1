@@ -586,7 +586,7 @@ export default function PaymentsModule() {
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Nouveau paiementP
+              Nouveau paiement
             </Button>
           )}
         </div>
