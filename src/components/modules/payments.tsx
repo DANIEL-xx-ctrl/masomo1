@@ -1142,15 +1142,14 @@ export default function PaymentsModule() {
           {detailPayment && (
             <div className="space-y-4 py-2">
               {/* Institution header — ALWAYS visible.
-                  Prefer the full receipt data (which includes address/phone/email
-                  from the backend). Fall back to the institution name from the
-                  Zustand store (currentUser.institutionName) so the institution
-                  name is ALWAYS shown even if the receipt API fails to load
-                  (common on mobile due to hydration races). */}
+                  Uses the SAME source as the dashboard title (currentUser.institutionName)
+                  so the name shown on the receipt always matches the institution the
+                  admin is currently logged into. The receipt API's institution name
+                  is only used as a secondary source (for address/phone/email). */}
               <div className="rounded-md bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900 px-3 py-2">
                 <p className="text-sm font-bold text-teal-700 dark:text-teal-400 break-words">
-                  {receiptData?.institution?.name
-                    || currentUser?.institutionName
+                  {currentUser?.institutionName
+                    || receiptData?.institution?.name
                     || 'Établissement'}
                 </p>
                 {(receiptData?.institution?.address ||
@@ -1281,7 +1280,17 @@ export default function PaymentsModule() {
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onSelect={() => receiptData && exportReceiptToPDF(receiptData)}
+                    onSelect={() => {
+                      // Override the institution name with the logged-in user's
+                      // institution name (same source as the dashboard title)
+                      // so the exported PDF shows the correct institution.
+                      if (receiptData) {
+                        const overridden = currentUser?.institutionName
+                          ? { ...receiptData, institution: { ...receiptData.institution, name: currentUser.institutionName } }
+                          : receiptData
+                        exportReceiptToPDF(overridden)
+                      }
+                    }}
                     disabled={!receiptData}
                     className="cursor-pointer"
                   >
@@ -1289,7 +1298,14 @@ export default function PaymentsModule() {
                     <span>Exporter en PDF</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onSelect={() => receiptData && exportReceiptToWord(receiptData)}
+                    onSelect={() => {
+                      if (receiptData) {
+                        const overridden = currentUser?.institutionName
+                          ? { ...receiptData, institution: { ...receiptData.institution, name: currentUser.institutionName } }
+                          : receiptData
+                        exportReceiptToWord(overridden)
+                      }
+                    }}
                     disabled={!receiptData}
                     className="cursor-pointer"
                   >
@@ -1297,7 +1313,14 @@ export default function PaymentsModule() {
                     <span>Exporter en Word</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onSelect={() => receiptData && exportReceiptToExcel(receiptData)}
+                    onSelect={() => {
+                      if (receiptData) {
+                        const overridden = currentUser?.institutionName
+                          ? { ...receiptData, institution: { ...receiptData.institution, name: currentUser.institutionName } }
+                          : receiptData
+                        exportReceiptToExcel(overridden)
+                      }
+                    }}
                     disabled={!receiptData}
                     className="cursor-pointer"
                   >
@@ -1306,7 +1329,14 @@ export default function PaymentsModule() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onSelect={() => receiptData && printReceiptA4(receiptData)}
+                    onSelect={() => {
+                      if (receiptData) {
+                        const overridden = currentUser?.institutionName
+                          ? { ...receiptData, institution: { ...receiptData.institution, name: currentUser.institutionName } }
+                          : receiptData
+                        printReceiptA4(overridden)
+                      }
+                    }}
                     disabled={!receiptData}
                     className="cursor-pointer"
                   >
@@ -1314,7 +1344,14 @@ export default function PaymentsModule() {
                     <span>Imprimer (A4)</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onSelect={() => receiptData && printReceiptTicket(receiptData)}
+                    onSelect={() => {
+                      if (receiptData) {
+                        const overridden = currentUser?.institutionName
+                          ? { ...receiptData, institution: { ...receiptData.institution, name: currentUser.institutionName } }
+                          : receiptData
+                        printReceiptTicket(overridden)
+                      }
+                    }}
                     disabled={!receiptData}
                     className="cursor-pointer"
                   >
