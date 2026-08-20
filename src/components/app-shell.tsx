@@ -247,11 +247,18 @@ export default function AppShell() {
           // Merge fresh fields into the existing currentUser so we keep
           // optional relation fields (student/teacher/parent/staff) that
           // /api/auth/profile doesn't return.
+          //
+          // CRITICAL: preserve `institutionName` from the existing currentUser
+          // when the profile response doesn't include it. Without this explicit
+          // preservation, `...data.user` would overwrite `institutionName` with
+          // `undefined`, causing the institution name to disappear from the UI
+          // (and from payment receipts) after the profile refresh on mount.
           updateStoreUser({
             ...currentUser,
             ...data.user,
             avatar: data.user.resolvedAvatar ?? data.user.avatar ?? currentUser.avatar,
             updatedAt: data.user.updatedAt ?? currentUser.updatedAt,
+            institutionName: data.user.institutionName ?? currentUser.institutionName ?? null,
           })
         }
       } catch {
@@ -305,6 +312,7 @@ export default function AppShell() {
             ...data.user,
             avatar: data.user.resolvedAvatar ?? data.user.avatar ?? currentUser.avatar,
             updatedAt: data.user.updatedAt ?? currentUser.updatedAt,
+            institutionName: data.user.institutionName ?? currentUser.institutionName ?? null,
           })
         }
       } catch {
