@@ -1141,24 +1141,33 @@ export default function PaymentsModule() {
           </DialogHeader>
           {detailPayment && (
             <div className="space-y-4 py-2">
-              {/* Institution header (from receipt data) */}
-              {receiptData && (
-                <div className="rounded-md bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900 px-3 py-2">
-                  <p className="text-sm font-bold text-teal-700 dark:text-teal-400">
-                    {receiptData.institution.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+              {/* Institution header — ALWAYS visible.
+                  Prefer the full receipt data (which includes address/phone/email
+                  from the backend). Fall back to the institution name from the
+                  Zustand store (currentUser.institutionName) so the institution
+                  name is ALWAYS shown even if the receipt API fails to load
+                  (common on mobile due to hydration races). */}
+              <div className="rounded-md bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900 px-3 py-2">
+                <p className="text-sm font-bold text-teal-700 dark:text-teal-400 break-words">
+                  {receiptData?.institution?.name
+                    || currentUser?.institutionName
+                    || 'Établissement'}
+                </p>
+                {(receiptData?.institution?.address ||
+                  receiptData?.institution?.phone ||
+                  receiptData?.institution?.email) && (
+                  <p className="text-xs text-muted-foreground mt-0.5 break-words">
                     {[
                       receiptData.institution.address,
                       receiptData.institution.phone && `Tél : ${receiptData.institution.phone}`,
                       receiptData.institution.email,
                     ].filter(Boolean).join(' • ')}
                   </p>
-                  <p className="text-[10px] text-muted-foreground mt-1 font-mono">
-                    Reçu N° {receiptData.receiptNumber}
-                  </p>
-                </div>
-              )}
+                )}
+                <p className="text-[10px] text-muted-foreground mt-1 font-mono">
+                  Reçu N° {receiptData?.receiptNumber || `REC-${detailPayment.id.slice(-8).toUpperCase()}`}
+                </p>
+              </div>
 
               {/* Loading state */}
               {receiptLoading && (
