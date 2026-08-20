@@ -285,10 +285,32 @@ export function exportReceiptToPDF(r: ReceiptData): void {
   doc.rect(0, 0, pageWidth, 30, 'F');
 
   // ---- Institution header (white text on teal) ----
+  // The institution name may be long (e.g. "Institut Technique de Formation
+  // Professionnelle"). jsPDF's text() does NOT wrap automatically — a long
+  // name overflows past the right margin and overlaps the receipt number.
+  // We use splitTextToSize() to wrap it within the available width (page
+  // width minus left margin minus a safe gap for the receipt number column
+  // on the right), and auto-shrink the font size for very long names so
+  // the full name always fits on one or two lines.
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text(r.institution.name, margin, 13);
+
+  const receiptNumberWidth = 50; // mm reserved for the receipt number column
+  const maxNameWidth = pageWidth - margin * 2 - receiptNumberWidth;
+  let nameFontSize = 16;
+  let nameLines = doc.splitTextToSize(r.institution.name, maxNameWidth);
+  // Auto-shrink: if the name wraps to more than 2 lines, reduce the font
+  // size until it fits in 2 lines (keeps the header band compact).
+  while (nameLines.length > 2 && nameFontSize > 10) {
+    nameFontSize -= 1;
+    doc.setFontSize(nameFontSize);
+    nameLines = doc.splitTextToSize(r.institution.name, maxNameWidth);
+  }
+  doc.setFontSize(nameFontSize);
+  // Draw each line, stacked downward from y=13
+  nameLines.forEach((line: string, idx: number) => {
+    doc.text(line, margin, 10 + idx * (nameFontSize * 0.4 + 1));
+  });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
@@ -296,7 +318,13 @@ export function exportReceiptToPDF(r: ReceiptData): void {
   if (r.institution.address) subs.push(r.institution.address);
   if (r.institution.phone) subs.push(`Tél: ${r.institution.phone}`);
   if (r.institution.email) subs.push(r.institution.email);
-  if (subs.length) doc.text(subs.join('   |   '), margin, 20);
+  if (subs.length) {
+    const subText = subs.join('   |   ');
+    const subLines = doc.splitTextToSize(subText, maxNameWidth);
+    subLines.forEach((line: string, idx: number) => {
+      doc.text(line, margin, 20 + idx * 4);
+    });
+  }
 
   // ---- Right side: receipt number ----
   doc.setFont('helvetica', 'bold');
