@@ -23,8 +23,10 @@ export async function GET(request: NextRequest) {
         avatar: true,
         phone: true,
         active: true,
+        institutionId: true,
         createdAt: true,
         updatedAt: true,
+        institution: { select: { name: true } },
         student: { select: { image: true } },
         teacher: { select: { image: true } },
         parent: { select: { image: true } },
@@ -47,6 +49,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       user: {
         ...user,
+        // Flatten institution.name → institutionName so the frontend
+        // Zustand store keeps the institution name after a profile refresh
+        // (app-shell.tsx merges this response into currentUser, and without
+        // this field the institution name was being cleared to undefined).
+        institutionName: user.institution?.name || null,
         resolvedAvatar,
       },
     })
