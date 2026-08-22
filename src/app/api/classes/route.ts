@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { checkAdminOrSuperAdmin } from '@/lib/auth-guards'
 import { resolveInstitutionScope, requireInstitutionScope } from '@/lib/institution-scope'
+import { getTeacherClassIds } from '@/lib/teacher-classes'
 
 export async function GET(request: Request) {
   try {
@@ -15,10 +16,27 @@ export async function GET(request: Request) {
     const scope = await resolveInstitutionScope(request)
     if (scope instanceof NextResponse) return scope
     const institutionId = scope.institutionId
+    const role = scope.role
+    const userId = scope.userId
 
     const where: Record<string, unknown> = {}
     if (schoolYear) where.schoolYear = schoolYear
     if (institutionId) where.institutionId = institutionId
+
+    // ---- Teacher scoping ----
+    // A teacher should only see the classes they are assigned to (via the
+    // ClassTeacher join table). Admin and super_admin see all classes in the
+    // institution. This prevents a teacher from viewing/modifying classes
+    // they don't teach.
+    if (role === 'teacher' && userId) {
+      const teacherClassIds = await getTeacherClassIds(userId, schoolYear)
+      if (teacherClassIds.length > 0) {
+        where.id = { in: teacherClassIds }
+      } else {
+        // Teacher has no class assignments — return empty
+        return NextResponse.json({ classes: [] })
+      }
+    }
 
     const classes = await db.class.findMany({
       where,
