@@ -128,6 +128,47 @@ export async function POST(request: NextRequest) {
         })
       }
 
+      // 1b. Notify the teacher who created the homework (if a teacherId is set)
+      // Previously the teacher who assigned the homework never received a
+      // notification, so nothing appeared in their bell — even though they
+      // created the homework. We resolve the teacher's User.id and send
+      // them a confirmation notification.
+      // Fallback: if teacherId was not set in the body but the requester is
+      // a teacher (x-user-id header), notify that teacher.
+      let teacherUserIdToNotify: string | null = null
+      if (homework.teacher?.id) {
+        const teacherUser = await db.teacher.findUnique({
+          where: { id: homework.teacher.id },
+          select: { userId: true },
+        })
+        teacherUserIdToNotify = teacherUser?.userId || null
+      } else {
+        // No teacherId on the homework — use the requester's user id
+        const requesterUserId = request.headers.get('x-user-id')
+        if (requesterUserId && userRole === 'teacher') {
+          teacherUserIdToNotify = requesterUserId
+        }
+      }
+      if (teacherUserIdToNotify) {
+        // Avoid duplicate if the teacher is also an admin (already notified above)
+        const alreadyNotified = admins.some(a => a.id === teacherUserIdToNotify)
+        if (!alreadyNotified) {
+          await db.notification.create({
+            data: {
+              userId: teacherUserIdToNotify,
+              title: 'Devoir créé avec succès',
+              message: notifMessage,
+              type: 'homework',
+              category: 'homework',
+              link: 'homework',
+              linkParams: homework.id,
+              icon: 'BookOpen',
+              institutionId,
+            },
+          })
+        }
+      }
+
       // 2. Notify students in the class
       const studentsInClass = await db.student.findMany({
         where: { classId },
