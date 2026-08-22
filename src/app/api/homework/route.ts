@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getInstitutionIdWithFallback } from '@/lib/api-auth'
+import { getTeacherClassIds, getTeacherIdFromUserId } from '@/lib/teacher-classes'
 
 export async function GET(request: Request) {
   try {
@@ -13,10 +14,34 @@ export async function GET(request: Request) {
     const parentId = searchParams.get('parentId')
     const classIds = searchParams.get('classIds') // comma-separated class IDs for parent's children
 
+    const role = request.headers.get('x-user-role') || ''
+    const userId = request.headers.get('x-user-id') || ''
+
     const where: Record<string, unknown> = { institutionId, schoolYear }
     if (classId) where.classId = classId
     if (status) where.status = status
     if (teacherId) where.teacherId = teacherId
+
+    // ---- Teacher scoping ----
+    // A teacher sees homework for their own classes by default. They can
+    // still view homework for other classes (the user said "l'enseignant
+    // ne modifie que ses devoirs, ne peut pas modifier les autres devoirs
+    // des classes dans les quelles il n'enseigne pas" — so viewing is OK,
+    // only modifying is restricted). But when no explicit classId/teacherId
+    // is passed, we default to showing only the teacher's classes to keep
+    // the list manageable and relevant.
+    if (role === 'teacher' && userId && !classId && !teacherId) {
+      const teacherClassIds = await getTeacherClassIds(userId, schoolYear)
+      const ownTeacherId = await getTeacherIdFromUserId(userId)
+      if (teacherClassIds.length > 0 || ownTeacherId) {
+        where.OR = [
+          ...(teacherClassIds.length > 0 ? [{ classId: { in: teacherClassIds } }] : []),
+          ...(ownTeacherId ? [{ teacherId: ownTeacherId }] : []),
+        ]
+      } else {
+        return NextResponse.json({ homeworks: [] })
+      }
+    }
 
     // Parent-specific: filter homework by classes of their children
     if (parentId) {
@@ -64,6 +89,7 @@ export async function POST(request: NextRequest) {
   try {
     const institutionId = await getInstitutionIdWithFallback(request)
     const userRole = request.headers.get('x-user-role')
+    const headerUserId = request.headers.get('x-user-id')
     // Super admin has full CRUD power on every page; admin & teacher can create homework
     if (userRole !== 'admin' && userRole !== 'teacher' && userRole !== 'super_admin') {
       return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 })
@@ -79,13 +105,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // ---- Teacher class-ownership check ----
+    // A teacher can only create homework for classes they are assigned to.
+    // We also force the teacherId to the caller's own Teacher.id so a
+    // teacher can't impersonate another teacher.
+    let resolvedTeacherId = teacherId || null
+    if (userRole === 'teacher' && headerUserId) {
+      const teacherClassIds = await getTeacherClassIds(headerUserId, schoolYear)
+      if (!teacherClassIds.includes(classId)) {
+        return NextResponse.json(
+          { error: 'Vous ne pouvez créer des devoirs que pour vos propres classes.' },
+          { status: 403 }
+        )
+      }
+      // Force the teacherId to the caller's own Teacher.id
+      resolvedTeacherId = await getTeacherIdFromUserId(headerUserId)
+    }
+
     const homework = await db.homework.create({
       data: {
         title,
         description: description || null,
         subjectId: subjectId || null,
         classId,
-        teacherId: teacherId || null,
+        teacherId: resolvedTeacherId,
         dueDate,
         assignedDate: assignedDate || new Date().toISOString().split('T')[0],
         type: type || 'homework',
@@ -126,47 +169,6 @@ export async function POST(request: NextRequest) {
             institutionId,
           })),
         })
-      }
-
-      // 1b. Notify the teacher who created the homework (if a teacherId is set)
-      // Previously the teacher who assigned the homework never received a
-      // notification, so nothing appeared in their bell — even though they
-      // created the homework. We resolve the teacher's User.id and send
-      // them a confirmation notification.
-      // Fallback: if teacherId was not set in the body but the requester is
-      // a teacher (x-user-id header), notify that teacher.
-      let teacherUserIdToNotify: string | null = null
-      if (homework.teacher?.id) {
-        const teacherUser = await db.teacher.findUnique({
-          where: { id: homework.teacher.id },
-          select: { userId: true },
-        })
-        teacherUserIdToNotify = teacherUser?.userId || null
-      } else {
-        // No teacherId on the homework — use the requester's user id
-        const requesterUserId = request.headers.get('x-user-id')
-        if (requesterUserId && userRole === 'teacher') {
-          teacherUserIdToNotify = requesterUserId
-        }
-      }
-      if (teacherUserIdToNotify) {
-        // Avoid duplicate if the teacher is also an admin (already notified above)
-        const alreadyNotified = admins.some(a => a.id === teacherUserIdToNotify)
-        if (!alreadyNotified) {
-          await db.notification.create({
-            data: {
-              userId: teacherUserIdToNotify,
-              title: 'Devoir créé avec succès',
-              message: notifMessage,
-              type: 'homework',
-              category: 'homework',
-              link: 'homework',
-              linkParams: homework.id,
-              icon: 'BookOpen',
-              institutionId,
-            },
-          })
-        }
       }
 
       // 2. Notify students in the class
