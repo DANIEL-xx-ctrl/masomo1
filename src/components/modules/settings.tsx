@@ -394,26 +394,26 @@ export default function SettingsModule() {
       </motion.div>
 
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto">
-          <TabsTrigger value="profile" className="py-2">
-            <User className="w-4 h-4 mr-1.5" />
-            <span className="hidden sm:inline">Mon profil</span>
-            <span className="sm:hidden">Profil</span>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto gap-1">
+          <TabsTrigger value="profile" className="py-2 px-1 sm:px-2 min-w-0 justify-center">
+            <User className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline truncate">Mon profil</span>
+            <span className="sm:hidden truncate">Profil</span>
           </TabsTrigger>
-          <TabsTrigger value="institution" className="py-2">
-            <Building2 className="w-4 h-4 mr-1.5" />
-            <span className="hidden sm:inline">Institution</span>
-            <span className="sm:hidden">Inst.</span>
+          <TabsTrigger value="institution" className="py-2 px-1 sm:px-2 min-w-0 justify-center">
+            <Building2 className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline truncate">Institution</span>
+            <span className="sm:hidden truncate">Inst.</span>
           </TabsTrigger>
-          <TabsTrigger value="passwords" className="py-2" disabled={!isAdmin}>
-            <Key className="w-4 h-4 mr-1.5" />
-            <span className="hidden sm:inline">Mots de passe</span>
-            <span className="sm:hidden">MDP</span>
+          <TabsTrigger value="passwords" className="py-2 px-1 sm:px-2 min-w-0 justify-center" disabled={!isAdmin}>
+            <Key className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline truncate">Mots de passe</span>
+            <span className="sm:hidden truncate">MDP</span>
           </TabsTrigger>
-          <TabsTrigger value="system" className="py-2">
-            <Palette className="w-4 h-4 mr-1.5" />
-            <span className="hidden sm:inline">Système</span>
-            <span className="sm:hidden">Syst.</span>
+          <TabsTrigger value="system" className="py-2 px-1 sm:px-2 min-w-0 justify-center">
+            <Palette className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline truncate">Système</span>
+            <span className="sm:hidden truncate">Syst.</span>
           </TabsTrigger>
         </TabsList>
 
