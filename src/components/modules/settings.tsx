@@ -394,13 +394,13 @@ export default function SettingsModule() {
       </motion.div>
 
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto gap-1">
+        <TabsList className={`grid w-full h-auto gap-1 ${isAdmin ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1'}`}>
           <TabsTrigger value="profile" className="py-2 px-1 sm:px-2 min-w-0 justify-center">
             <User className="w-4 h-4 shrink-0" />
             <span className="hidden sm:inline truncate">Mon profil</span>
             <span className="sm:hidden truncate">Profil</span>
           </TabsTrigger>
-          <TabsTrigger value="institution" className="py-2 px-1 sm:px-2 min-w-0 justify-center">
+          <TabsTrigger value="institution" className="py-2 px-1 sm:px-2 min-w-0 justify-center" disabled={!isAdmin}>
             <Building2 className="w-4 h-4 shrink-0" />
             <span className="hidden sm:inline truncate">Institution</span>
             <span className="sm:hidden truncate">Inst.</span>
@@ -410,7 +410,7 @@ export default function SettingsModule() {
             <span className="hidden sm:inline truncate">Mots de passe</span>
             <span className="sm:hidden truncate">MDP</span>
           </TabsTrigger>
-          <TabsTrigger value="system" className="py-2 px-1 sm:px-2 min-w-0 justify-center">
+          <TabsTrigger value="system" className="py-2 px-1 sm:px-2 min-w-0 justify-center" disabled={!isAdmin}>
             <Palette className="w-4 h-4 shrink-0" />
             <span className="hidden sm:inline truncate">Système</span>
             <span className="sm:hidden truncate">Syst.</span>
