@@ -200,6 +200,43 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Aucune modification à effectuer.' }, { status: 400 })
     }
 
+    // ---- Sync avatar to role-specific table ----
+    // The settings page updates `User.avatar`, but the Teachers/Students/
+    // Parents/Staff list modules display `Teacher.image` / `Student.image`
+    // etc. (NOT user.avatar). Without syncing here, a teacher who changes
+    // their avatar in Settings would see it update in the header but NOT
+    // in the teachers list grid.
+    const avatarChanged = 'avatar' in updateData
+    if (avatarChanged) {
+      // Fetch the user's role to know which table to update.
+      const userBeforeUpdate = await db.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      })
+      const newAvatarValue = removeAvatar ? null : (avatar || null)
+      if (userBeforeUpdate?.role === 'teacher') {
+        const existingTeacher = await db.teacher.findUnique({ where: { userId }, select: { id: true } })
+        if (existingTeacher) {
+          await db.teacher.update({ where: { userId }, data: { image: newAvatarValue } })
+        }
+      } else if (userBeforeUpdate?.role === 'staff') {
+        const existingStaff = await db.staff.findUnique({ where: { userId }, select: { id: true } })
+        if (existingStaff) {
+          await db.staff.update({ where: { userId }, data: { image: newAvatarValue } })
+        }
+      } else if (userBeforeUpdate?.role === 'student') {
+        const existingStudent = await db.student.findUnique({ where: { userId }, select: { id: true } })
+        if (existingStudent) {
+          await db.student.update({ where: { userId }, data: { image: newAvatarValue } })
+        }
+      } else if (userBeforeUpdate?.role === 'parent') {
+        const existingParent = await db.parent.findUnique({ where: { userId }, select: { id: true } })
+        if (existingParent) {
+          await db.parent.update({ where: { userId }, data: { image: newAvatarValue } })
+        }
+      }
+    }
+
     const updatedUser = await db.user.update({
       where: { id: userId },
       data: updateData,
@@ -216,6 +253,7 @@ export async function PUT(request: NextRequest) {
         institutionId: true,
         createdAt: true,
         updatedAt: true,
+        institution: { select: { name: true } },
       },
     })
 
@@ -227,7 +265,10 @@ export async function PUT(request: NextRequest) {
           : 'profile-updated'
 
     return NextResponse.json({
-      user: updatedUser,
+      user: {
+        ...updatedUser,
+        institutionName: updatedUser.institution?.name || null,
+      },
       message:
         action === 'password-deleted'
           ? 'Votre mot de passe a été supprimé. Vous ne pouvez plus vous connecter tant qu\'un nouveau mot de passe ne sera pas défini.'
