@@ -682,7 +682,7 @@ export default function ClassesModule() {
 
       {/* ===== Class Detail Dialog ===== */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[85vh]">
+        <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Détails de la classe</DialogTitle>
           </DialogHeader>
@@ -757,28 +757,28 @@ export default function ClassesModule() {
                         {viewingClass.students.map((student, idx) => (
                           <div
                             key={student.id}
-                            className="flex items-center justify-between rounded-md bg-muted/50 p-2.5"
+                            className="flex items-center justify-between rounded-md bg-muted/50 p-2.5 gap-2"
                           >
-                            <div className="flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <Avatar className="h-8 w-8 shrink-0">
                                 <AvatarImage src={getImageUrl(student.image, student.updatedAt)} alt={`${student.firstName} ${student.lastName}`} />
                                 <AvatarFallback className="bg-emerald-100 text-emerald-700 text-xs font-semibold">
                                   {student.firstName[0]}{student.lastName[0]}
                                 </AvatarFallback>
                               </Avatar>
-                              <div>
-                                <p className="text-sm font-medium">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">
                                   {student.firstName} {student.lastName}
                                 </p>
                                 {student.user?.email && (
-                                  <p className="text-xs text-muted-foreground">{student.user.email}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{student.user.email}</p>
                                 )}
                               </div>
                             </div>
                             {student.gender && (
                               <Badge
                                 variant="secondary"
-                                className={`text-xs ${
+                                className={`text-xs shrink-0 ${
                                   student.gender === 'F'
                                     ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
                                     : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
@@ -807,23 +807,23 @@ export default function ClassesModule() {
                         {viewingClass.teachers.map((ct: ClassTeacher) => (
                           <div
                             key={ct.id}
-                            className="flex items-center justify-between rounded-md bg-muted/50 p-2.5"
+                            className="flex items-center justify-between rounded-md bg-muted/50 p-2.5 gap-2"
                           >
-                            <div className="flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <Avatar className="h-8 w-8 shrink-0">
                                 <AvatarImage src={getImageUrl(ct.teacher?.image, ct.teacher?.updatedAt)} alt={`${ct.teacher?.firstName} ${ct.teacher?.lastName}`} />
                                 <AvatarFallback className="bg-teal-100 text-teal-700 text-xs font-semibold">
                                   {ct.teacher?.firstName?.[0]}{ct.teacher?.lastName?.[0]}
                                 </AvatarFallback>
                               </Avatar>
-                              <div>
-                                <p className="text-sm font-medium">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">
                                   {ct.teacher?.firstName} {ct.teacher?.lastName}
                                 </p>
-                                <p className="text-xs text-muted-foreground">{ct.subject}</p>
+                                <p className="text-xs text-muted-foreground truncate">{ct.subject}</p>
                               </div>
                             </div>
-                            <Badge variant="outline" className="text-xs bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800">
+                            <Badge variant="outline" className="text-xs bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800 shrink-0 max-w-[100px] truncate">
                               {ct.subject}
                             </Badge>
                           </div>

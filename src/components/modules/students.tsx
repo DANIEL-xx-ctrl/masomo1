@@ -164,7 +164,11 @@ export default function StudentsModule() {
   const addToast = useAppStore((s) => s.addToast)
   const currentUser = useAppStore((s) => s.currentUser)
   const schoolYear = useAppStore((s) => s.schoolYear)
+  // Allow admin, super_admin, AND teacher to manage students.
+  // Teachers are restricted to their own classes server-side (via
+  // getTeacherClassIds), but the UI buttons must be visible for them too.
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin'
+  const isAdminOrTeacher = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.role === 'teacher'
 
   // Data state
   const [students, setStudents] = useState<Student[]>([])
@@ -761,7 +765,7 @@ export default function StudentsModule() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {isAdmin && (
+          {isAdminOrTeacher && (
             <Button onClick={openAddForm} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
               <Plus className="h-4 w-4" />
               Ajouter un élève
@@ -863,11 +867,11 @@ export default function StudentsModule() {
             <p className="mt-1 text-sm text-muted-foreground text-center">
               {search || classFilter !== 'all' || genderFilter !== 'all' || statusFilter !== 'all'
                 ? 'Aucun élève ne correspond à vos critères de recherche.'
-                : isAdmin
+                : isAdminOrTeacher
                   ? 'Commencez par ajouter votre premier élève.'
                   : 'Aucun élève inscrit pour le moment.'}
             </p>
-            {isAdmin && !search && classFilter === 'all' && genderFilter === 'all' && statusFilter === 'all' && (
+            {isAdminOrTeacher && !search && classFilter === 'all' && genderFilter === 'all' && statusFilter === 'all' && (
               <Button onClick={openAddForm} className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
                 <Plus className="h-4 w-4" />
                 Ajouter un élève
@@ -953,12 +957,12 @@ export default function StudentsModule() {
                               <Button variant="ghost" size="icon" onClick={() => openDetail(student)} title="Voir">
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              {isAdmin && (
+                              {isAdminOrTeacher && (
                                 <Button variant="ghost" size="icon" onClick={() => openEditForm(student)} title="Modifier">
                                   <Pencil className="h-4 w-4" />
                                 </Button>
                               )}
-                              {isAdmin && (
+                              {isAdminOrTeacher && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -969,7 +973,7 @@ export default function StudentsModule() {
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               )}
-                              {isAdmin && (
+                              {isAdminOrTeacher && (
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" size="icon" title="Changer le statut">
@@ -1065,13 +1069,13 @@ export default function StudentsModule() {
                           <Eye className="h-3 w-3" />
                           Voir
                         </Button>
-                        {isAdmin && (
+                        {isAdminOrTeacher && (
                           <Button variant="outline" size="sm" onClick={() => openEditForm(student)} className="gap-1">
                             <Pencil className="h-3 w-3" />
                             Modifier
                           </Button>
                         )}
-                        {isAdmin && (
+                        {isAdminOrTeacher && (
                           <Button
                             variant="outline"
                             size="sm"
