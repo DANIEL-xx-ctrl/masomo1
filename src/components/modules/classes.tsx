@@ -689,47 +689,47 @@ export default function ClassesModule() {
           {viewingClass && (
             <div className="space-y-4">
               {/* Class Header Info */}
-              <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                  <School className="h-7 w-7" />
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 shrink-0">
+                  <School className="h-6 w-6 sm:h-7 sm:w-7" />
                 </div>
-                <div>
-                  <h3 className="text-xl font-semibold">{viewingClass.name}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant="secondary" className={`text-xs ${getLevelColor(viewingClass.level)}`}>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg sm:text-xl font-semibold break-words">{viewingClass.name}</h3>
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1">
+                    <Badge variant="secondary" className={`text-xs shrink-0 ${getLevelColor(viewingClass.level)}`}>
                       {viewingClass.level}
                     </Badge>
                     {viewingClass.section && (
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="outline" className="text-xs shrink-0">
                         Section {viewingClass.section}
                       </Badge>
                     )}
                     {viewingClass.room && (
-                      <span className="text-xs text-muted-foreground">Salle {viewingClass.room}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">Salle {viewingClass.room}</span>
                     )}
                   </div>
                 </div>
               </div>
 
               {/* Stats Row */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-lg bg-muted p-3 text-center">
-                  <p className="text-2xl font-bold text-emerald-600">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                <div className="rounded-lg bg-muted p-2 sm:p-3 text-center">
+                  <p className="text-xl sm:text-2xl font-bold text-emerald-600">
                     {viewingClass.studentCount ?? viewingClass.students?.length ?? 0}
                   </p>
-                  <p className="text-xs text-muted-foreground">Élèves</p>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground">Élèves</p>
                 </div>
-                <div className="rounded-lg bg-muted p-3 text-center">
-                  <p className="text-2xl font-bold text-teal-600">
+                <div className="rounded-lg bg-muted p-2 sm:p-3 text-center">
+                  <p className="text-xl sm:text-2xl font-bold text-teal-600">
                     {viewingClass.teachers?.length ?? 0}
                   </p>
-                  <p className="text-xs text-muted-foreground">Enseignants</p>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground">Enseignants</p>
                 </div>
-                <div className="rounded-lg bg-muted p-3 text-center">
-                  <p className="text-2xl font-bold text-amber-600">
+                <div className="rounded-lg bg-muted p-2 sm:p-3 text-center">
+                  <p className="text-xl sm:text-2xl font-bold text-amber-600">
                     {viewingClass.capacity}
                   </p>
-                  <p className="text-xs text-muted-foreground">Capacité</p>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground">Capacité</p>
                 </div>
               </div>
 
@@ -737,10 +737,16 @@ export default function ClassesModule() {
 
               {/* Tabs */}
               <Tabs defaultValue="students" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="students">Élèves</TabsTrigger>
-                  <TabsTrigger value="teachers">Enseignants</TabsTrigger>
-                  <TabsTrigger value="schedule">Emploi du temps</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-3 h-auto gap-1">
+                  <TabsTrigger value="students" className="py-2 px-1 sm:px-2 min-w-0 text-xs sm:text-sm">
+                    <span className="truncate">Élèves</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="teachers" className="py-2 px-1 sm:px-2 min-w-0 text-xs sm:text-sm">
+                    <span className="truncate">Enseignants</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="schedule" className="py-2 px-1 sm:px-2 min-w-0 text-xs sm:text-sm">
+                    <span className="truncate">Emploi du temps</span>
+                  </TabsTrigger>
                 </TabsList>
 
                 {/* Students Tab */}
@@ -857,16 +863,16 @@ export default function ClassesModule() {
                                   .map((sch: Schedule) => (
                                     <div
                                       key={sch.id}
-                                      className="flex items-center justify-between rounded-md bg-muted/50 p-2 text-sm"
+                                      className="flex flex-col sm:flex-row sm:items-center justify-between rounded-md bg-muted/50 p-2 text-sm gap-1"
                                     >
-                                      <div className="flex items-center gap-2">
-                                        <BookOpen className="h-3 w-3 text-teal-600" />
-                                        <span className="font-medium">{sch.subject}</span>
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <BookOpen className="h-3 w-3 text-teal-600 shrink-0" />
+                                        <span className="font-medium truncate">{sch.subject}</span>
                                       </div>
-                                      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                                      <div className="flex flex-wrap items-center gap-1 sm:gap-2 text-muted-foreground text-xs shrink-0">
                                         <span>{sch.startTime} - {sch.endTime}</span>
                                         {sch.teacher && (
-                                          <span>
+                                          <span className="truncate max-w-[120px]">
                                             ({sch.teacher.firstName} {sch.teacher.lastName})
                                           </span>
                                         )}
