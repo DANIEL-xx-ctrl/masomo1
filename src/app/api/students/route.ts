@@ -1,11 +1,12 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { checkAdminOrSuperAdmin } from '@/lib/auth-guards'
+import { checkAdminOrSuperAdmin, checkAdminSuperAdminOrTeacher } from '@/lib/auth-guards'
 import {
   resolveInstitutionScope,
   requireInstitutionScope,
 } from '@/lib/institution-scope'
 import { generateUserCode } from '@/lib/user-code'
+import { getTeacherClassIds } from '@/lib/teacher-classes'
 
 // Smart gender mapping: user may type "Masculin"/"Féminin" or "M"/"F" or "masculin"/"féminin"
 function mapGenderSearch(search: string): string[] {
@@ -75,12 +76,30 @@ export async function GET(request: Request) {
     const scope = await resolveInstitutionScope(request)
     if (scope instanceof NextResponse) return scope
     const institutionId = scope.institutionId
+    const role = scope.role
+    const userId = scope.userId
 
     const where: Record<string, unknown> = {}
 
     // Filter by institution when a context is provided (see note above).
     if (institutionId) {
       where.user = { institutionId }
+    }
+
+    // ---- Teacher scoping ----
+    // A teacher only sees students in the classes they are assigned to
+    // (filtered by school year when provided). Admin and super_admin see
+    // all students in the institution.
+    if (role === 'teacher' && userId) {
+      const teacherClassIds = await getTeacherClassIds(userId, schoolYear)
+      if (teacherClassIds.length > 0) {
+        where.classId = { in: teacherClassIds }
+      } else {
+        return NextResponse.json({
+          students: [],
+          pagination: { page, limit, total: 0, totalPages: 0 },
+        })
+      }
     }
 
     if (classId) {
@@ -160,8 +179,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const forbidden = checkAdminOrSuperAdmin(request)
-    if (forbidden) return forbidden
+    // Allow admin, super_admin, AND teacher to create students.
+    // Teachers are restricted to their own classes (checked below).
+    const { forbidden: roleForbidden, role, userId: callerUserId } = checkAdminSuperAdminOrTeacher(request)
+    if (roleForbidden) return roleForbidden
 
     // STRICT institution isolation: the new student's institution is read from
     // the authenticated user's DB record (or the super admin's browsed
@@ -195,6 +216,25 @@ export async function POST(request: Request) {
         { error: 'Prénom et nom requis' },
         { status: 400 }
       )
+    }
+
+    // ---- Teacher class-ownership check ----
+    // A teacher can only create students in classes they are assigned to.
+    // Admin and super_admin can create students in any class.
+    if (role === 'teacher' && callerUserId) {
+      if (!classId) {
+        return NextResponse.json(
+          { error: 'Vous devez assigner une classe à l\'élève. Vous ne pouvez créer des élèves que dans vos propres classes.' },
+          { status: 403 }
+        )
+      }
+      const teacherClassIds = await getTeacherClassIds(callerUserId, body.schoolYear)
+      if (!teacherClassIds.includes(classId)) {
+        return NextResponse.json(
+          { error: 'Vous ne pouvez créer des élèves que dans les classes qui vous sont assignées.' },
+          { status: 403 }
+        )
+      }
     }
 
     // Auto-generate email if not provided
