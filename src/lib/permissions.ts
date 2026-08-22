@@ -31,6 +31,14 @@ export type Permission =
   | 'grades.create'
   | 'grades.edit'
   | 'grades.delete'
+  | 'attendance.view'
+  | 'attendance.create'
+  | 'attendance.edit'
+  | 'attendance.delete'
+  | 'homework.view'
+  | 'homework.create'
+  | 'homework.edit'
+  | 'homework.delete'
   | 'bulletins.view'
   | 'bulletins.create'
   | 'bulletins.edit'
@@ -62,14 +70,18 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'settings.view', 'settings.edit',
   ],
   teacher: [
-    // Teachers can view most things, manage grades and schedule
+    // Teachers can view most things, manage grades, attendance, homework,
+    // and students within their own classes (class-ownership is enforced
+    // server-side via getTeacherClassIds).
     'dashboard.view',
-    'students.view',
+    'students.view', 'students.create', 'students.edit', 'students.delete',
     'teachers.view',
     'staff.view',
     'classes.view',
     'schedule.view', 'schedule.create', 'schedule.edit',
-    'grades.view', 'grades.create', 'grades.edit',
+    'grades.view', 'grades.create', 'grades.edit', 'grades.delete',
+    'attendance.view', 'attendance.create', 'attendance.edit',
+    'homework.view', 'homework.create', 'homework.edit', 'homework.delete',
     'bulletins.view', 'bulletins.create',
     'payments.view',
     'communication.view', 'communication.create',
