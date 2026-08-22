@@ -310,7 +310,7 @@ export async function GET(request: Request) {
     for (const p of recentPayments) {
       recentActivities.push({
         type: 'payment',
-        description: `Paiement de ${p.amount} FCFA par ${p.student.firstName} ${p.student.lastName}`,
+        description: `Paiement de $${p.amount.toLocaleString('en-US')} par ${p.student.firstName} ${p.student.lastName}`,
         date: p.createdAt.toISOString(),
         details: { status: p.status, method: p.method },
       })
