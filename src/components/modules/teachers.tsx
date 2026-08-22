@@ -87,7 +87,7 @@ import { Calendar as CalendarPicker } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import ImageDropZone from '@/components/image-dropzone'
 import { getImageUrl } from '@/lib/utils'
-import { notifyAvatarChanged } from '@/hooks/use-avatar-refresh'
+import { notifyAvatarChanged, useAvatarChangedListener } from '@/hooks/use-avatar-refresh'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -245,6 +245,14 @@ export default function TeachersModule() {
   }, [search, hireDateFrom, hireDateTo, statusFilter])
 
   useEffect(() => {
+    fetchTeachers()
+  }, [fetchTeachers])
+
+  // Re-fetch the teachers list when an avatar changes anywhere in the app
+  // (e.g. a teacher updates their own avatar from the Settings page). This
+  // ensures the teachers list grid shows the fresh, cache-busted avatar
+  // immediately, not just the header/sidebar avatar.
+  useAvatarChangedListener(() => {
     fetchTeachers()
   }, [fetchTeachers])
 
@@ -724,10 +732,10 @@ export default function TeachersModule() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Rechercher sur toutes les colonnes (nom, prénom, matière, email, téléphone, qualification...)"
+                placeholder="Rechercher un enseignant..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
+                className="pl-9 w-full"
               />
             </div>
           </div>
@@ -741,8 +749,8 @@ export default function TeachersModule() {
                   Recrutement
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex flex-col gap-1 flex-1 min-w-[120px]">
                   <Label htmlFor="t-filter-from" className="text-[11px] text-muted-foreground">
                     Du
                   </Label>
@@ -751,11 +759,11 @@ export default function TeachersModule() {
                     type="date"
                     value={hireDateFrom}
                     onChange={(e) => setHireDateFrom(e.target.value)}
-                    className="w-[160px] h-9 text-sm"
+                    className="w-full sm:w-[160px] h-9 text-sm"
                   />
                 </div>
-                <span className="text-muted-foreground pb-2">—</span>
-                <div className="flex flex-col gap-1">
+                <span className="text-muted-foreground pb-2 hidden sm:inline">—</span>
+                <div className="flex flex-col gap-1 flex-1 min-w-[120px]">
                   <Label htmlFor="t-filter-to" className="text-[11px] text-muted-foreground">
                     Au
                   </Label>
@@ -764,7 +772,7 @@ export default function TeachersModule() {
                     type="date"
                     value={hireDateTo}
                     onChange={(e) => setHireDateTo(e.target.value)}
-                    className="w-[160px] h-9 text-sm"
+                    className="w-full sm:w-[160px] h-9 text-sm"
                   />
                 </div>
               </div>
@@ -796,7 +804,7 @@ export default function TeachersModule() {
               </span>
             </div>
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); }}>
-              <SelectTrigger className="w-[200px] h-9">
+              <SelectTrigger className="w-full sm:w-[200px] h-9">
                 <SelectValue placeholder="Filtrer par statut" />
               </SelectTrigger>
               <SelectContent>
@@ -970,7 +978,7 @@ export default function TeachersModule() {
           </div>
 
           {/* Mobile/Tablet Card Grid */}
-          <div className="lg:hidden grid gap-4 sm:grid-cols-2">
+          <div className="lg:hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
             <AnimatePresence>
               {teachers.map((teacher) => (
                 <motion.div
@@ -996,18 +1004,18 @@ export default function TeachersModule() {
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <Badge
                               variant="outline"
-                              className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800 text-xs"
+                              className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800 text-xs max-w-full truncate"
                             >
-                              {teacher.subject}
+                              <span className="truncate">{teacher.subject}</span>
                             </Badge>
                             <Badge
                               variant="outline"
-                              className={`text-xs ${PERSON_STATUS_BADGE_CLASSES[teacher.status] || PERSON_STATUS_BADGE_CLASSES.active}`}
+                              className={`text-xs shrink-0 ${PERSON_STATUS_BADGE_CLASSES[teacher.status] || PERSON_STATUS_BADGE_CLASSES.active}`}
                             >
                               {PERSON_STATUS_LABELS[teacher.status] || 'Actif'}
                             </Badge>
                             {teacher.status && teacher.status !== 'active' && teacher.statusDate && (
-                              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
                                 <CalendarClock className="h-3 w-3 text-rose-500" />
                                 {new Date(teacher.statusDate).toLocaleDateString('fr-FR')}
                               </span>
