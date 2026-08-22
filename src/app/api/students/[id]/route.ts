@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { checkAdminOrSuperAdmin } from '@/lib/auth-guards'
+import { checkAdminOrSuperAdmin, checkAdminSuperAdminOrTeacher } from '@/lib/auth-guards'
+import { getTeacherClassIds } from '@/lib/teacher-classes'
 
 /**
  * Resolve the `statusDate` to persist for a student based on the requested
@@ -75,8 +76,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const forbidden = checkAdminOrSuperAdmin(request)
-    if (forbidden) return forbidden
+    // Allow admin, super_admin, AND teacher to update students.
+    // Teachers are restricted to their own classes (checked below).
+    const { forbidden: roleForbidden, role, userId: callerUserId } = checkAdminSuperAdminOrTeacher(request)
+    if (roleForbidden) return roleForbidden
 
     const { id } = await params
     const body = await request.json()
@@ -103,6 +106,29 @@ export async function PUT(
         { error: 'Étudiant non trouvé' },
         { status: 404 }
       )
+    }
+
+    // ---- Teacher class-ownership check ----
+    // A teacher can only modify students currently in their classes.
+    // If moving the student to a new class, the teacher must own BOTH the
+    // old class (current) AND the new class (target). Admin/super_admin
+    // bypass this check.
+    if (role === 'teacher' && callerUserId) {
+      const teacherClassIds = await getTeacherClassIds(callerUserId, body.schoolYear)
+      // Check current class
+      if (existing.classId && !teacherClassIds.includes(existing.classId)) {
+        return NextResponse.json(
+          { error: 'Cet élève n\'appartient pas à une de vos classes. Vous ne pouvez pas le modifier.' },
+          { status: 403 }
+        )
+      }
+      // Check target class (if changing)
+      if (classId && classId !== '' && classId !== 'none' && !teacherClassIds.includes(classId)) {
+        return NextResponse.json(
+          { error: 'Vous ne pouvez déplacer cet élève que vers une de vos classes.' },
+          { status: 403 }
+        )
+      }
     }
 
     // Resolve the status date according to the same business rules as the
@@ -156,8 +182,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const forbidden = checkAdminOrSuperAdmin(request)
-    if (forbidden) return forbidden
+    const { forbidden: roleForbidden, role, userId: callerUserId } = checkAdminSuperAdminOrTeacher(request)
+    if (roleForbidden) return roleForbidden
 
     const { id } = await params
     const body = await request.json()
@@ -177,6 +203,17 @@ export async function PATCH(
         { error: 'Étudiant non trouvé' },
         { status: 404 }
       )
+    }
+
+    // Teacher class-ownership check
+    if (role === 'teacher' && callerUserId) {
+      const teacherClassIds = await getTeacherClassIds(callerUserId, body.schoolYear)
+      if (existing.classId && !teacherClassIds.includes(existing.classId)) {
+        return NextResponse.json(
+          { error: 'Cet élève n\'appartient pas à une de vos classes.' },
+          { status: 403 }
+        )
+      }
     }
 
     // Resolve the status date: clear on active, preserve existing on non-active
@@ -207,8 +244,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const forbidden = checkAdminOrSuperAdmin(request)
-    if (forbidden) return forbidden
+    const { forbidden: roleForbidden, role, userId: callerUserId } = checkAdminSuperAdminOrTeacher(request)
+    if (roleForbidden) return roleForbidden
 
     const { id } = await params
     const existing = await db.student.findUnique({ where: { id } })
@@ -217,6 +254,17 @@ export async function DELETE(
         { error: 'Étudiant non trouvé' },
         { status: 404 }
       )
+    }
+
+    // Teacher class-ownership check
+    if (role === 'teacher' && callerUserId) {
+      const teacherClassIds = await getTeacherClassIds(callerUserId)
+      if (existing.classId && !teacherClassIds.includes(existing.classId)) {
+        return NextResponse.json(
+          { error: 'Cet élève n\'appartient pas à une de vos classes. Vous ne pouvez pas le supprimer.' },
+          { status: 403 }
+        )
+      }
     }
 
     // Delete related records first
