@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { getInstitutionIdWithFallback } from '@/lib/api-auth'
 
 export async function GET(request: Request) {
   try {
@@ -13,6 +14,7 @@ export async function GET(request: Request) {
       )
     }
 
+    const institutionId = await getInstitutionIdWithFallback(request)
     const { searchParams } = new URL(request.url)
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)))
@@ -24,6 +26,13 @@ export async function GET(request: Request) {
     // Non-super_admin users see only their own notifications
     if (userRole !== 'super_admin' && userId) {
       where.userId = userId
+    }
+
+    // Scope by institution so a user never sees notifications from another
+    // institution (defence in depth — the userId filter already handles
+    // isolation, but this adds a second layer in case of data corruption).
+    if (institutionId && institutionId !== 'inst_default') {
+      where.institutionId = institutionId
     }
 
     if (unreadOnly) {
@@ -46,6 +55,7 @@ export async function GET(request: Request) {
     const unreadCount = await db.notification.count({
       where: {
         ...(userId && { userId }),
+        ...(institutionId && institutionId !== 'inst_default' && { institutionId }),
         read: false,
       },
     })
