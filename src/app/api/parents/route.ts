@@ -5,6 +5,7 @@ import {
   requireInstitutionScope,
 } from '@/lib/institution-scope'
 import { generateUserCode } from '@/lib/user-code'
+import { backfillNotificationsForNewUser } from '@/lib/notifications'
 
 export async function GET(request: Request) {
   try {
@@ -186,6 +187,14 @@ export async function POST(request: Request) {
           parentPhone: phone || null,
         },
       })
+    }
+
+    // Backfill all existing institution + schoolYear notifications to the
+    // new parent so they immediately see previously published announcements,
+    // homework, events, etc.
+    if (institutionId) {
+      const effectiveSchoolYear = body.schoolYear || '2024-2025'
+      await backfillNotificationsForNewUser(user.id, institutionId, effectiveSchoolYear)
     }
 
     return NextResponse.json({ parent }, { status: 201 })
