@@ -275,7 +275,8 @@ export default function NotificationDropdown() {
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-[calc(100vw-2rem)] max-w-[380px] p-0 shadow-xl border-2 max-h-[80vh] overflow-hidden flex flex-col"
+        sideOffset={4}
+        className="w-[min(calc(100vw-1rem),380px)] p-0 shadow-xl border-2 max-h-[80vh] overflow-hidden flex flex-col"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30 shrink-0">
@@ -366,11 +367,11 @@ export default function NotificationDropdown() {
                     )}
 
                     {/* Content */}
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 overflow-hidden">
                       <p className={`text-sm leading-tight truncate ${!notification.read ? 'font-semibold' : 'font-medium text-muted-foreground'}`}>
                         {notification.title}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed break-words">
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                         {notification.message}
                       </p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
