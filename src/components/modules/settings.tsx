@@ -1216,13 +1216,14 @@ function ProfileSection({ currentUser, initials, updateStoreUser }: ProfileSecti
             <div className="space-y-1.5">
               <Label htmlFor="profile-role" className="text-xs">Rôle</Label>
               <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
-                <SelectTrigger id="profile-role">
+                <SelectTrigger id="profile-role" className="w-full">
                   <SelectValue placeholder="Sélectionner un rôle" />
                 </SelectTrigger>
                 <SelectContent>
                   {ROLES.map((r) => (
                     <SelectItem key={r.value} value={r.value}>
-                      {r.label} — <span className="text-xs text-muted-foreground">{r.description}</span>
+                      <span className="truncate">{r.label}</span>
+                      <span className="text-xs text-muted-foreground hidden sm:inline">— {r.description}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
