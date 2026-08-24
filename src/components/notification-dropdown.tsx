@@ -19,7 +19,6 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import {
   Popover,
@@ -276,14 +275,14 @@ export default function NotificationDropdown() {
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-[calc(100vw-2rem)] max-w-[380px] p-0 shadow-xl border-2"
+        className="w-[calc(100vw-2rem)] max-w-[380px] p-0 shadow-xl border-2 max-h-[80vh] overflow-hidden flex flex-col"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-sm">Notifications</h3>
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="font-semibold text-sm truncate">Notifications</h3>
             {unreadCount > 0 && (
-              <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+              <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0">
                 {unreadCount} non lue{unreadCount > 1 ? 's' : ''}
               </Badge>
             )}
@@ -292,17 +291,18 @@ export default function NotificationDropdown() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs text-primary hover:text-primary/80"
+              className="h-7 text-xs text-primary hover:text-primary/80 shrink-0"
               onClick={markAllAsRead}
             >
               <Check className="w-3.5 h-3.5 mr-1" />
-              Tout marquer lu
+              <span className="hidden sm:inline">Tout marquer lu</span>
+              <span className="sm:hidden">Lu</span>
             </Button>
           )}
         </div>
 
-        {/* Notifications List */}
-        <ScrollArea className="max-h-[400px]">
+        {/* Notifications List — native scroll, constrained to viewport height */}
+        <div className="flex-1 overflow-y-auto max-h-[60vh] overscroll-contain">
           {loading && notifications.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -327,7 +327,7 @@ export default function NotificationDropdown() {
                   <div
                     key={notification.id}
                     className={`
-                      group relative flex items-start gap-3 px-4 py-3 cursor-pointer
+                      group relative flex items-start gap-2 sm:gap-3 px-3 sm:px-4 py-3 cursor-pointer
                       transition-colors duration-150
                       ${!notification.read ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/50'}
                     `}
@@ -335,7 +335,7 @@ export default function NotificationDropdown() {
                   >
                     {/* Unread indicator */}
                     {!notification.read && (
-                      <div className="absolute left-1.5 top-4 w-2 h-2 rounded-full bg-primary" />
+                      <div className="absolute left-1.5 top-4 w-2 h-2 rounded-full bg-primary shrink-0" />
                     )}
 
                     {/* Icon / Avatar */}
@@ -367,26 +367,26 @@ export default function NotificationDropdown() {
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm leading-tight ${!notification.read ? 'font-semibold' : 'font-medium text-muted-foreground'}`}>
+                      <p className={`text-sm leading-tight truncate ${!notification.read ? 'font-semibold' : 'font-medium text-muted-foreground'}`}>
                         {notification.title}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed break-words">
                         {notification.message}
                       </p>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         {notification.authorName && (
-                          <span className="text-[10px] font-medium text-muted-foreground/80">
+                          <span className="text-[10px] font-medium text-muted-foreground/80 truncate max-w-[100px]">
                             {notification.authorName}
                           </span>
                         )}
-                        <span className="text-[10px] text-muted-foreground/70">
+                        <span className="text-[10px] text-muted-foreground/70 shrink-0">
                           {formatTimeAgo(notification.createdAt)}
                         </span>
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Actions — hidden on mobile (no hover on touch), shown on desktop hover */}
+                    <div className="hidden sm:flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                       {!notification.read && (
                         <Button
                           variant="ghost"
@@ -416,11 +416,11 @@ export default function NotificationDropdown() {
               })}
             </div>
           )}
-        </ScrollArea>
+        </div>
 
         {/* Footer */}
         {notifications.length > 0 && (
-          <div className="border-t px-4 py-2 bg-muted/30">
+          <div className="border-t px-4 py-2 bg-muted/30 shrink-0">
             <p className="text-[10px] text-muted-foreground text-center">
               Cliquez sur une notification pour naviguer vers le module concerné
             </p>
