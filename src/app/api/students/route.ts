@@ -7,6 +7,7 @@ import {
 } from '@/lib/institution-scope'
 import { generateUserCode } from '@/lib/user-code'
 import { getTeacherClassIds } from '@/lib/teacher-classes'
+import { backfillNotificationsForNewUser } from '@/lib/notifications'
 
 // Smart gender mapping: user may type "Masculin"/"Féminin" or "M"/"F" or "masculin"/"féminin"
 function mapGenderSearch(search: string): string[] {
@@ -290,6 +291,14 @@ export async function POST(request: Request) {
         class: true,
       },
     })
+
+    // Backfill all existing institution + schoolYear notifications to the
+    // new student so they immediately see previously published announcements,
+    // homework, events, etc.
+    if (institutionId) {
+      const effectiveSchoolYear = body.schoolYear || '2024-2025'
+      await backfillNotificationsForNewUser(user.id, institutionId, effectiveSchoolYear)
+    }
 
     return NextResponse.json({ student }, { status: 201 })
   } catch (error) {
