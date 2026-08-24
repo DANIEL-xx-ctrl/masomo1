@@ -113,3 +113,95 @@ export async function notifyUsers(
     console.error('Error sending bulk notifications:', error)
   }
 }
+
+/**
+ * Backfill all existing institution + schoolYear notifications to a newly
+ * created user.
+ *
+ * When a new user (teacher, student, parent, staff, or admin) is created,
+ * they should immediately see ALL notifications that were already published
+ * in their institution for the current school year — not just the ones
+ * created after their account.
+ *
+ * This function:
+ *   1. Finds all existing notifications where institutionId + schoolYear
+ *      match (regardless of which userId they were originally targeted to).
+ *   2. Filters out the ones already assigned to the new user.
+ *   3. Creates copies with the new user's userId, preserving all fields
+ *      (title, message, type, category, link, icon, institutionId,
+ *      schoolYear) and marking them as unread.
+ *
+ * This gives each user their own independent read/unread state while
+ * ensuring no one misses previously published announcements/homework/etc.
+ *
+ * @param userId        The newly created user's id
+ * @param institutionId The institution the user belongs to
+ * @param schoolYear    The school year to scope (defaults to '2024-2025')
+ */
+export async function backfillNotificationsForNewUser(
+  userId: string,
+  institutionId: string,
+  schoolYear: string = '2024-2025'
+) {
+  try {
+    if (!userId || !institutionId) {
+      console.error('backfillNotificationsForNewUser: userId and institutionId are required')
+      return
+    }
+
+    // Find all existing notifications in this institution + school year.
+    // We don't filter by userId here because we want to copy notifications
+    // that were targeted to OTHER users (admins, other teachers, etc.)
+    // so the new user can see them too.
+    const existingNotifications = await db.notification.findMany({
+      where: {
+        institutionId,
+        schoolYear,
+        // Exclude notifications already assigned to this user (idempotency)
+        NOT: { userId },
+      },
+      select: {
+        title: true,
+        message: true,
+        type: true,
+        category: true,
+        link: true,
+        linkParams: true,
+        icon: true,
+      },
+    })
+
+    if (existingNotifications.length === 0) return
+
+    // Deduplicate by title+message+type — multiple existing users may have
+    // received the same notification (e.g. all admins got the same
+    // announcement). We only want to create ONE copy per unique notification
+    // for the new user.
+    const seen = new Set<string>()
+    const toCreate = existingNotifications.filter((n) => {
+      const key = `${n.title}|${n.message}|${n.type}|${n.category}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+    if (toCreate.length === 0) return
+
+    await db.notification.createMany({
+      data: toCreate.map((n) => ({
+        userId,
+        title: n.title,
+        message: n.message,
+        type: n.type,
+        category: n.category,
+        link: n.link || null,
+        linkParams: n.linkParams || null,
+        icon: n.icon || null,
+        institutionId,
+        schoolYear,
+      })),
+    })
+  } catch (error) {
+    console.error('Error backfilling notifications for new user:', error)
+  }
+}
