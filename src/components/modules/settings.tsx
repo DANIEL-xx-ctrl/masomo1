@@ -1221,13 +1221,19 @@ function ProfileSection({ currentUser, initials, updateStoreUser }: ProfileSecti
                 </SelectTrigger>
                 <SelectContent>
                   {ROLES.map((r) => (
-                    <SelectItem key={r.value} value={r.value} textValue={r.label}>
-                      <span className="truncate">{r.label}</span>
-                      <span className="text-xs text-muted-foreground hidden sm:inline">— {r.description}</span>
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {/* Description is shown separately below the select on larger screens
+                  so it doesn't overflow the dropdown on mobile (Android/iOS). */}
+              {isSuperAdmin ? null : (
+                <p className="text-[11px] text-muted-foreground hidden sm:block">
+                  {ROLES.find((r) => r.value === role)?.description || ''}
+                </p>
+              )}
             </div>
           </div>
 
