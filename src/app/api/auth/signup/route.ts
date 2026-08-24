@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
+import { backfillNotificationsForNewUser } from '@/lib/notifications'
 
 // ============================================================================
 // POST /api/auth/signup
@@ -159,6 +160,15 @@ export async function POST(request: Request) {
         },
       },
     })
+
+    // Backfill all existing institution + schoolYear notifications to the
+    // new admin so they immediately see previously published announcements,
+    // homework, events, etc. (non-blocking, errors are caught internally).
+    await backfillNotificationsForNewUser(
+      user.id,
+      institution.id,
+      institution.currentYear || '2024-2025'
+    )
 
     // ---- Build the public user object (no password) ----
     // Shape matches /api/auth/login so the client can log in directly.
