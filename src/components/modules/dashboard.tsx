@@ -1054,7 +1054,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="flex-1 p-0">
               <ScrollArea className="h-[260px]">
-                <div className="px-6 pb-4 space-y-1">
+                <div className="px-3 sm:px-6 pb-4 space-y-1">
                   {recentActivities.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">
                       Aucune activité récente
@@ -1096,13 +1096,13 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="flex-1 p-0">
               {recentEnrollments.length === 0 ? (
-                <div className="px-6 pb-4 py-8 text-center text-muted-foreground">
+                <div className="px-3 sm:px-6 pb-4 py-8 text-center text-muted-foreground">
                   <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-40" />
                   <p className="text-sm">Aucune inscription récente</p>
                 </div>
               ) : (
                 <ScrollArea className="max-h-96">
-                  <div className="px-6 pb-4">
+                  <div className="px-3 sm:px-6 pb-4">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b text-muted-foreground">
@@ -1163,13 +1163,13 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="flex-1 p-0">
               {upcomingEvents.length === 0 ? (
-                <div className="px-6 pb-4 py-8 text-center text-muted-foreground">
+                <div className="px-3 sm:px-6 pb-4 py-8 text-center text-muted-foreground">
                   <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
                   <p className="text-sm">Aucun événement à venir</p>
                 </div>
               ) : (
                 <ScrollArea className="max-h-96">
-                  <div className="px-6 pb-4 space-y-1">
+                  <div className="px-3 sm:px-6 pb-4 space-y-1">
                     {upcomingEvents.map((event) => {
                       const typeBadge = getEventTypeBadge(event.type)
                       const typeIcon = getEventTypeIcon(event.type)

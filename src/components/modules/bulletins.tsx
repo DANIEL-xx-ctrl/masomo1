@@ -767,8 +767,8 @@ export default function BulletinsModule() {
                     <TableRow>
                       <TableHead>Matière</TableHead>
                       <TableHead className="text-center">Coef.</TableHead>
-                      <TableHead className="text-center">Note</TableHead>
-                      <TableHead className="text-center">/20</TableHead>
+                      <TableHead className="text-center">Notes</TableHead>
+                      <TableHead className="text-center">Moy./20</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Commentaire</TableHead>
                     </TableRow>
@@ -776,6 +776,8 @@ export default function BulletinsModule() {
                   <TableBody>
                     {Object.entries(gradesBySubject).map(([subjectId, grades]) => {
                       const subject = grades[0]?.subject;
+                      // Per-subject average: normalized to /20 for ranking
+                      // and comparison across subjects with different maxValues.
                       const avgSubject = grades.length > 0
                         ? grades.reduce((s, g) => s + (g.value / g.maxValue) * 20, 0) / grades.length
                         : 0;
@@ -784,11 +786,29 @@ export default function BulletinsModule() {
                           <TableCell className="font-medium">{subject?.name || '—'}</TableCell>
                           <TableCell className="text-center">{subject?.coefficient || 1}</TableCell>
                           <TableCell className="text-center">
+                            {/* Show each grade with its ACTUAL maxValue (not forced to /20).
+                                E.g. "15/20", "8/10", "32/40" */}
+                            <div className="flex flex-wrap items-center justify-center gap-1">
+                              {grades.map((g, idx) => (
+                                <span
+                                  key={idx}
+                                  className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-medium ${
+                                    (g.value / g.maxValue) >= 0.5
+                                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
+                                      : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
+                                  }`}
+                                >
+                                  {g.value}/{g.maxValue}
+                                </span>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
                             <span className={`font-bold ${avgSubject >= 10 ? 'text-emerald-600' : 'text-red-600'}`}>
                               {avgSubject.toFixed(1)}
                             </span>
+                            <span className="text-xs text-muted-foreground block">/20</span>
                           </TableCell>
-                          <TableCell className="text-center text-muted-foreground">/20</TableCell>
                           <TableCell>
                             {grades.map((g) => GRADE_TYPE_LABELS[g.type]).join(', ')}
                           </TableCell>
