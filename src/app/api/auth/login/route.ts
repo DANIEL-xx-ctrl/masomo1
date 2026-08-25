@@ -1,6 +1,32 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
+/**
+ * Detect whether the database is PostgreSQL (production on Neon/Vercel)
+ * or SQLite (local sandbox). This matters because:
+ *  - PostgreSQL `contains` is CASE-SENSITIVE → needs `mode: 'insensitive'`
+ *  - SQLite `contains` is already case-insensitive → `mode: 'insensitive'`
+ *    throws a Prisma validation error and must NOT be passed.
+ */
+function isPostgreSQL(): boolean {
+  const url = process.env.DATABASE_URL || ''
+  return url.startsWith('postgresql://') || url.startsWith('postgres://')
+}
+
+/** Build the Prisma filter object for a case-insensitive `contains`. */
+function ciContains(value: string): Record<string, unknown> {
+  return isPostgreSQL()
+    ? { contains: value, mode: 'insensitive' as const }
+    : { contains: value } // SQLite is already case-insensitive for ASCII
+}
+
+/** Build the Prisma filter object for a case-insensitive `equals`. */
+function ciEquals(value: string): Record<string, unknown> {
+  return isPostgreSQL()
+    ? { equals: value, mode: 'insensitive' as const }
+    : { equals: value }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -86,13 +112,13 @@ export async function POST(request: Request) {
       },
     })
 
-    // Fallback: try email case-insensitively (SQLite findUnique is
-    // case-sensitive, so "Jean@edugest.local" != "jean@edugest.local").
-    // We use `contains` to fetch candidates then exact-match in JS.
+    // Fallback: try email case-insensitively. On PostgreSQL, `findUnique` is
+    // case-sensitive, so "Jean@edugest.local" != "jean@edugest.local".
+    // We use `ciContains` to fetch candidates then exact-match in JS.
     if (!user && email.includes('@')) {
       const emailNormalized = String(email).trim().toLowerCase()
       const emailCandidates = await db.user.findMany({
-        where: { email: { contains: emailNormalized } },
+        where: { email: ciContains(emailNormalized) },
         include: {
           student: true,
           teacher: true,
@@ -137,13 +163,14 @@ export async function POST(request: Request) {
     }
 
     // Fallback: try username (case-insensitive via JS compare).
-    // SQLite's `contains` is case-insensitive for ASCII, so we fetch
-    // candidates with `contains` then do an exact case-insensitive JS compare.
+    // On PostgreSQL, `contains` is case-sensitive, so we use `ciContains`
+    // (which adds `mode: 'insensitive'`). On SQLite, `contains` is already
+    // case-insensitive. Either way, we fetch candidates then exact-match in JS.
     if (!user) {
       const normalized = String(email).trim().toLowerCase()
       if (normalized) {
         const usernameCandidates = await db.user.findMany({
-          where: { username: { contains: normalized } },
+          where: { username: ciContains(normalized) },
           include: {
             student: true,
             teacher: true,
@@ -164,15 +191,14 @@ export async function POST(request: Request) {
     // Fallback: try userCode (case-insensitive). This is the main entry
     // point for students/teachers/staff who log in with their short ID
     // (e.g. "ELV-001", "TCH-001") instead of their email.
-    // We use `contains` to fetch candidates (SQLite `contains` is
-    // case-insensitive for ASCII), then do an exact JS case-insensitive
-    // compare to avoid partial matches (e.g. "TCH-001" should NOT match
-    // "TCH-0010").
+    // We use `ciContains` to fetch candidates (case-insensitive on both
+    // PostgreSQL and SQLite), then do an exact JS case-insensitive compare
+    // to avoid partial matches (e.g. "TCH-001" should NOT match "TCH-0010").
     if (!user) {
       const normalized = String(email).trim().toLowerCase()
       if (normalized) {
         const codeCandidates = await db.user.findMany({
-          where: { userCode: { contains: normalized } },
+          where: { userCode: ciContains(normalized) },
           include: {
             student: true,
             teacher: true,
@@ -209,10 +235,10 @@ export async function POST(request: Request) {
         const tokens = raw.split(' ')
 
         // 1. Full-name exact match (case-insensitive via JS compare).
-        // SQLite `contains` is case-insensitive for ASCII, so we fetch
+        // We use `ciContains` (case-insensitive on PostgreSQL) to fetch
         // candidates containing the first token, then exact-match in JS.
         const candidates = await db.user.findMany({
-          where: { name: { contains: tokens[0] } },
+          where: { name: ciContains(tokens[0]) },
           include,
         })
         user = candidates.find((u) => u.name.toLowerCase() === raw) || null
