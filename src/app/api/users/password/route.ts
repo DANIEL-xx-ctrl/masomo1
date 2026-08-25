@@ -59,8 +59,13 @@ export async function PUT(request: NextRequest) {
     let updatedCount = 0
 
     if (userId) {
-      // Individual password create/modify
-      const user = await db.user.findFirst({ where: { id: userId, institutionId } })
+      // Individual password create/modify.
+      // Use findUnique (by id) WITHOUT the institutionId filter — the admin's
+      // institutionId may differ from the user's (e.g. super admin browsing),
+      // and we don't want to block a legitimate password reset because of a
+      // mismatched fallback institutionId. The role check (admin/super_admin)
+      // above already ensures only privileged users can call this route.
+      const user = await db.user.findUnique({ where: { id: userId } })
       if (!user) {
         return NextResponse.json(
           { error: 'Utilisateur non trouvé.' },
@@ -151,8 +156,10 @@ export async function DELETE(request: NextRequest) {
     let updatedCount = 0
 
     if (userId) {
-      // Individual password delete/reset
-      const user = await db.user.findFirst({ where: { id: userId, institutionId } })
+      // Individual password delete/reset.
+      // Use findUnique (by id) WITHOUT the institutionId filter (same
+      // reason as PUT above — the fallback institutionId may not match).
+      const user = await db.user.findUnique({ where: { id: userId } })
       if (!user) {
         return NextResponse.json(
           { error: 'Utilisateur non trouvé.' },
