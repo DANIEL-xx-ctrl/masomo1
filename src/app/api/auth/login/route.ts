@@ -255,13 +255,28 @@ export async function POST(request: Request) {
     }
 
     if (!user) {
+      console.error('[LOGIN] User not found. Input:', email, '— tried: email, emailCI, id, username, userCode, fullName')
       return NextResponse.json(
         { error: 'Utilisateur non trouvé' },
         { status: 404 }
       )
     }
 
+    // DEBUG: log what we found to help diagnose login failures
+    console.log('[LOGIN] User found:', {
+      id: user.id,
+      email: user.email,
+      userCode: user.userCode,
+      role: user.role,
+      active: user.active,
+      hasPassword: !!user.password,
+      passwordLength: user.password?.length || 0,
+      inputPasswordLength: password?.length || 0,
+      passwordMatch: user.password === password,
+    })
+
     if (user.password !== password) {
+      console.error('[LOGIN] Password mismatch for user:', user.email, '— stored password length:', user.password?.length, 'input password length:', password?.length)
       return NextResponse.json(
         { error: 'Mot de passe incorrect' },
         { status: 401 }
