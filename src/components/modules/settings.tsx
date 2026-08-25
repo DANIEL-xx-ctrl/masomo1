@@ -2593,6 +2593,10 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
   const [generatingCodes, setGeneratingCodes] = useState(false)
   // Per-user password reveal (overrides the global toggle for finer control).
   const [revealedUserIds, setRevealedUserIds] = useState<Set<string>>(new Set())
+  // ---- Edit userCode (ID) state ----
+  const [editingCodeUser, setEditingCodeUser] = useState<UserWithPassword | null>(null)
+  const [newUserCode, setNewUserCode] = useState('')
+  const [savingCode, setSavingCode] = useState(false)
 
   const loadUsers = useCallback(async () => {
     setLoading(true)
@@ -2743,6 +2747,39 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
       toast.error('Erreur', { description: msg })
     } finally {
       setGeneratingCodes(false)
+    }
+  }
+
+  // ---- Save modified userCode (login ID) ----
+  const handleSaveUserCode = async () => {
+    if (!editingCodeUser) return
+    const trimmed = newUserCode.trim()
+    if (trimmed.length < 2) {
+      toast.error('Identifiant trop court', { description: 'Minimum 2 caractères.' })
+      return
+    }
+    setSavingCode(true)
+    try {
+      const res = await fetch('/api/users/usercode', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: editingCodeUser.id,
+          newUserCode: trimmed,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Échec de la modification.')
+
+      toast.success('Identifiant modifié', { description: data.message })
+      setEditingCodeUser(null)
+      setNewUserCode('')
+      await loadUsers()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue'
+      toast.error('Erreur', { description: msg })
+    } finally {
+      setSavingCode(false)
     }
   }
 
@@ -3040,6 +3077,19 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
                           size="sm"
                           variant="outline"
                           onClick={() => {
+                            setEditingCodeUser(u)
+                            setNewUserCode(u.userCode || '')
+                          }}
+                          className="h-8"
+                          title="Modifier l'identifiant (ID) de connexion"
+                        >
+                          <Hash className="w-3 h-3 mr-1" />
+                          <span className="text-xs hidden sm:inline">ID</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
                             setEditingUser(u)
                             setNewPassword('')
                             setShowPassword(false)
@@ -3091,7 +3141,7 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
             <ul className="text-xs text-muted-foreground space-y-1">
               <li className="flex items-start gap-2">
                 <Hash className="w-3 h-3 mt-0.5 shrink-0 text-emerald-600" />
-                <span><strong>ID (ELV-001, TCH-001, STF-001…)</strong> : identifiant de connexion court. Les élèves et le personnel peuvent se connecter avec cet ID <em>au lieu de</em> leur email. Cliquez sur l&apos;ID pour le copier.</span>
+                <span><strong>ID (ELV-001, TCH-001, STF-001…)</strong> : identifiant de connexion court. Les élèves et le personnel peuvent se connecter avec cet ID <em>au lieu de</em> leur email. Cliquez sur l&apos;ID pour le copier. Cliquez sur le bouton <strong>ID</strong> pour le modifier.</span>
               </li>
               <li className="flex items-start gap-2">
                 <Eye className="w-3 h-3 mt-0.5 shrink-0" />
@@ -3234,6 +3284,88 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ---- Edit user ID (userCode) dialog ---- */}
+      <Dialog open={!!editingCodeUser} onOpenChange={(open) => !open && setEditingCodeUser(null)}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Hash className="w-5 h-5 text-emerald-600" />
+              Modifier l&apos;identifiant
+            </DialogTitle>
+            <DialogDescription>
+              Modifiez l&apos;identifiant de connexion (ID) de « {editingCodeUser?.name} ».
+              Cet ID permet à l&apos;utilisateur de se connecter à la place de son email.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+              <Avatar className="h-10 w-10">
+                {editingCodeUser && getUserAvatar(editingCodeUser) && (
+                  <AvatarImage src={getUserAvatar(editingCodeUser)!} alt={editingCodeUser.name} />
+                )}
+                <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                  {editingCodeUser ? getUserInitials(editingCodeUser) : '?'}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{editingCodeUser?.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{editingCodeUser?.email}</p>
+                <Badge variant="outline" className="text-[9px] mt-0.5">
+                  {editingCodeUser ? getRoleLabel(editingCodeUser.role) : ''}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="user-new-code" className="text-xs">
+                Nouvel identifiant (ID) <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="user-new-code"
+                type="text"
+                value={newUserCode}
+                onChange={(e) => setNewUserCode(e.target.value)}
+                placeholder="Ex: TCH-001, ELV-042, STF-007…"
+                className="font-mono"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newUserCode.trim().length >= 2 && !savingCode) {
+                    handleSaveUserCode()
+                  }
+                }}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                L&apos;identifiant doit être unique dans votre établissement.
+                L&apos;utilisateur pourra se connecter avec cet ID au lieu de son email.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingCodeUser(null)} disabled={savingCode}>
+              Annuler
+            </Button>
+            <Button
+              onClick={handleSaveUserCode}
+              disabled={savingCode || newUserCode.trim().length < 2}
+            >
+              {savingCode ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Enregistrement…
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Enregistrer
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   )
 }
