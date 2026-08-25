@@ -68,11 +68,11 @@ export async function POST(request: Request) {
     // then by username, then by userCode, then by full name. The login form
     // sends whichever identifier the user typed in the `email` field.
     //
-    // PostgreSQL note: Prisma's `equals` and `contains` are CASE-SENSITIVE
-    // on Postgres by default, so we pass `mode: 'insensitive'` for all the
-    // fallback lookups below. (On SQLite these were originally handled via
-    // `contains` + a JS case-insensitive compare, which also works but is
-    // less efficient.)
+    // IMPORTANT: SQLite does NOT support Prisma's `mode: 'insensitive'`
+    // parameter — passing it throws a validation error that silently fails
+    // the lookup. We therefore use `contains` (which IS case-insensitive on
+    // SQLite by default for ASCII, but we also do a JS case-insensitive
+    // compare afterward for exactness) and NEVER pass `mode: 'insensitive'`.
     let user = await db.user.findUnique({
       where: { email },
       include: {
@@ -85,6 +85,29 @@ export async function POST(request: Request) {
         },
       },
     })
+
+    // Fallback: try email case-insensitively (SQLite findUnique is
+    // case-sensitive, so "Jean@edugest.local" != "jean@edugest.local").
+    // We use `contains` to fetch candidates then exact-match in JS.
+    if (!user && email.includes('@')) {
+      const emailNormalized = String(email).trim().toLowerCase()
+      const emailCandidates = await db.user.findMany({
+        where: { email: { contains: emailNormalized } },
+        include: {
+          student: true,
+          teacher: true,
+          parent: true,
+          staff: true,
+          institution: {
+            select: { id: true, name: true, active: true, currentYear: true },
+          },
+        },
+      })
+      user =
+        emailCandidates.find(
+          (u) => u.email.toLowerCase() === emailNormalized
+        ) || null
+    }
 
     // Fallback: try by primary key id (cuid, e.g. "cmr4nvhj3002hr1tzqd33rz99").
     // This lets users paste the database ID we list in admin exports and
@@ -113,13 +136,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // Fallback: try username (case-insensitive). PostgreSQL requires
-    // `mode: 'insensitive'`; SQLite ignores it (but still works via lower()).
+    // Fallback: try username (case-insensitive via JS compare).
+    // SQLite's `contains` is case-insensitive for ASCII, so we fetch
+    // candidates with `contains` then do an exact case-insensitive JS compare.
     if (!user) {
       const normalized = String(email).trim().toLowerCase()
       if (normalized) {
-        user = await db.user.findFirst({
-          where: { username: { equals: normalized, mode: 'insensitive' } },
+        const usernameCandidates = await db.user.findMany({
+          where: { username: { contains: normalized } },
           include: {
             student: true,
             teacher: true,
@@ -130,19 +154,25 @@ export async function POST(request: Request) {
             },
           },
         })
+        user =
+          usernameCandidates.find(
+            (u) => (u.username || '').toLowerCase() === normalized
+          ) || null
       }
     }
 
     // Fallback: try userCode (case-insensitive). This is the main entry
-    // point for students/staff who log in with their short ID (e.g. "ELV-001")
-    // instead of their email. We use `mode: 'insensitive'` so "elv-001" matches
-    // "ELV-001". We still do an exact JS compare afterward to avoid partial
-    // matches (e.g. "ELV-001" should NOT match "ELV-0010").
+    // point for students/teachers/staff who log in with their short ID
+    // (e.g. "ELV-001", "TCH-001") instead of their email.
+    // We use `contains` to fetch candidates (SQLite `contains` is
+    // case-insensitive for ASCII), then do an exact JS case-insensitive
+    // compare to avoid partial matches (e.g. "TCH-001" should NOT match
+    // "TCH-0010").
     if (!user) {
       const normalized = String(email).trim().toLowerCase()
       if (normalized) {
         const codeCandidates = await db.user.findMany({
-          where: { userCode: { contains: normalized, mode: 'insensitive' } },
+          where: { userCode: { contains: normalized } },
           include: {
             student: true,
             teacher: true,
@@ -163,10 +193,6 @@ export async function POST(request: Request) {
     // Fallback: try full name (the `name` field on User, e.g. "Jean Dupont").
     // The login form may receive "Jean Dupont" or just "Jean" or just "Dupont".
     // We normalize by trimming + collapsing whitespace + lowercasing.
-    //
-    // PostgreSQL note: `contains` with `mode: 'insensitive'` gives us a
-    // case-insensitive LIKE. We then do an exact case-insensitive JS compare
-    // to avoid false positives (e.g. "Jean" matching "Jean-Marc Dupont").
     if (!user) {
       const raw = String(email).trim().toLowerCase().replace(/\s+/g, ' ')
       if (raw && !raw.includes('@')) {
@@ -183,8 +209,10 @@ export async function POST(request: Request) {
         const tokens = raw.split(' ')
 
         // 1. Full-name exact match (case-insensitive via JS compare).
+        // SQLite `contains` is case-insensitive for ASCII, so we fetch
+        // candidates containing the first token, then exact-match in JS.
         const candidates = await db.user.findMany({
-          where: { name: { contains: tokens[0], mode: 'insensitive' } },
+          where: { name: { contains: tokens[0] } },
           include,
         })
         user = candidates.find((u) => u.name.toLowerCase() === raw) || null
