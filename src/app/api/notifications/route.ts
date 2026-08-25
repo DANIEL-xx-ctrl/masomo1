@@ -21,27 +21,40 @@ export async function GET(request: Request) {
     const unreadOnly = searchParams.get('unread') === 'true'
     const schoolYear = searchParams.get('schoolYear')
 
+    // ---- Show ALL institution + schoolYear notifications to every role ----
+    // Previously, non-super_admin users only saw notifications where
+    // `userId` matched their own id. This meant a teacher who just got
+    // created (via backfill) could see notifications, but an existing user
+    // who had a notification targeted to another user couldn't.
+    //
+    // New behaviour: every authenticated user sees ALL notifications in
+    // their institution for the current school year — regardless of which
+    // `userId` the notification was originally assigned to. This ensures
+    // announcements, homework, events, etc. are visible to everyone.
+    //
+    // We fetch by institutionId + schoolYear (not userId) and deduplicate
+    // by title+message+type+category so the same announcement sent to
+    // multiple admins doesn't appear multiple times.
     const where: Record<string, unknown> = {}
 
-    // Non-super_admin users see only their own notifications
-    if (userRole !== 'super_admin' && userId) {
-      where.userId = userId
-    }
-
-    // Scope by institution so a user never sees notifications from another
-    // institution (defence in depth — the userId filter already handles
-    // isolation, but this adds a second layer in case of data corruption).
+    // Scope by institution
     if (institutionId && institutionId !== 'inst_default') {
       where.institutionId = institutionId
     }
 
-    if (unreadOnly) {
-      where.read = false
-    }
-
     if (schoolYear) where.schoolYear = schoolYear
 
-    const [notifications, total] = await Promise.all([
+    if (unreadOnly) {
+      where.read = false
+      // When filtering unread, we DO use the user's own id so each user
+      // has their own read/unread state (a notification marked read by
+      // user A should still appear unread for user B).
+      if (userId && userRole !== 'super_admin') {
+        where.userId = userId
+      }
+    }
+
+    const [allNotifications, total] = await Promise.all([
       db.notification.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -51,10 +64,21 @@ export async function GET(request: Request) {
       db.notification.count({ where }),
     ])
 
-    // Get unread count
+    // Deduplicate by title+message+type+category — the same notification
+    // may have been created for multiple users (e.g. all admins). We want
+    // to show it only once in the bell dropdown.
+    const seen = new Set<string>()
+    const dedupedNotifications = allNotifications.filter((n) => {
+      const key = `${n.title}|${n.message}|${n.type}|${n.category}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+    // Get unread count for the CURRENT user (their own read state)
     const unreadCount = await db.notification.count({
       where: {
-        ...(userId && { userId }),
+        ...(userId && userRole !== 'super_admin' && { userId }),
         ...(institutionId && institutionId !== 'inst_default' && { institutionId }),
         read: false,
       },
@@ -63,18 +87,15 @@ export async function GET(request: Request) {
     // Cache-Control: allow Vercel's edge CDN to cache this response for a
     // few seconds. This dramatically reduces the number of serverless
     // function invocations when multiple browser tabs / components poll
-    // /api/notifications concurrently. `private` prevents shared proxies
-    // from caching per-user responses; `s-maxage=5` + `stale-while-revalidate=15`
-    // means the CDN serves a fresh response for 5s, then a stale one for
-    // up to 15s while it revalidates in the background.
+    // /api/notifications concurrently.
     const res = NextResponse.json({
-      notifications,
+      notifications: dedupedNotifications,
       unreadCount,
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        total: dedupedNotifications.length,
+        totalPages: Math.ceil(dedupedNotifications.length / limit),
       },
     })
     res.headers.set('Cache-Control', 'private, s-maxage=5, stale-while-revalidate=15')
