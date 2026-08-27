@@ -838,24 +838,23 @@ export default function StaffModule() {
               </div>
             </div>
 
-            {/* Fonction */}
+            {/* Fonction — input + datalist (combobox: l'utilisateur peut
+                taper une fonction libre OU choisir dans la liste suggérée) */}
             <div className="space-y-2">
               <Label htmlFor="fonction">Fonction *</Label>
-              <Select
+              <Input
+                id="fonction"
+                type="text"
+                list="fonction-options"
                 value={form.fonction}
-                onValueChange={(value) => setForm((f) => ({ ...f, fonction: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une fonction" />
-                </SelectTrigger>
-                <SelectContent>
-                  {FONCTION_OPTIONS.map((opt) => (
-                    <SelectItem key={opt} value={opt}>
-                      {opt}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={(e) => setForm((f) => ({ ...f, fonction: e.target.value }))}
+                placeholder="Tapez ou choisissez une fonction"
+              />
+              <datalist id="fonction-options">
+                {FONCTION_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
             </div>
 
             {/* Email */}

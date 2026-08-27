@@ -133,6 +133,31 @@ export default function GradesModule() {
   const [formType, setFormType] = useState<'devoir' | 'examen' | 'controle'>('devoir');
   const [formTrimester, setFormTrimester] = useState<'1er' | '2eme' | '3eme'>('1er');
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
+  // French date display (dd/mm/yyyy) — the native date input shows in the
+  // browser locale which may be mm/dd/yyyy on some systems. We use a text
+  // input with a French date pattern so the user always sees dd/mm/yyyy.
+  // The value is stored as ISO (yyyy-mm-dd) in `formDate`.
+  const [formDateDisplay, setFormDateDisplay] = useState(() => {
+    const d = new Date(formDate)
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  });
+
+  // Convert a French date string (dd/mm/yyyy) to ISO (yyyy-mm-dd).
+  // Returns null if the input doesn't match the expected format.
+  const frenchDateToISO = (fr: string): string | null => {
+    const m = fr.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (!m) return null
+    const [, dd, mm, yyyy] = m
+    const day = dd.padStart(2, '0')
+    const month = mm.padStart(2, '0')
+    return `${yyyy}-${month}-${day}`
+  }
+
+  const handleDateChange = (value: string) => {
+    setFormDateDisplay(value)
+    const iso = frenchDateToISO(value)
+    if (iso) setFormDate(iso)
+  }
   const [formComment, setFormComment] = useState('');
   const [formMaxValue, setFormMaxValue] = useState('20');
   const [studentSearch, setStudentSearch] = useState('');
@@ -416,6 +441,8 @@ export default function GradesModule() {
     setFormType(grade.type);
     setFormTrimester(grade.trimester);
     setFormDate(grade.date);
+    // Update the French date display when editing an existing grade
+    setFormDateDisplay(new Date(grade.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }));
     setFormComment(grade.comment || '');
     setEditDialogOpen(true);
   };
@@ -428,7 +455,9 @@ export default function GradesModule() {
     setFormMaxValue('20');
     setFormType('devoir');
     setFormTrimester('1er');
-    setFormDate(new Date().toISOString().split('T')[0]);
+    const todayISO = new Date().toISOString().split('T')[0];
+    setFormDate(todayISO);
+    setFormDateDisplay(new Date(todayISO).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }));
     setFormComment('');
     setStudentSearch('');
     setFormClassStudents([]);
@@ -995,7 +1024,12 @@ export default function GradesModule() {
             </div>
             <div className="grid gap-2">
               <Label>Date *</Label>
-              <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
+              <Input
+                type="text"
+                value={formDateDisplay}
+                onChange={(e) => handleDateChange(e.target.value)}
+                placeholder="jj/mm/aaaa (ex: 25/08/2025)"
+              />
             </div>
             <div className="grid gap-2">
               <Label>Commentaire</Label>
@@ -1061,7 +1095,12 @@ export default function GradesModule() {
               </div>
               <div className="grid gap-2">
                 <Label>Date</Label>
-                <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
+                <Input
+                  type="text"
+                  value={formDateDisplay}
+                  onChange={(e) => handleDateChange(e.target.value)}
+                  placeholder="jj/mm/aaaa (ex: 25/08/2025)"
+                />
               </div>
             </div>
             <div className="grid gap-2">

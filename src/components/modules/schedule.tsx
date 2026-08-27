@@ -489,33 +489,25 @@ export default function ScheduleModule() {
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
           <Label htmlFor="schedule-start">Heure début *</Label>
-          <Select value={formStartTime} onValueChange={setFormStartTime}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TIME_SLOTS.filter((t) => t <= '17:00').map((slot) => (
-                <SelectItem key={slot} value={slot}>
-                  {slot}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Free time input — the user can type any time (e.g. 08:30, 14:15),
+              not just select from a fixed dropdown. The native time input
+              provides a time picker on most browsers and also accepts manual
+              keyboard entry. */}
+          <Input
+            id="schedule-start"
+            type="time"
+            value={formStartTime}
+            onChange={(e) => setFormStartTime(e.target.value)}
+          />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="schedule-end">Heure fin *</Label>
-          <Select value={formEndTime} onValueChange={setFormEndTime}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TIME_SLOTS.filter((t) => t <= '17:30').map((slot) => (
-                <SelectItem key={slot} value={slot}>
-                  {slot}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Input
+            id="schedule-end"
+            type="time"
+            value={formEndTime}
+            onChange={(e) => setFormEndTime(e.target.value)}
+          />
         </div>
       </div>
       <div className="grid gap-2">
