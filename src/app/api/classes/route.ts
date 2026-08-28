@@ -99,23 +99,22 @@ export async function POST(request: Request) {
       )
     }
 
-    // ---- Per-institution uniqueness ----
-    // A class name only needs to be unique WITHIN an institution. Two
-    // different institutions are allowed to each have a class called "1A",
-    // "6ème A", etc. The check is therefore scoped by `institutionId` so
-    // that creating "1A" in institution B is NOT blocked by an existing
-    // "1A" that belongs to institution A.
+    // ---- Per-institution + per-schoolYear uniqueness ----
+    // A class name must be unique WITHIN an institution AND within a school
+    // year. This allows the same class name (e.g. "6ème A") to be created
+    // again each new school year with different students — the schoolYear
+    // distinguishes them. Two different institutions can also share a name.
+    const effectiveSchoolYear = schoolYear || '2024-2025'
     const existingClass = await db.class.findFirst({
-      where: { name, institutionId },
+      where: { name, institutionId, schoolYear: effectiveSchoolYear },
     })
 
     if (existingClass) {
       return NextResponse.json(
         {
           error:
-            'Une classe avec ce nom existe déjà dans votre établissement. ' +
-            'Les autres établissements peuvent avoir une classe du même nom, ' +
-            'mais le nom doit être unique au sein de votre établissement.',
+            `Une classe avec ce nom existe déjà pour l'année scolaire ${effectiveSchoolYear}. ` +
+            'Vous pouvez créer une classe du même nom pour une autre année scolaire.',
         },
         { status: 409 }
       )
@@ -127,7 +126,7 @@ export async function POST(request: Request) {
         level,
         section,
         capacity: capacity || 30,
-        schoolYear: schoolYear || '2024-2025',
+        schoolYear: effectiveSchoolYear,
         room,
         institutionId: institutionId!,
       },
