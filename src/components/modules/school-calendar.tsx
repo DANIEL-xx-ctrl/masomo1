@@ -979,10 +979,10 @@ export default function SchoolCalendar() {
 
                       return (
                         <div key={`sy-${mi}`}>
-                          <div className="flex items-center gap-2 mb-3">
-                            <h4 className="text-sm font-bold text-foreground">{monthName} {y}</h4>
-                            <Separator className="flex-1" />
-                            <span className="text-xs text-muted-foreground">{monthEvts.length} événement{monthEvts.length !== 1 ? 's' : ''}</span>
+                          <div className="flex items-center gap-2 mb-3 flex-wrap">
+                            <h4 className="text-sm font-bold text-foreground truncate">{monthName} {y}</h4>
+                            <Separator className="flex-1 min-w-[20px]" />
+                            <span className="text-xs text-muted-foreground shrink-0">{monthEvts.length} événement{monthEvts.length !== 1 ? 's' : ''}</span>
                           </div>
                           {monthEvts.length === 0 ? (
                             <p className="text-xs text-muted-foreground pl-4 pb-2">Aucun événement prévu</p>
@@ -993,42 +993,44 @@ export default function SchoolCalendar() {
                                 return (
                                   <div
                                     key={event.id}
-                                    className={`flex items-start gap-3 p-3 rounded-lg border ${cfg.bg} ${cfg.border} transition-colors hover:shadow-sm`}
+                                    className={`flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 p-3 rounded-lg border ${cfg.bg} ${cfg.border} transition-colors hover:shadow-sm`}
                                   >
-                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${cfg.text} font-bold text-lg`}>
-                                      {new Date(event.date + 'T00:00:00').getDate()}
+                                    <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center shrink-0 ${cfg.text} font-bold text-base sm:text-lg`}>
+                                        {new Date(event.date + 'T00:00:00').getDate()}
+                                      </div>
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <p className={`text-sm font-semibold ${cfg.text}`}>{event.title}</p>
-                                        <Badge variant="outline" className={`text-[10px] ${cfg.text} border-current/20`}>
+                                        <p className={`text-sm font-semibold ${cfg.text} break-words`}>{event.title}</p>
+                                        <Badge variant="outline" className={`text-[10px] ${cfg.text} border-current/20 shrink-0`}>
                                           {cfg.label}
                                         </Badge>
                                       </div>
                                       <div className="flex items-center gap-1 flex-wrap mt-0.5">
                                         {event.isGlobal ? (
-                                          <Badge variant="outline" className="text-[9px] h-4 px-1 text-teal-600 border-teal-300">
+                                          <Badge variant="outline" className="text-[9px] h-4 px-1 text-teal-600 border-teal-300 shrink-0">
                                             <Globe className="w-2.5 h-2.5 mr-0.5" />Tout l&apos;établissement
                                           </Badge>
                                         ) : event.classes.length > 0 && (
                                           event.classes.map(ec => (
-                                            <Badge key={ec.classId} variant="outline" className="text-[9px] h-4 px-1 text-purple-600 border-purple-300">
+                                            <Badge key={ec.classId} variant="outline" className="text-[9px] h-4 px-1 text-purple-600 border-purple-300 shrink-0 truncate max-w-[120px]">
                                               {ec.class.name}
                                             </Badge>
                                           ))
                                         )}
                                       </div>
                                       {event.description && (
-                                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{event.description}</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 break-words">{event.description}</p>
                                       )}
                                       {event.endDate && event.endDate !== event.date && (
-                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                        <p className="text-xs text-muted-foreground mt-0.5 shrink-0">
                                           Jusqu&apos;au {formatDateFR(event.endDate)}
                                         </p>
                                       )}
                                     </div>
                                     {isAdmin && event.type !== 'announcement' && (
-                                      <div className="flex items-center gap-1 shrink-0">
+                                      <div className="flex items-center gap-1 shrink-0 self-end sm:self-start">
                                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(event)}>
                                           <Pencil className="w-3.5 h-3.5" />
                                         </Button>
@@ -1070,11 +1072,11 @@ export default function SchoolCalendar() {
                         const [yr, mo] = key.split('-').map(Number)
                         return (
                           <div key={`outside-${key}`}>
-                            <div className="flex items-center gap-2 mb-3">
-                              <h4 className="text-sm font-bold text-foreground">{ALL_MONTHS_FR[mo]} {yr}</h4>
-                              <Separator className="flex-1" />
-                              <span className="text-xs text-amber-600">Hors année scolaire</span>
-                              <span className="text-xs text-muted-foreground">{evts.length} événement{evts.length !== 1 ? 's' : ''}</span>
+                            <div className="flex items-center gap-2 mb-3 flex-wrap">
+                              <h4 className="text-sm font-bold text-foreground truncate">{ALL_MONTHS_FR[mo]} {yr}</h4>
+                              <Separator className="flex-1 min-w-[20px]" />
+                              <span className="text-xs text-amber-600 shrink-0">Hors année scolaire</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{evts.length} événement{evts.length !== 1 ? 's' : ''}</span>
                             </div>
                             <div className="space-y-2 pl-2">
                               {evts.map(event => {
@@ -1082,37 +1084,39 @@ export default function SchoolCalendar() {
                                 return (
                                   <div
                                     key={event.id}
-                                    className={`flex items-start gap-3 p-3 rounded-lg border ${cfg.bg} ${cfg.border} transition-colors hover:shadow-sm`}
+                                    className={`flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 p-3 rounded-lg border ${cfg.bg} ${cfg.border} transition-colors hover:shadow-sm`}
                                   >
-                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${cfg.text} font-bold text-lg`}>
-                                      {new Date(event.date + 'T00:00:00').getDate()}
+                                    <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center shrink-0 ${cfg.text} font-bold text-base sm:text-lg`}>
+                                        {new Date(event.date + 'T00:00:00').getDate()}
+                                      </div>
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <p className={`text-sm font-semibold ${cfg.text}`}>{event.title}</p>
-                                        <Badge variant="outline" className={`text-[10px] ${cfg.text} border-current/20`}>
+                                        <p className={`text-sm font-semibold ${cfg.text} break-words`}>{event.title}</p>
+                                        <Badge variant="outline" className={`text-[10px] ${cfg.text} border-current/20 shrink-0`}>
                                           {cfg.label}
                                         </Badge>
                                       </div>
                                       <div className="flex items-center gap-1 flex-wrap mt-0.5">
                                         {event.isGlobal ? (
-                                          <Badge variant="outline" className="text-[9px] h-4 px-1 text-teal-600 border-teal-300">
+                                          <Badge variant="outline" className="text-[9px] h-4 px-1 text-teal-600 border-teal-300 shrink-0">
                                             <Globe className="w-2.5 h-2.5 mr-0.5" />Tout l&apos;établissement
                                           </Badge>
                                         ) : event.classes.length > 0 && (
                                           event.classes.map(ec => (
-                                            <Badge key={ec.classId} variant="outline" className="text-[9px] h-4 px-1 text-purple-600 border-purple-300">
+                                            <Badge key={ec.classId} variant="outline" className="text-[9px] h-4 px-1 text-purple-600 border-purple-300 shrink-0 truncate max-w-[120px]">
                                               {ec.class.name}
                                             </Badge>
                                           ))
                                         )}
                                       </div>
                                       {event.description && (
-                                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{event.description}</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 break-words">{event.description}</p>
                                       )}
                                     </div>
                                     {isAdmin && event.type !== 'announcement' && (
-                                      <div className="flex items-center gap-1 shrink-0">
+                                      <div className="flex items-center gap-1 shrink-0 self-end sm:self-start">
                                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(event)}>
                                           <Pencil className="w-3.5 h-3.5" />
                                         </Button>
