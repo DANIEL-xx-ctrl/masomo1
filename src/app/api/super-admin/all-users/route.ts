@@ -29,10 +29,12 @@ export async function GET(request: Request) {
     const roleFilter = searchParams.get('role') || 'all'
     const institutionFilter = searchParams.get('institutionId')
 
-    const where: Record<string, unknown> = {}
-
-    // Exclude super_admin from the list (they're in a separate table)
-    where.NOT = { role: 'super_admin' }
+    // Build the where clause. We use `role: { not: 'super_admin' }` instead
+    // of `NOT: { role: 'super_admin' }` because the latter form can behave
+    // inconsistently across Prisma versions (especially on PostgreSQL).
+    const where: Record<string, unknown> = {
+      role: { not: 'super_admin' },
+    }
 
     if (roleFilter !== 'all') {
       where.role = roleFilter
@@ -44,13 +46,16 @@ export async function GET(request: Request) {
 
     if (search) {
       where.OR = [
-        { name: { contains: search } },
-        { email: { contains: search } },
-        { userCode: { contains: search } },
-        { phone: { contains: search } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { userCode: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
       ]
     }
 
+    // Simple orderBy by name only — ordering by a relation field
+    // (institution.name) can fail on PostgreSQL when some users have a null
+    // institutionId (left join produces NULL which breaks the sort).
     const users = await db.user.findMany({
       where,
       select: {
@@ -69,14 +74,14 @@ export async function GET(request: Request) {
           select: { id: true, name: true },
         },
       },
-      orderBy: [{ institution: { name: 'asc' } }, { role: 'asc' }, { name: 'asc' }],
+      orderBy: { name: 'asc' },
     })
 
     return NextResponse.json({ users })
   } catch (error) {
     console.error('Get all users error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération des utilisateurs' },
+      { error: 'Erreur lors de la récupération des utilisateurs', detail: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }
@@ -247,4 +252,3 @@ export async function DELETE(request: Request) {
     )
   }
 }
-
