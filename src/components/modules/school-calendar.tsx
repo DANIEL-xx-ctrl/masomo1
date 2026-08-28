@@ -1152,28 +1152,30 @@ export default function SchoolCalendar() {
                     {upcomingEvents.map(event => {
                       const cfg = getTypeConfig(event.type)
                       return (
-                        <div key={event.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg} ${cfg.text}`}>
-                            {getTypeIcon(event.type)}
+                        <div key={event.id} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg} ${cfg.text}`}>
+                              {getTypeIcon(event.type)}
+                            </div>
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">{event.title}</p>
                             <div className="flex items-center gap-1 flex-wrap">
-                              <span className="text-xs text-muted-foreground">{formatDateShort(event.date)}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{formatDateShort(event.date)}</span>
                               {event.isGlobal ? (
-                                <Badge variant="outline" className="text-[8px] h-3.5 px-1 text-teal-600 border-teal-300">
+                                <Badge variant="outline" className="text-[8px] h-3.5 px-1 text-teal-600 border-teal-300 shrink-0">
                                   <Globe className="w-2 h-2 mr-0.5" />Tout
                                 </Badge>
                               ) : event.classes.length > 0 && (
                                 event.classes.slice(0, 2).map(ec => (
-                                  <Badge key={ec.classId} variant="outline" className="text-[8px] h-3.5 px-1 text-purple-600 border-purple-300">
+                                  <Badge key={ec.classId} variant="outline" className="text-[8px] h-3.5 px-1 text-purple-600 border-purple-300 shrink-0 truncate max-w-[100px]">
                                     {ec.class.name}
                                   </Badge>
                                 ))
                               )}
                             </div>
                           </div>
-                          <Badge variant="outline" className={`text-xs ${cfg.text} border-current/20`}>
+                          <Badge variant="outline" className={`text-xs ${cfg.text} border-current/20 shrink-0 self-start sm:self-auto`}>
                             {cfg.label}
                           </Badge>
                         </div>
@@ -1232,7 +1234,7 @@ export default function SchoolCalendar() {
               <div className="flex items-center gap-2">
                 <Label className="text-sm font-semibold">Portée de l&apos;événement</Label>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   type="button"
                   onClick={() => { setFormIsGlobal(true); setFormClassIds([]) }}
@@ -1242,8 +1244,8 @@ export default function SchoolCalendar() {
                       : 'border-muted bg-background text-muted-foreground hover:bg-muted/50'
                   }`}
                 >
-                  <Globe className="w-4 h-4" />
- Tout l&apos;établissement
+                  <Globe className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Tout l&apos;établissement</span>
                 </button>
                 <button
                   type="button"
@@ -1254,8 +1256,8 @@ export default function SchoolCalendar() {
                       : 'border-muted bg-background text-muted-foreground hover:bg-muted/50'
                   }`}
                 >
-                  <GraduationCap className="w-4 h-4" />
- Classes spécifiques
+                  <GraduationCap className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Classes spécifiques</span>
                 </button>
               </div>
 
