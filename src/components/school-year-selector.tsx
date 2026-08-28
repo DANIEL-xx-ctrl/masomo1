@@ -1,14 +1,14 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { CalendarDays } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { CalendarDays, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { useAppStore } from '@/lib/store'
 
 // Fallback list used if the /api/school-years endpoint is unreachable.
@@ -21,6 +21,11 @@ const FALLBACK_YEARS = ['2023-2024', '2024-2025', '2025-2026']
  * `GET /api/school-years` and populates the store. The current value
  * is bound to the global `schoolYear` slice, so changing it immediately
  * propagates to every module that consumes the store.
+ *
+ * The selector is a Popover with:
+ *   - A list of existing school years (click to select)
+ *   - A free-text input where the user can type a custom year
+ *     (e.g. "2026-2027") and press Enter to apply it
  */
 export function SchoolYearSelector() {
   const schoolYear = useAppStore((s) => s.schoolYear)
@@ -32,6 +37,10 @@ export function SchoolYearSelector() {
 
   // Avoid refetching on every render — only fetch once per user session.
   const didFetchRef = useRef(false)
+
+  // Local state for the popover + custom year input
+  const [open, setOpen] = useState(false)
+  const [customYear, setCustomYear] = useState('')
 
   useEffect(() => {
     if (didFetchRef.current) return
@@ -75,33 +84,102 @@ export function SchoolYearSelector() {
   const handleChange = (value: string) => {
     setSchoolYear(value)
     addToast('success', 'Année scolaire', `Basculé sur ${value}`)
+    setOpen(false)
+    setCustomYear('')
+  }
+
+  // Apply a custom year typed by the user (e.g. "2026-2027").
+  // Validates the format: must match YYYY-YYYY (4 digits - 4 digits).
+  const handleApplyCustomYear = () => {
+    const trimmed = customYear.trim()
+    // Accept formats: "2025-2026", "2025/2026", or just "2025-2026"
+    const normalized = trimmed.replace('/', '-')
+    if (!/^\d{4}-\d{4}$/.test(normalized)) {
+      addToast('error', 'Format invalide', 'Utilisez le format AAAA-AAAA (ex: 2026-2027)')
+      return
+    }
+    // Add the custom year to the available list if it's not already there
+    if (!availableSchoolYears.includes(normalized)) {
+      setAvailableSchoolYears([...availableSchoolYears, normalized].sort())
+    }
+    handleChange(normalized)
   }
 
   // Always render the selector (even with a single year) so the active
-  // year is visible to the user. Use the current schoolYear as fallback
-  // if it isn't part of the available list.
+  // year is visible to the user.
   const options =
     availableSchoolYears.length > 0 ? availableSchoolYears : [schoolYear]
-  const currentValue = options.includes(schoolYear)
-    ? schoolYear
-    : options[0]
 
   return (
-    <Select value={currentValue} onValueChange={handleChange}>
-      <SelectTrigger
-        className="w-[124px] sm:w-[150px] h-9 gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10 text-primary shrink-0"
-        aria-label="Année scolaire"
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className="w-[124px] sm:w-[150px] h-9 gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10 text-primary shrink-0 justify-between"
+          aria-label="Année scolaire"
+        >
+          <CalendarDays className="w-4 h-4 text-primary shrink-0" />
+          <span className="truncate text-sm font-medium">{schoolYear}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[200px] p-2"
       >
-        <CalendarDays className="w-4 h-4 text-primary" />
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((y) => (
-          <SelectItem key={y} value={y}>
-            {y}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+        {/* Existing school years list */}
+        <div className="space-y-0.5 max-h-[200px] overflow-y-auto">
+          {options.map((y) => (
+            <button
+              key={y}
+              type="button"
+              onClick={() => handleChange(y)}
+              className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
+                y === schoolYear
+                  ? 'bg-primary/10 text-primary font-medium'
+                  : 'hover:bg-muted text-foreground'
+              }`}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+
+        {/* Separator */}
+        <div className="my-2 border-t" />
+
+        {/* Custom year input */}
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <Plus className="w-3 h-3" />
+            Nouvelle année scolaire
+          </p>
+          <div className="flex gap-1">
+            <Input
+              type="text"
+              value={customYear}
+              onChange={(e) => setCustomYear(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && customYear.trim()) {
+                  e.preventDefault()
+                  handleApplyCustomYear()
+                }
+              }}
+              placeholder="2026-2027"
+              className="h-8 text-sm font-mono"
+              autoFocus
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleApplyCustomYear}
+              disabled={!customYear.trim()}
+              className="h-8 px-2 shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
