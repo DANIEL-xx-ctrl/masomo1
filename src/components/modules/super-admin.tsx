@@ -370,11 +370,18 @@ export default function SuperAdminModule() {
       if (res.ok) {
         const data = await res.json()
         setAllUsers(data.users || [])
+      } else {
+        const errData = await res.json().catch(() => ({}))
+        console.error('[fetchAllUsers] HTTP', res.status, errData)
+        addToast('error', 'Erreur de chargement', errData.error || `Impossible de charger les utilisateurs (${res.status})`)
       }
-    } catch { /* silent */ } finally {
+    } catch (err) {
+      console.error('[fetchAllUsers] network error', err)
+      addToast('error', 'Erreur réseau', 'Impossible de contacter le serveur')
+    } finally {
       setLoadingAllUsers(false)
     }
-  }, [superAdminId, allUsersSearch, allUsersRoleFilter])
+  }, [superAdminId, allUsersSearch, allUsersRoleFilter, addToast])
 
   // Fetch all-users when the tab is opened
   useEffect(() => {
