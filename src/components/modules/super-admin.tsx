@@ -8,6 +8,7 @@ import {
   GraduationCap, BookOpen, Heart, Briefcase, AlertTriangle, Check, ChevronDown,
   ArrowLeft, CreditCard, CalendarDays, UserCircle, Activity, LayoutDashboard,
   Table2, UsersRound, UserCog, ClipboardList, Receipt, Wand2, Sparkles, RefreshCw,
+  Hash, Copy,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -171,7 +172,7 @@ export default function SuperAdminModule() {
   const superAdminAvatar = currentUser?.avatar || null
   const superAdminPhone = currentUser?.phone || null
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'institutions' | 'admins' | 'admins-list'>('institutions')
+  const [activeTab, setActiveTab] = useState<'profile' | 'institutions' | 'admins' | 'admins-list' | 'all-users'>('institutions')
 
   // Profile state
   const [editing, setEditing] = useState(false)
@@ -252,6 +253,31 @@ export default function SuperAdminModule() {
   const [revealedPasswords, setRevealedPasswords] = useState<Set<string>>(new Set())
   const [adminListSearch, setAdminListSearch] = useState('')
 
+  // ---- "Tous les utilisateurs" tab state ----
+  interface AllUserItem {
+    id: string
+    userCode: string | null
+    name: string
+    email: string
+    password: string
+    role: string
+    phone: string | null
+    active: boolean
+    institutionId: string | null
+    institution: { id: string; name: string } | null
+    createdAt: string
+    updatedAt: string
+  }
+  const [allUsers, setAllUsers] = useState<AllUserItem[]>([])
+  const [loadingAllUsers, setLoadingAllUsers] = useState(false)
+  const [allUsersSearch, setAllUsersSearch] = useState('')
+  const [allUsersRoleFilter, setAllUsersRoleFilter] = useState('all')
+  const [editingUser, setEditingUser] = useState<AllUserItem | null>(null)
+  const [editUserForm, setEditUserForm] = useState({ name: '', email: '', password: '', userCode: '', phone: '', role: '', active: true })
+  const [savingUser, setSavingUser] = useState(false)
+  const [revealedUserPasswords, setRevealedUserPasswords] = useState<Set<string>>(new Set())
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<AllUserItem | null>(null)
+
   // Entity CRUD state
   const [deletingEntity, setDeletingEntity] = useState<{ type: string; id: string; name: string } | null>(null)
   const [entityFormOpen, setEntityFormOpen] = useState(false)
@@ -329,6 +355,112 @@ export default function SuperAdminModule() {
       setLoadingAdminList(false)
     }
   }, [superAdminId])
+
+  // ---- Fetch all users (super admin "Tous les utilisateurs" tab) ----
+  const fetchAllUsers = useCallback(async () => {
+    setLoadingAllUsers(true)
+    try {
+      const params = new URLSearchParams()
+      if (allUsersSearch) params.set('search', allUsersSearch)
+      if (allUsersRoleFilter !== 'all') params.set('role', allUsersRoleFilter)
+      const res = await fetch(`/api/superadmin/all-users?${params.toString()}`, {
+        headers: { 'x-user-role': 'super_admin', 'x-super-admin-id': superAdminId || '' },
+        cache: 'no-store' as RequestCache,
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAllUsers(data.users || [])
+      }
+    } catch { /* silent */ } finally {
+      setLoadingAllUsers(false)
+    }
+  }, [superAdminId, allUsersSearch, allUsersRoleFilter])
+
+  // Fetch all-users when the tab is opened
+  useEffect(() => {
+    if (isSuperAdmin && activeTab === 'all-users') {
+      fetchAllUsers()
+    }
+  }, [isSuperAdmin, activeTab, fetchAllUsers])
+
+  // Toggle password visibility for a single all-user row
+  const toggleUserPasswordReveal = useCallback((id: string) => {
+    setRevealedUserPasswords((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  // Open edit user dialog
+  const openEditUser = (user: AllUserItem) => {
+    setEditingUser(user)
+    setEditUserForm({
+      name: user.name,
+      email: user.email,
+      password: '',
+      userCode: user.userCode || '',
+      phone: user.phone || '',
+      role: user.role,
+      active: user.active,
+    })
+  }
+
+  // Save edited user
+  const handleSaveUser = async () => {
+    if (!editingUser) return
+    setSavingUser(true)
+    try {
+      const body: Record<string, unknown> = {
+        id: editingUser.id,
+        name: editUserForm.name,
+        email: editUserForm.email,
+        userCode: editUserForm.userCode,
+        phone: editUserForm.phone,
+        role: editUserForm.role,
+        active: editUserForm.active,
+      }
+      if (editUserForm.password.trim()) {
+        body.password = editUserForm.password.trim()
+      }
+      const res = await fetch('/api/superadmin/all-users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-user-role': 'super_admin' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Échec de la modification.')
+      addToast('success', 'Utilisateur modifié', data.user?.name ? `${data.user.name} a été mis à jour.` : 'Utilisateur mis à jour.')
+      setEditingUser(null)
+      await fetchAllUsers()
+    } catch (err) {
+      addToast('error', 'Erreur', err instanceof Error ? err.message : 'Erreur inconnue')
+    } finally {
+      setSavingUser(false)
+    }
+  }
+
+  // Delete user
+  const handleDeleteUser = async () => {
+    if (!confirmDeleteUser) return
+    setSavingUser(true)
+    try {
+      const res = await fetch(`/api/superadmin/all-users?id=${confirmDeleteUser.id}`, {
+        method: 'DELETE',
+        headers: { 'x-user-role': 'super_admin' },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Échec de la suppression.')
+      addToast('success', 'Utilisateur supprimé', `${confirmDeleteUser.name} a été supprimé.`)
+      setConfirmDeleteUser(null)
+      await fetchAllUsers()
+    } catch (err) {
+      addToast('error', 'Erreur', err instanceof Error ? err.message : 'Erreur inconnue')
+    } finally {
+      setSavingUser(false)
+    }
+  }
 
   // Toggle password visibility for a single admin row.
   const toggleRevealPassword = useCallback((id: string) => {
@@ -911,6 +1043,7 @@ export default function SuperAdminModule() {
     { key: 'institutions' as const, label: 'Institutions', icon: Building2 },
     { key: 'admins' as const, label: 'Administrateurs', icon: Users },
     { key: 'admins-list' as const, label: 'Liste des administrateurs', icon: Table2 },
+    { key: 'all-users' as const, label: 'Tous les utilisateurs', icon: Users },
     { key: 'profile' as const, label: 'Mon Profil', icon: Shield },
   ]
 
@@ -2688,6 +2821,261 @@ export default function SuperAdminModule() {
                     })}
                 </div>
               </>
+            )}
+          </motion.div>
+        )}
+
+        {/* ============= ALL USERS TAB ============= */}
+        {activeTab === 'all-users' && (
+          <motion.div key="all-users" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Users className="w-5 h-5 text-indigo-600" />
+                  Tous les utilisateurs
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Liste de tous les comptes (admin, enseignants, élèves, parents, personnel) de toutes les institutions.
+                  Vous pouvez modifier l&apos;ID, le nom, l&apos;email et le mot de passe de chaque utilisateur.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Filters */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Rechercher par nom, email, ID, téléphone…"
+                      value={allUsersSearch}
+                      onChange={(e) => setAllUsersSearch(e.target.value)}
+                      className="pl-9"
+                      onKeyDown={(e) => { if (e.key === 'Enter') fetchAllUsers() }}
+                    />
+                  </div>
+                  <Select value={allUsersRoleFilter} onValueChange={(v) => { setAllUsersRoleFilter(v); }}>
+                    <SelectTrigger className="w-full sm:w-52">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous les rôles</SelectItem>
+                      <SelectItem value="admin">Administrateurs</SelectItem>
+                      <SelectItem value="teacher">Enseignants</SelectItem>
+                      <SelectItem value="student">Élèves</SelectItem>
+                      <SelectItem value="parent">Parents</SelectItem>
+                      <SelectItem value="staff">Personnel</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="sm" onClick={fetchAllUsers} disabled={loadingAllUsers} className="h-9 shrink-0">
+                    {loadingAllUsers ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  </Button>
+                </div>
+
+                {/* Stats */}
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="outline">{allUsers.length} utilisateur(s)</Badge>
+                  <Badge variant="outline">{allUsers.filter(u => u.role === 'admin').length} admin(s)</Badge>
+                  <Badge variant="outline">{allUsers.filter(u => u.role === 'teacher').length} enseignant(s)</Badge>
+                  <Badge variant="outline">{allUsers.filter(u => u.role === 'student').length} élève(s)</Badge>
+                  <Badge variant="outline">{allUsers.filter(u => u.role === 'parent').length} parent(s)</Badge>
+                  <Badge variant="outline">{allUsers.filter(u => u.role === 'staff').length} personnel(s)</Badge>
+                </div>
+
+                {/* Users list */}
+                {loadingAllUsers ? (
+                  <div className="py-10 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Chargement…
+                  </div>
+                ) : allUsers.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">
+                    <Users className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                    Aucun utilisateur ne correspond à votre recherche.
+                  </div>
+                ) : (
+                  <div className="max-h-[28rem] overflow-y-auto rounded-lg border border-muted">
+                    <div className="divide-y divide-border">
+                      {allUsers.map((u) => {
+                        const roleLabel: Record<string, string> = {
+                          admin: 'Admin', teacher: 'Enseignant', student: 'Élève',
+                          parent: 'Parent', staff: 'Personnel',
+                        }
+                        const roleColor: Record<string, string> = {
+                          admin: 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400',
+                          teacher: 'bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400',
+                          student: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400',
+                          parent: 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400',
+                          staff: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400',
+                        }
+                        return (
+                          <div key={u.id} className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3 hover:bg-accent/30 transition-colors ${!u.active ? 'opacity-50' : ''}`}>
+                            <div className="flex-1 min-w-0 space-y-1">
+                              {/* Name + role */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-sm font-medium truncate">{u.name}</p>
+                                <Badge className={`text-[9px] ${roleColor[u.role] || ''} shrink-0`}>{roleLabel[u.role] || u.role}</Badge>
+                                {!u.active && <Badge variant="secondary" className="text-[9px] shrink-0">Inactif</Badge>}
+                              </div>
+                              {/* ID + email + institution */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {u.userCode && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400 text-[11px] font-mono font-semibold">
+                                    <Hash className="w-3 h-3" />
+                                    {u.userCode}
+                                  </span>
+                                )}
+                                <span className="text-xs text-muted-foreground truncate">{u.email}</span>
+                                {u.institution && (
+                                  <Badge variant="outline" className="text-[9px] shrink-0 truncate max-w-[120px]">
+                                    {u.institution.name}
+                                  </Badge>
+                                )}
+                              </div>
+                              {/* Password */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-muted/60 dark:bg-muted/20 border border-muted-foreground/20 text-[11px] font-mono">
+                                  <Lock className="w-3 h-3 text-muted-foreground" />
+                                  {revealedUserPasswords.has(u.id) ? (
+                                    <span className="text-foreground">{u.password || '(vide)'}</span>
+                                  ) : (
+                                    <span className="text-muted-foreground tracking-widest">••••••••</span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleUserPasswordReveal(u.id)}
+                                    className="opacity-50 hover:opacity-100 transition-opacity ml-0.5"
+                                  >
+                                    {revealedUserPasswords.has(u.id) ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                  </button>
+                                </span>
+                                {u.phone && (
+                                  <span className="text-xs text-muted-foreground">📞 {u.phone}</span>
+                                )}
+                              </div>
+                            </div>
+                            {/* Actions */}
+                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+                              <Button size="sm" variant="outline" onClick={() => openEditUser(u)} className="h-8">
+                                <Pencil className="w-3 h-3 mr-1" />
+                                <span className="text-xs">Modifier</span>
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setConfirmDeleteUser(u)}
+                                className="h-8 text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/60"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Edit user dialog */}
+            {editingUser && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !savingUser && setEditingUser(null)}>
+                <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Pencil className="w-5 h-5 text-indigo-600" />
+                      Modifier l&apos;utilisateur
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{editingUser.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{editingUser.email}</p>
+                        {editingUser.institution && (
+                          <Badge variant="outline" className="text-[9px] mt-0.5">{editingUser.institution.name}</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Nom complet</Label>
+                      <Input value={editUserForm.name} onChange={(e) => setEditUserForm(f => ({ ...f, name: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Email</Label>
+                      <Input type="email" value={editUserForm.email} onChange={(e) => setEditUserForm(f => ({ ...f, email: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Identifiant (ID)</Label>
+                      <Input className="font-mono" value={editUserForm.userCode} onChange={(e) => setEditUserForm(f => ({ ...f, userCode: e.target.value }))} placeholder="TCH-001, ELV-042…" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Nouveau mot de passe (laisser vide pour ne pas changer)</Label>
+                      <Input type="password" value={editUserForm.password} onChange={(e) => setEditUserForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Téléphone</Label>
+                      <Input value={editUserForm.phone} onChange={(e) => setEditUserForm(f => ({ ...f, phone: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Rôle</Label>
+                      <Select value={editUserForm.role} onValueChange={(v) => setEditUserForm(f => ({ ...f, role: v }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">Administrateur</SelectItem>
+                          <SelectItem value="teacher">Enseignant</SelectItem>
+                          <SelectItem value="student">Élève</SelectItem>
+                          <SelectItem value="parent">Parent</SelectItem>
+                          <SelectItem value="staff">Personnel</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="user-active"
+                        checked={editUserForm.active}
+                        onCheckedChange={(checked) => setEditUserForm(f => ({ ...f, active: checked === true }))}
+                      />
+                      <Label htmlFor="user-active" className="text-xs cursor-pointer">Compte actif</Label>
+                    </div>
+                  </CardContent>
+                  <div className="flex justify-end gap-2 p-4 pt-0">
+                    <Button variant="outline" onClick={() => setEditingUser(null)} disabled={savingUser}>Annuler</Button>
+                    <Button onClick={handleSaveUser} disabled={savingUser || !editUserForm.name.trim() || !editUserForm.email.trim()}>
+                      {savingUser ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                      Enregistrer
+                    </Button>
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* Delete confirm dialog */}
+            {confirmDeleteUser && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !savingUser && setConfirmDeleteUser(null)}>
+                <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base text-destructive">
+                      <AlertTriangle className="w-5 h-5" />
+                      Supprimer l&apos;utilisateur ?
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <p className="text-sm">
+                      Vous êtes sur le point de supprimer <strong>{confirmDeleteUser.name}</strong> ({confirmDeleteUser.email}).
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Toutes les données associées (notes, présences, paiements, messages…) seront supprimées. Cette action est irréversible.
+                    </p>
+                  </CardContent>
+                  <div className="flex justify-end gap-2 p-4 pt-0">
+                    <Button variant="outline" onClick={() => setConfirmDeleteUser(null)} disabled={savingUser}>Annuler</Button>
+                    <Button variant="destructive" onClick={handleDeleteUser} disabled={savingUser}>
+                      {savingUser ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                      Supprimer
+                    </Button>
+                  </div>
+                </Card>
+              </div>
             )}
           </motion.div>
         )}
