@@ -65,14 +65,28 @@ export function SchoolYearSelector() {
           .map((y) => (typeof y === 'string' ? y : y?.label))
           .filter((l): l is string => Boolean(l))
         if (cancelled) return
-        if (labels.length > 0) {
-          setAvailableSchoolYears(labels)
+
+        // CRITICAL: MERGE the API years with the already-persisted years
+        // instead of replacing them. When the user adds a custom year (e.g.
+        // "2026-2027") that doesn't exist in the API yet, that year is
+        // stored in `availableSchoolYears` via Zustand persist. If we replace
+        // the list here, the custom year is lost on reload.
+        const persisted = useAppStore.getState().availableSchoolYears
+        const merged = Array.from(new Set([...persisted, ...labels])).sort()
+        if (merged.length > 0) {
+          setAvailableSchoolYears(merged)
         } else {
           setAvailableSchoolYears(FALLBACK_YEARS)
         }
       } catch {
         if (cancelled) return
-        setAvailableSchoolYears(FALLBACK_YEARS)
+        // On error, keep the persisted years — don't overwrite with fallback.
+        const persisted = useAppStore.getState().availableSchoolYears
+        if (persisted.length > 0) {
+          // Keep persisted years as-is
+        } else {
+          setAvailableSchoolYears(FALLBACK_YEARS)
+        }
       }
     }
     loadYears()
