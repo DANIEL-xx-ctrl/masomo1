@@ -28,7 +28,11 @@ function AvatarImage({
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
-      className={cn("aspect-square size-full", className)}
+      // object-cover ensures the image fills the entire circular container
+      // without distortion, even when the source image is small or has a
+      // different aspect ratio. Small/blurry images are scaled up to fill
+      // the border, and large images are cropped to fit.
+      className={cn("aspect-square size-full object-cover", className)}
       {...props}
     />
   )
