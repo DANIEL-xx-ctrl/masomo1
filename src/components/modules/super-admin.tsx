@@ -1147,23 +1147,24 @@ export default function SuperAdminModule() {
             {/* === Institution List View === */}
             {!openedInst && (
               <>
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Gestion des Institutions</h2>
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-3">
+                  <h2 className="text-lg font-semibold shrink-0">Gestion des Institutions</h2>
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Button
                       onClick={() => fetchInstitutions()}
                       disabled={loadingInst}
                       variant="outline"
                       size="sm"
-                      className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-950/40"
+                      className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-950/40 shrink-0"
                       title="Rafraîchir la liste des institutions"
                     >
                       <RefreshCw className={`w-4 h-4 mr-1.5 ${loadingInst ? 'animate-spin' : ''}`} />
-                      Actualiser
+                      <span className="hidden sm:inline">Actualiser</span>
                     </Button>
-                    <Button onClick={() => { setInstForm({ name: '', password: '', address: '', phone: '', email: '', currentYear: '2024-2025', autoSeed: true, adminName: '', adminEmail: '', adminPassword: '' }); setShowInstForm(true) }} className="bg-gradient-to-r from-orange-500 to-amber-600 text-white hover:from-orange-600 hover:to-amber-700">
+                    <Button onClick={() => { setInstForm({ name: '', password: '', address: '', phone: '', email: '', currentYear: '2024-2025', autoSeed: true, adminName: '', adminEmail: '', adminPassword: '' }); setShowInstForm(true) }} className="bg-gradient-to-r from-orange-500 to-amber-600 text-white hover:from-orange-600 hover:to-amber-700 shrink-0">
                       <Plus className="w-4 h-4 mr-1.5" />
-                      Nouvelle institution
+                      <span className="hidden sm:inline">Nouvelle institution</span>
+                      <span className="sm:hidden">Nouvelle</span>
                     </Button>
                   </div>
                 </div>
@@ -2441,11 +2442,12 @@ export default function SuperAdminModule() {
         {/* ============= ADMINS TAB ============= */}
         {activeTab === 'admins' && (
           <motion.div key="admins" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Gestion des Administrateurs</h2>
-              <Button onClick={() => { setAdminForm({ name: '', email: '', password: '', phone: '', institutionId: '' }); setShowAdminForm(true) }} className="bg-gradient-to-r from-orange-500 to-amber-600 text-white hover:from-orange-600 hover:to-amber-700">
+            <div className="flex flex-col gap-3">
+              <h2 className="text-lg font-semibold shrink-0">Gestion des Administrateurs</h2>
+              <Button onClick={() => { setAdminForm({ name: '', email: '', password: '', phone: '', institutionId: '' }); setShowAdminForm(true) }} className="bg-gradient-to-r from-orange-500 to-amber-600 text-white hover:from-orange-600 hover:to-amber-700 shrink-0 self-start">
                 <Plus className="w-4 h-4 mr-1.5" />
-                Nouvel admin
+                <span className="hidden sm:inline">Nouvel admin</span>
+                <span className="sm:hidden">Ajouter</span>
               </Button>
             </div>
 
@@ -2456,28 +2458,32 @@ export default function SuperAdminModule() {
                 {admins.map((admin) => (
                   <Card key={admin.id} className="hover:shadow-sm transition-shadow">
                     <CardContent className="p-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                          {admin.avatar ? <AvatarImage src={getImageUrl(admin.avatar, admin.updatedAt)} alt={admin.name} /> : null}
-                          <AvatarFallback className="bg-red-100 text-red-700 text-xs font-semibold">
-                            {admin.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                          </AvatarFallback>
-                        </Avatar>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex items-center gap-3 shrink-0">
+                          <Avatar className="h-10 w-10 shrink-0">
+                            {admin.avatar ? <AvatarImage src={getImageUrl(admin.avatar, admin.updatedAt)} alt={admin.name} /> : null}
+                            <AvatarFallback className="bg-red-100 text-red-700 text-xs font-semibold">
+                              {admin.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-sm font-medium truncate">{admin.name}</p>
-                            <Badge variant={admin.active ? 'default' : 'secondary'} className="text-[10px]">
+                            <Badge variant={admin.active ? 'default' : 'secondary'} className="text-[10px] shrink-0">
                               {admin.active ? 'Actif' : 'Inactif'}
                             </Badge>
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                            <span>{admin.email}</span>
-                            <span className="font-mono">{admin.userCode}</span>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 flex-wrap">
+                            <span className="truncate">{admin.email}</span>
+                            {admin.userCode && (
+                              <span className="font-mono shrink-0 px-1 py-0.5 rounded bg-muted/50">{admin.userCode}</span>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                            <Building2 className="w-3 h-3" />
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 flex-wrap">
+                            <Building2 className="w-3 h-3 shrink-0" />
                             <span
-                              className="text-orange-600 dark:text-orange-400 cursor-pointer hover:underline font-medium"
+                              className="text-orange-600 dark:text-orange-400 cursor-pointer hover:underline font-medium truncate max-w-[150px]"
                               onClick={() => {
                                 const inst = institutions.find(i => i.id === admin.institutionId)
                                 if (inst) {
@@ -2488,20 +2494,21 @@ export default function SuperAdminModule() {
                             >
                               {admin.institution?.name || 'N/A'}
                             </span>
-                            {admin.phone && <><span>·</span><span>{admin.phone}</span></>}
+                            {admin.phone && <><span className="shrink-0">·</span><span className="truncate">{admin.phone}</span></>}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <button type="button" onClick={() => setShowAdminPassword(showAdminPassword === admin.id ? null : admin.id)} className="p-1.5 rounded-md hover:bg-muted transition-colors cursor-pointer" title="Voir le mot de passe">
+                        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+                          <button type="button" onClick={() => setShowAdminPassword(showAdminPassword === admin.id ? null : admin.id)} className="p-1.5 rounded-md hover:bg-muted transition-colors cursor-pointer shrink-0" title="Voir le mot de passe">
                             {showAdminPassword === admin.id ? <EyeOff className="w-4 h-4 text-muted-foreground" /> : <Eye className="w-4 h-4 text-muted-foreground" />}
                           </button>
-                          <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => {
+                          <Button variant="outline" size="sm" className="text-xs h-7 shrink-0" onClick={() => {
                             setEditingAdmin(admin)
                             setAdminForm({ name: admin.name, email: admin.email, password: '', phone: admin.phone || '', institutionId: admin.institutionId })
                           }}>
-                            <Pencil className="w-3 h-3 mr-1" /> Modifier
+                            <Pencil className="w-3 h-3 mr-1" />
+                            <span className="hidden sm:inline">Modifier</span>
                           </Button>
-                          <Button variant="destructive" size="sm" className="text-xs h-7" onClick={() => setDeletingAdmin(admin)}>
+                          <Button variant="destructive" size="sm" className="text-xs h-7 shrink-0" onClick={() => setDeletingAdmin(admin)}>
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>
