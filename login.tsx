@@ -562,17 +562,16 @@ export default function Login() {
                   </span>
                 </div>
 
-                {/* Super Admin quick-login (kept — internal use only) */}
-                <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={handleSuperAdminLogin}
-                    disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 text-sm font-medium hover:bg-orange-500/15 hover:border-orange-500/30 transition-all disabled:opacity-50"
+                {/* Subtle hint that super admins can log in directly */}
+                <div className="mt-6 flex items-center justify-center gap-2 text-xs text-white/25">
+                  <motion.span
+                    animate={{ opacity: [0.3, 0.7, 0.3] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                    className="flex items-center gap-1.5"
                   >
-                    <Shield className="w-4 h-4" />
-                    Super Admin
-                  </button>
+                    <Shield className="w-3 h-3" />
+                    <span>Les super administrateurs peuvent se connecter directement avec leurs identifiants.</span>
+                  </motion.span>
                 </div>
 
                 {/* ---- Switch to signup mode ---- */}
