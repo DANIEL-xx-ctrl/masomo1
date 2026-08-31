@@ -2959,8 +2959,8 @@ export default function SuperAdminModule() {
                                 )}
                                 <span className="text-xs text-muted-foreground truncate">{u.email}</span>
                                 {u.institution && (
-                                  <Badge variant="outline" className="text-[9px] shrink-0 truncate max-w-[120px]">
-                                    {u.institution.name}
+                                  <Badge variant="outline" className="text-[9px] shrink-0 max-w-[200px] sm:max-w-[250px]" title={u.institution.name}>
+                                    <span className="truncate">{u.institution.name}</span>
                                   </Badge>
                                 )}
                               </div>
