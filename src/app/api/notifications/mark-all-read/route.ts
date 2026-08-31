@@ -7,12 +7,23 @@ export async function PUT(request: NextRequest) {
   try {
     const institutionId = await getInstitutionIdWithFallback(request)
     const userId = request.headers.get('x-user-id')
-    if (!userId) {
+    const userRole = request.headers.get('x-user-role')
+    if (!userId && userRole !== 'super_admin') {
       return NextResponse.json({ error: 'Utilisateur non authentifié' }, { status: 401 })
     }
 
+    // For super_admin, mark ALL notifications in the institution as read
+    // (not just their own userId-scoped ones — the super admin sees all).
+    const where: Record<string, unknown> = { read: false }
+    if (institutionId && institutionId !== 'inst_default') {
+      where.institutionId = institutionId
+    }
+    if (userRole !== 'super_admin' && userId) {
+      where.userId = userId
+    }
+
     const result = await db.notification.updateMany({
-      where: { userId, institutionId, read: false },
+      where,
       data: { read: true },
     })
 
