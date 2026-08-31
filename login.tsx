@@ -129,6 +129,9 @@ export default function Login() {
   // mode: 'login' | 'signup' — toggles between the connection form and the
   // new-institution registration form.
   const [mode, setMode] = useState<'login' | 'signup'>('login')
+  // ---- Secret click counter for hidden super admin login ----
+  // Clicking the animated dots 10 times triggers the super admin login.
+  const [secretClickCount, setSecretClickCount] = useState(0)
   const [suInstitutionName, setSuInstitutionName] = useState('')
   const [suName, setSuName] = useState('')
   const [suEmail, setSuEmail] = useState('')
@@ -562,25 +565,35 @@ export default function Login() {
                   </span>
                 </div>
 
-                {/* Small animated connection illustration */}
+                {/* Small animated connection illustration with color variation.
+                    Clicking 10 times triggers hidden super admin login. */}
                 <div className="mt-6 flex items-center justify-center">
                   <motion.div
-                    className="flex items-center gap-1"
+                    className="flex items-center gap-1 cursor-pointer select-none"
                     initial={{ opacity: 0.2 }}
+                    onClick={() => {
+                      const next = secretClickCount + 1
+                      setSecretClickCount(next)
+                      if (next >= 10) {
+                        setSecretClickCount(0)
+                        handleSuperAdminLogin()
+                      }
+                    }}
                   >
                     {[0, 1, 2].map((i) => (
                       <motion.span
                         key={i}
-                        className="w-1.5 h-1.5 rounded-full bg-emerald-400"
+                        className="w-1.5 h-1.5 rounded-full"
                         animate={{
                           scale: [1, 1.4, 1],
                           opacity: [0.3, 0.9, 0.3],
+                          backgroundColor: ['#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#10b981'],
                         }}
                         transition={{
-                          duration: 1.5,
+                          duration: 2,
                           repeat: Infinity,
                           ease: 'easeInOut',
-                          delay: i * 0.2,
+                          delay: i * 0.25,
                         }}
                       />
                     ))}
