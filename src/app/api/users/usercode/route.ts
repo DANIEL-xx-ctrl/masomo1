@@ -55,38 +55,21 @@ export async function PUT(request: Request) {
       )
     }
 
-    // Check uniqueness within the institution (userCode should be unique
-    // per institution, not globally — two institutions can have ELV-001).
-    if (user.institutionId) {
-      const existing = await db.user.findFirst({
-        where: {
-          userCode: trimmedCode,
-          institutionId: user.institutionId,
-          NOT: { id: userId },
-        },
-        select: { id: true },
-      })
-      if (existing) {
-        return NextResponse.json(
-          { error: `L'identifiant "${trimmedCode}" est déjà utilisé par un autre utilisateur de cette institution.` },
-          { status: 409 }
-        )
-      }
-    } else {
-      // No institution — check globally
-      const existing = await db.user.findFirst({
-        where: {
-          userCode: trimmedCode,
-          NOT: { id: userId },
-        },
-        select: { id: true },
-      })
-      if (existing) {
-        return NextResponse.json(
-          { error: `L'identifiant "${trimmedCode}" est déjà utilisé.` },
-          { status: 409 }
-        )
-      }
+    // Check GLOBAL uniqueness — userCode must be unique across ALL
+    // institutions to prevent login confusion (two users with "TCH-001"
+    // in different institutions would both match the login search).
+    const existing = await db.user.findFirst({
+      where: {
+        userCode: trimmedCode,
+        NOT: { id: userId },
+      },
+      select: { id: true, name: true },
+    })
+    if (existing) {
+      return NextResponse.json(
+        { error: `L'identifiant "${trimmedCode}" est déjà utilisé par un autre utilisateur (${existing.name}).` },
+        { status: 409 }
+      )
     }
 
     await db.user.update({
