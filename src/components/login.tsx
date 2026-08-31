@@ -551,16 +551,29 @@ export default function Login() {
                   </span>
                 </div>
 
-                {/* Subtle hint that super admins can log in directly */}
-                <div className="mt-6 flex items-center justify-center gap-2 text-xs text-white/25">
-                  <motion.span
-                    animate={{ opacity: [0.3, 0.7, 0.3] }}
-                    transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                    className="flex items-center gap-1.5"
+                {/* Small animated connection illustration */}
+                <div className="mt-6 flex items-center justify-center">
+                  <motion.div
+                    className="flex items-center gap-1"
+                    initial={{ opacity: 0.2 }}
                   >
-                    <Shield className="w-3 h-3" />
-                    <span>Les super administrateurs peuvent se connecter directement avec leurs identifiants.</span>
-                  </motion.span>
+                    {[0, 1, 2].map((i) => (
+                      <motion.span
+                        key={i}
+                        className="w-1.5 h-1.5 rounded-full bg-emerald-400"
+                        animate={{
+                          scale: [1, 1.4, 1],
+                          opacity: [0.3, 0.9, 0.3],
+                        }}
+                        transition={{
+                          duration: 1.5,
+                          repeat: Infinity,
+                          ease: 'easeInOut',
+                          delay: i * 0.2,
+                        }}
+                      />
+                    ))}
+                  </motion.div>
                 </div>
 
                 {/* ---- Switch to signup mode ---- */}
