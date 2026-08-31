@@ -185,7 +185,7 @@ function SidebarNav({
 }
 
 export default function AppShell() {
-  const { activeModule, setActiveModule, currentUser, logout, sidebarOpen, toggleSidebar, setSidebarOpen, login: updateStoreUser } = useAppStore()
+  const { activeModule, setActiveModule, currentUser, logout, sidebarOpen, toggleSidebar, setSidebarOpen, login: updateStoreUser, schoolYear } = useAppStore()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -675,9 +675,17 @@ export default function AppShell() {
 
           {/* Footer */}
           <footer className="border-t bg-card/50 px-4 lg:px-6 py-3">
-            <p className="text-xs text-muted-foreground text-center">
-              © 2024 MASOMO — Système de Gestion Scolaire
-            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground text-center">
+                © 2024 MASOMO — Système de Gestion Scolaire
+              </p>
+              {schoolYear && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+                  <CalendarDays className="w-3 h-3" />
+                  Année scolaire : <span className="font-semibold text-primary">{schoolYear}</span>
+                </p>
+              )}
+            </div>
           </footer>
         </div>
       </div>

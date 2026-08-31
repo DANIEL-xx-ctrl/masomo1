@@ -99,7 +99,7 @@ export default function NotificationDropdown() {
     if (!opts?.force && isTabHidden()) return
     try {
       if (opts?.force) setLoading(true)
-      const res = await dedupedFetch(
+      const res = await fetch(
         '/api/notifications?limit=30',
         {
           headers: {
@@ -107,18 +107,18 @@ export default function NotificationDropdown() {
             'x-institution-id': user.institutionId || '',
             'x-user-role': user.role,
           },
-        },
-        // Cache for 10s so the interval poll + popover open + other
-        // components all share one HTTP call.
-        { ttl: 10_000 }
+          cache: 'no-store' as RequestCache,
+        }
       )
       if (res.ok) {
         const json = await res.json()
         setNotifications(json.notifications || json.data || [])
         setUnreadCount(json.unreadCount || 0)
+      } else {
+        console.error('[notifications] fetch failed:', res.status)
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error('[notifications] network error:', err)
     } finally {
       if (opts?.force) setLoading(false)
     }
@@ -172,13 +172,16 @@ export default function NotificationDropdown() {
         body: JSON.stringify({ read: true }),
       })
       if (res.ok) {
+        // Update the notification in place — don't remove it from the list.
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, read: true } : n))
         )
         setUnreadCount((prev) => Math.max(0, prev - 1))
+      } else {
+        console.error('[markAsRead] failed:', res.status)
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error('[markAsRead] error:', err)
     }
   }
 
@@ -188,17 +191,21 @@ export default function NotificationDropdown() {
       const res = await fetch('/api/notifications/mark-all-read', {
         method: 'PUT',
         headers: {
+          'Content-Type': 'application/json',
           'x-user-id': currentUser.id,
           'x-institution-id': currentUser.institutionId || '',
           'x-user-role': currentUser.role,
         },
       })
       if (res.ok) {
+        // Mark all as read in the local state — keep them visible.
         setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
         setUnreadCount(0)
+      } else {
+        console.error('[markAllAsRead] failed:', res.status)
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error('[markAllAsRead] error:', err)
     }
   }
 
