@@ -8,22 +8,26 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const institutionId = await getInstitutionIdWithFallback(request)
     const userId = request.headers.get('x-user-id')
-    if (!userId) {
+    const userRole = request.headers.get('x-user-role')
+    if (!userId && userRole !== 'super_admin') {
       return NextResponse.json({ error: 'Utilisateur non authentifié' }, { status: 401 })
     }
 
     const { id } = await params
     const body = await request.json()
 
-    // Verify notification belongs to user
-    const notification = await db.notification.findFirst({ where: { id, institutionId } })
+    // Find the notification by ID. For super_admin, we don't filter by
+    // userId because the super admin sees all institution notifications
+    // and should be able to mark any of them as read.
+    const where: Record<string, unknown> = { id }
+    if (userRole !== 'super_admin' && userId) {
+      where.userId = userId
+    }
+
+    const notification = await db.notification.findFirst({ where })
     if (!notification) {
       return NextResponse.json({ error: 'Notification non trouvée' }, { status: 404 })
-    }
-    if (notification.userId !== userId) {
-      return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 })
     }
 
     const updated = await db.notification.update({
@@ -44,20 +48,22 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const institutionId = await getInstitutionIdWithFallback(request)
     const userId = request.headers.get('x-user-id')
-    if (!userId) {
+    const userRole = request.headers.get('x-user-role')
+    if (!userId && userRole !== 'super_admin') {
       return NextResponse.json({ error: 'Utilisateur non authentifié' }, { status: 401 })
     }
 
     const { id } = await params
 
-    const notification = await db.notification.findFirst({ where: { id, institutionId } })
+    const where: Record<string, unknown> = { id }
+    if (userRole !== 'super_admin' && userId) {
+      where.userId = userId
+    }
+
+    const notification = await db.notification.findFirst({ where })
     if (!notification) {
       return NextResponse.json({ error: 'Notification non trouvée' }, { status: 404 })
-    }
-    if (notification.userId !== userId) {
-      return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 })
     }
 
     await db.notification.delete({ where: { id } })
