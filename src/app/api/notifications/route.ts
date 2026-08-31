@@ -16,57 +16,25 @@ export async function GET(request: Request) {
 
     const institutionId = await getInstitutionIdWithFallback(request)
     const { searchParams } = new URL(request.url)
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)))
-    const unreadOnly = searchParams.get('unread') === 'true'
-    const schoolYear = searchParams.get('schoolYear')
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10)))
 
-    // ---- Show ALL institution + schoolYear notifications to every role ----
-    // Previously, non-super_admin users only saw notifications where
-    // `userId` matched their own id. This meant a teacher who just got
-    // created (via backfill) could see notifications, but an existing user
-    // who had a notification targeted to another user couldn't.
-    //
-    // New behaviour: every authenticated user sees ALL notifications in
-    // their institution for the current school year — regardless of which
-    // `userId` the notification was originally assigned to. This ensures
-    // announcements, homework, events, etc. are visible to everyone.
-    //
-    // We fetch by institutionId + schoolYear (not userId) and deduplicate
-    // by title+message+type+category so the same announcement sent to
-    // multiple admins doesn't appear multiple times.
+    // ---- Fetch ALL notifications for the institution (no pagination) ----
+    // We fetch up to `limit` notifications (default 50) for the institution,
+    // then deduplicate by title+message+type+category so the same
+    // announcement sent to multiple users appears only once.
     const where: Record<string, unknown> = {}
 
-    // Scope by institution
     if (institutionId && institutionId !== 'inst_default') {
       where.institutionId = institutionId
     }
 
-    if (schoolYear) where.schoolYear = schoolYear
+    const allNotifications = await db.notification.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    })
 
-    if (unreadOnly) {
-      where.read = false
-      // When filtering unread, we DO use the user's own id so each user
-      // has their own read/unread state (a notification marked read by
-      // user A should still appear unread for user B).
-      if (userId && userRole !== 'super_admin') {
-        where.userId = userId
-      }
-    }
-
-    const [allNotifications, total] = await Promise.all([
-      db.notification.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      db.notification.count({ where }),
-    ])
-
-    // Deduplicate by title+message+type+category — the same notification
-    // may have been created for multiple users (e.g. all admins). We want
-    // to show it only once in the bell dropdown.
+    // Deduplicate by title+message+type+category
     const seen = new Set<string>()
     const dedupedNotifications = allNotifications.filter((n) => {
       const key = `${n.title}|${n.message}|${n.type}|${n.category}`
@@ -75,30 +43,23 @@ export async function GET(request: Request) {
       return true
     })
 
-    // Get unread count for the CURRENT user (their own read state)
-    const unreadCount = await db.notification.count({
-      where: {
-        ...(userId && userRole !== 'super_admin' && { userId }),
-        ...(institutionId && institutionId !== 'inst_default' && { institutionId }),
-        read: false,
-      },
-    })
+    // Get unread count — for non-super_admin, count only their own
+    // unread notifications. For super_admin, count all unread in the
+    // institution (since they see all notifications).
+    const unreadWhere: Record<string, unknown> = { read: false }
+    if (institutionId && institutionId !== 'inst_default') {
+      unreadWhere.institutionId = institutionId
+    }
+    if (userId && userRole !== 'super_admin') {
+      unreadWhere.userId = userId
+    }
+    const unreadCount = await db.notification.count({ where: unreadWhere })
 
-    // Cache-Control: allow Vercel's edge CDN to cache this response for a
-    // few seconds. This dramatically reduces the number of serverless
-    // function invocations when multiple browser tabs / components poll
-    // /api/notifications concurrently.
     const res = NextResponse.json({
       notifications: dedupedNotifications,
       unreadCount,
-      pagination: {
-        page,
-        limit,
-        total: dedupedNotifications.length,
-        totalPages: Math.ceil(dedupedNotifications.length / limit),
-      },
     })
-    res.headers.set('Cache-Control', 'private, s-maxage=5, stale-while-revalidate=15')
+    res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
     return res
   } catch (error) {
     console.error('Get notifications error:', error)
