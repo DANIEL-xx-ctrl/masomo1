@@ -8,6 +8,7 @@ import {
   Users,
   School,
   CalendarDays,
+  Building2,
   FileText,
   ClipboardList,
   CreditCard,
@@ -185,7 +186,7 @@ function SidebarNav({
 }
 
 export default function AppShell() {
-  const { activeModule, setActiveModule, currentUser, logout, sidebarOpen, toggleSidebar, setSidebarOpen, login: updateStoreUser, schoolYear } = useAppStore()
+  const { activeModule, setActiveModule, currentUser, logout, sidebarOpen, toggleSidebar, setSidebarOpen, login: updateStoreUser, schoolYear, activeInstitutionName } = useAppStore()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -679,12 +680,24 @@ export default function AppShell() {
               <p className="text-xs text-muted-foreground text-center">
                 © 2024 MASOMO — Système de Gestion Scolaire
               </p>
-              {schoolYear && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
-                  <CalendarDays className="w-3 h-3" />
-                  Année scolaire : <span className="font-semibold text-primary">{schoolYear}</span>
-                </p>
-              )}
+              <div className="flex items-center gap-3 flex-wrap justify-center">
+                {/* Institution name — visible especially on mobile where the
+                    header badge is hidden (InstitutionBadge has hidden md:inline-flex) */}
+                {(activeInstitutionName || currentUser?.institutionName) && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+                    <Building2 className="w-3 h-3" />
+                    <span className="font-semibold text-primary truncate max-w-[150px]">
+                      {activeInstitutionName || currentUser?.institutionName}
+                    </span>
+                  </p>
+                )}
+                {schoolYear && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+                    <CalendarDays className="w-3 h-3" />
+                    Année : <span className="font-semibold text-primary">{schoolYear}</span>
+                  </p>
+                )}
+              </div>
             </div>
           </footer>
         </div>
