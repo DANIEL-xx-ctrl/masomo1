@@ -24,19 +24,20 @@ export const ROLE_PREFIX: Record<string, string> = {
 /**
  * Generates a unique, human-friendly userCode for a user.
  *
- * Format: {PREFIX}-{3-digit number}, e.g. "ELV-001", "ENS-042", "PER-007".
+ * Format: {PREFIX}-{3-digit number}, e.g. "ELV-001", "TCH-042".
  *
- * The number is sequential per role within an institution. For users without
- * an institution (e.g. super admin), the sequence is global.
+ * The number is sequential per role. Previously it was scoped per-institution
+ * (each institution had its own ELV-001, TCH-001…), but this caused
+ * duplicates across institutions — two institutions each having a "TCH-001"
+ * meant a login with "TCH-001" could match the wrong user.
  *
- * This function queries the database to find the highest existing number
- * for the given prefix + institution, then returns the next one.
+ * Now the code is **globally unique**: we find the highest existing number
+ * for the given prefix across ALL institutions, then return the next one.
  *
  * @param role      The user's role (student, teacher, parent, staff, admin).
- * @param institutionId  Optional institution scope. When provided, codes are
- *                       sequenced per-institution. When null/undefined, codes
- *                       are sequenced globally (for cross-institution users).
- * @returns A unique userCode string like "ELV-001".
+ * @param institutionId  Optional (kept for backward compatibility, but no
+ *                        longer used for scoping — codes are global now).
+ * @returns A globally unique userCode string like "ELV-001".
  */
 export async function generateUserCode(
   role: string,
@@ -44,20 +45,12 @@ export async function generateUserCode(
 ): Promise<string> {
   const prefix = ROLE_PREFIX[role] || 'USR'
 
-  // Find all existing codes with this prefix to determine the next number.
-  // We scope by institution so each school has its own ELV-001, ENS-001, etc.
-  const whereClause: Record<string, unknown> = {
-    userCode: { startsWith: `${prefix}-` },
-  }
-  if (institutionId) {
-    whereClause.institutionId = institutionId
-  } else {
-    // Users without an institution (e.g. super admin) get a global sequence.
-    whereClause.institutionId = null
-  }
-
+  // Find all existing codes with this prefix across ALL institutions
+  // (global uniqueness — not per-institution anymore).
   const existingUsers = await db.user.findMany({
-    where: whereClause,
+    where: {
+      userCode: { startsWith: `${prefix}-` },
+    },
     select: { userCode: true },
   })
 
@@ -69,11 +62,18 @@ export async function generateUserCode(
     })
     .filter((n) => !isNaN(n) && n > 0)
 
-  const nextNum = numbers.length > 0 ? Math.max(...numbers) + 1 : 1
+  let nextNum = numbers.length > 0 ? Math.max(...numbers) + 1 : 1
 
-  // Pad to 3 digits (supports up to 999 per role per institution).
-  // If we ever exceed 999, the number just grows to 4+ digits naturally.
-  return `${prefix}-${String(nextNum).padStart(3, '0')}`
+  // Safety: verify the generated code doesn't already exist (handles edge
+  // cases where the regex didn't match a manually-set code). Keep incrementing
+  // until we find a truly unique code.
+  let candidate = `${prefix}-${String(nextNum).padStart(3, '0')}`
+  while (existingUsers.some((u) => u.userCode === candidate)) {
+    nextNum++
+    candidate = `${prefix}-${String(nextNum).padStart(3, '0')}`
+  }
+
+  return candidate
 }
 
 /**
