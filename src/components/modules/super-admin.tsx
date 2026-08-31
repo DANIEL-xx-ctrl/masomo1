@@ -1070,11 +1070,11 @@ export default function SuperAdminModule() {
   const itemVariants = { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3 } } }
 
   const tabs = [
-    { key: 'institutions' as const, label: 'Institutions', icon: Building2 },
-    { key: 'admins' as const, label: 'Administrateurs', icon: Users },
-    { key: 'admins-list' as const, label: 'Liste des administrateurs', icon: Table2 },
-    { key: 'all-users' as const, label: 'Tous les utilisateurs', icon: Users },
-    { key: 'profile' as const, label: 'Mon Profil', icon: Shield },
+    { key: 'institutions' as const, label: 'Institutions', shortLabel: 'Inst.', icon: Building2 },
+    { key: 'admins' as const, label: 'Administrateurs', shortLabel: 'Admins', icon: Users },
+    { key: 'admins-list' as const, label: 'Liste des administrateurs', shortLabel: 'Liste admins', icon: Table2 },
+    { key: 'all-users' as const, label: 'Tous les utilisateurs', shortLabel: 'Utilisateurs', icon: Users },
+    { key: 'profile' as const, label: 'Mon Profil', shortLabel: 'Profil', icon: Shield },
   ]
 
   const detailTabs: { key: DetailTab; label: string; icon: React.ElementType }[] = [
@@ -1119,7 +1119,7 @@ export default function SuperAdminModule() {
     <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
       {/* Tab Navigation */}
       <motion.div variants={itemVariants}>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-1 px-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
@@ -1128,10 +1128,11 @@ export default function SuperAdminModule() {
                 variant={activeTab === tab.key ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => { setActiveTab(tab.key); handleCloseInstitution() }}
-                className={activeTab === tab.key ? 'bg-gradient-to-r from-orange-500 to-amber-600 text-white hover:from-orange-600 hover:to-amber-700' : ''}
+                className={`shrink-0 whitespace-nowrap ${activeTab === tab.key ? 'bg-gradient-to-r from-orange-500 to-amber-600 text-white hover:from-orange-600 hover:to-amber-700' : ''}`}
               >
-                <Icon className="w-4 h-4 mr-1.5" />
-                {tab.label}
+                <Icon className="w-4 h-4 mr-1.5 shrink-0" />
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.shortLabel}</span>
               </Button>
             )
           })}
