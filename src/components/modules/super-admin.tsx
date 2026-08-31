@@ -277,6 +277,7 @@ export default function SuperAdminModule() {
   const [savingUser, setSavingUser] = useState(false)
   const [revealedUserPasswords, setRevealedUserPasswords] = useState<Set<string>>(new Set())
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<AllUserItem | null>(null)
+  const [fixingDuplicates, setFixingDuplicates] = useState(false)
 
   // Entity CRUD state
   const [deletingEntity, setDeletingEntity] = useState<{ type: string; id: string; name: string } | null>(null)
@@ -466,6 +467,28 @@ export default function SuperAdminModule() {
       addToast('error', 'Erreur', err instanceof Error ? err.message : 'Erreur inconnue')
     } finally {
       setSavingUser(false)
+    }
+  }
+
+  // ---- Fix duplicate userCodes and emails ----
+  const handleFixDuplicates = async () => {
+    setFixingDuplicates(true)
+    try {
+      const res = await fetch('/api/users/fix-duplicates', {
+        method: 'POST',
+        headers: { 'x-user-role': 'super_admin' },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Échec de la correction.')
+      addToast('success', 'Doublons corrigés', data.message || `${data.fixedCount} doublon(s) corrigé(s).`)
+      if (data.details && data.details.length > 0) {
+        console.log('[fix-duplicates] Details:', data.details)
+      }
+      await fetchAllUsers()
+    } catch (err) {
+      addToast('error', 'Erreur', err instanceof Error ? err.message : 'Erreur inconnue')
+    } finally {
+      setFixingDuplicates(false)
     }
   }
 
@@ -2874,6 +2897,10 @@ export default function SuperAdminModule() {
                   </Select>
                   <Button variant="outline" size="sm" onClick={fetchAllUsers} disabled={loadingAllUsers} className="h-9 shrink-0">
                     {loadingAllUsers ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleFixDuplicates} disabled={fixingDuplicates} className="h-9 shrink-0" title="Corriger les IDs et emails en double">
+                    {fixingDuplicates ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
+                    <span className="text-xs ml-1 hidden sm:inline">Corriger doublons</span>
                   </Button>
                 </div>
 
