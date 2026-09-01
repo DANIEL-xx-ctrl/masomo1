@@ -728,6 +728,7 @@ export default function PaymentsModule() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Élève</TableHead>
+                    <TableHead>Classe</TableHead>
                     <TableHead className="text-right">Montant</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Méthode</TableHead>
@@ -757,6 +758,9 @@ export default function PaymentsModule() {
                             </Avatar>
                             <span>{payment.student ? `${payment.student.firstName} ${payment.student.lastName}` : '—'}</span>
                           </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {payment.student?.class?.name || '—'}
                         </TableCell>
                         <TableCell className="text-right font-semibold">{formatCurrency(payment.amount)}</TableCell>
                         <TableCell>
@@ -843,6 +847,9 @@ export default function PaymentsModule() {
                           <p className="font-semibold text-foreground">
                             {payment.student ? `${payment.student.firstName} ${payment.student.lastName}` : '—'}
                           </p>
+                          {payment.student?.class?.name && (
+                            <p className="text-xs text-muted-foreground">{payment.student.class.name}</p>
+                          )}
                           <p className="text-lg font-bold text-foreground mt-1">{formatCurrency(payment.amount)}</p>
                         </div>
                       </div>
@@ -1217,6 +1224,18 @@ export default function PaymentsModule() {
                     {detailPayment.student ? `${detailPayment.student.firstName} ${detailPayment.student.lastName}` : '—'}
                   </span>
                 </div>
+                {detailPayment.student?.class?.name && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Classe</span>
+                    <span className="font-semibold">{detailPayment.student.class.name}</span>
+                  </div>
+                )}
+                {receiptData?.student?.className && !detailPayment.student?.class?.name && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Classe</span>
+                    <span className="font-semibold">{receiptData.student.className}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Type</span>
                   <span className="font-semibold">{PAYMENT_TYPE_LABELS[detailPayment.type] || detailPayment.type}</span>
