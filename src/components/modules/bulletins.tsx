@@ -18,11 +18,13 @@ import {
   FileSpreadsheet,
   Trophy,
   FileType2,
+  Wallet,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
@@ -140,6 +142,9 @@ export default function BulletinsModule() {
   const [procResult, setProcResult] = useState<ProcResult | null>(null);
   const [procError, setProcError] = useState<string>('');
   const [procExporting, setProcExporting] = useState<'pdf' | 'excel' | 'word' | null>(null);
+  // When true, students with unpaid/pending payments are excluded from the
+  // proclamation list (only "solvent" students appear).
+  const [procExcludeInsolvent, setProcExcludeInsolvent] = useState(true);
 
   const fetchClasses = useCallback(async () => {
     try {
@@ -344,6 +349,7 @@ export default function BulletinsModule() {
     if (procClassId && procClassId !== 'all') params.set('classId', procClassId);
     if (procPeriod === 'trimester') params.set('trimester', procTrimester);
     if (procPeriod === 'semester') params.set('semester', procSemester);
+    if (procExcludeInsolvent) params.set('excludeInsolvent', 'true');
     const base =
       endpoint === 'list'
         ? '/api/bulletins/proclamation'
@@ -768,6 +774,7 @@ export default function BulletinsModule() {
                       <TableHead>Matière</TableHead>
                       <TableHead className="text-center">Coef.</TableHead>
                       <TableHead className="text-center">Notes</TableHead>
+                      <TableHead className="text-center">Période</TableHead>
                       <TableHead className="text-center">Moy./20</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Commentaire</TableHead>
@@ -802,6 +809,11 @@ export default function BulletinsModule() {
                                 </span>
                               ))}
                             </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline" className="text-[10px] shrink-0">
+                              {detailBulletin.trimester || grades[0]?.trimester || '—'}
+                            </Badge>
                           </TableCell>
                           <TableCell className="text-center">
                             <span className={`font-bold ${avgSubject >= 10 ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -1029,6 +1041,19 @@ export default function BulletinsModule() {
                   Générer la liste
                 </Button>
               </div>
+            </div>
+
+            {/* Exclude insolvent checkbox */}
+            <div className="flex items-center gap-2 mt-3">
+              <Checkbox
+                id="exclude-insolvent"
+                checked={procExcludeInsolvent}
+                onCheckedChange={(checked) => setProcExcludeInsolvent(checked === true)}
+              />
+              <Label htmlFor="exclude-insolvent" className="text-xs cursor-pointer flex items-center gap-1">
+                <Wallet className="w-3 h-3" />
+                Exclure les insolvables (élèves avec paiements en attente ou impayés)
+              </Label>
             </div>
           </div>
 

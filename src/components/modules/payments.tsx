@@ -122,6 +122,18 @@ function formatCurrency(amount: number): string {
   return `$${amount.toLocaleString('fr-FR')}`;
 }
 
+// Format an ISO date string (e.g. "2024-12-15" or "2024-12-15T10:30:00")
+// to the French format dd/mm/yyyy.
+function formatDateFR(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  try {
+    const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00')
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  } catch {
+    return iso
+  }
+}
+
 function getMethodIcon(method: string) {
   switch (method) {
     case 'mobile_money': return <Smartphone className="w-4 h-4" />;
@@ -762,7 +774,7 @@ export default function PaymentsModule() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {payment.paymentDate || payment.createdAt?.split('T')[0]}
+                          {formatDateFR(payment.paymentDate || payment.createdAt?.split('T')[0])}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground font-mono">
                           {payment.reference || '—'}
@@ -847,7 +859,7 @@ export default function PaymentsModule() {
                     </div>
                     <div className="flex items-center justify-between mt-3 pt-3 border-t">
                       <span className="text-xs text-muted-foreground">
-                        {payment.paymentDate || payment.createdAt?.split('T')[0]}
+                        {formatDateFR(payment.paymentDate || payment.createdAt?.split('T')[0])}
                       </span>
                       <div className="flex items-center gap-1">
                         <Button
@@ -1218,7 +1230,7 @@ export default function PaymentsModule() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Date</span>
-                  <span className="font-semibold">{detailPayment.paymentDate || '—'}</span>
+                  <span className="font-semibold">{detailPayment.paymentDate ? formatDateFR(detailPayment.paymentDate) : '—'}</span>
                 </div>
                 {detailPayment.reference && (
                   <div className="flex justify-between text-sm">

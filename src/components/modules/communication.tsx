@@ -20,6 +20,7 @@ import {
   Image as ImageIcon,
   Video,
   Upload,
+  Download,
   X,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -473,21 +474,37 @@ export default function CommunicationModule() {
                                 {announcement.content}
                               </p>
                               {announcement.mediaUrl && announcement.mediaType === 'image' && (
-                                <div className="mt-3 rounded-lg overflow-hidden border bg-muted/30">
+                                <div className="mt-3 rounded-lg overflow-hidden border bg-muted/30 relative group">
                                   <img
                                     src={announcement.mediaUrl}
                                     alt={announcement.title}
                                     className="w-full max-h-80 object-cover"
                                   />
+                                  <a
+                                    href={announcement.mediaUrl}
+                                    download
+                                    className="absolute top-2 right-2 p-2 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
+                                    title="Télécharger l'image"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </a>
                                 </div>
                               )}
                               {announcement.mediaUrl && announcement.mediaType === 'video' && (
-                                <div className="mt-3 rounded-lg overflow-hidden border bg-black">
+                                <div className="mt-3 rounded-lg overflow-hidden border bg-black relative group">
                                   <video
                                     src={announcement.mediaUrl}
                                     controls
                                     className="w-full max-h-80 object-contain"
                                   />
+                                  <a
+                                    href={announcement.mediaUrl}
+                                    download
+                                    className="absolute top-2 right-2 p-2 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80 z-10"
+                                    title="Télécharger la vidéo"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </a>
                                 </div>
                               )}
                               <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
