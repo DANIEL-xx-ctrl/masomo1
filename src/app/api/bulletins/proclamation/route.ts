@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getProclamationData } from '@/lib/proclamation'
+import { db } from '@/lib/db'
 
 /**
  * GET /api/bulletins/proclamation
@@ -10,6 +11,7 @@ import { getProclamationData } from '@/lib/proclamation'
  *  - trimester: "1er" | "2eme" | "3eme"            (when period=trimester)
  *  - semester: "1" | "2"                            (when period=semester)
  *  - classId: optional — restrict to a single class
+ *  - excludeInsolvent: "true" — exclude students with pending/unpaid payments
  *
  * Returns a proclamation list sorted by average DESC (rank 1 = best).
  */
@@ -21,6 +23,7 @@ export async function GET(request: Request) {
     const trimester = searchParams.get('trimester')
     const semester = searchParams.get('semester')
     const classId = searchParams.get('classId')
+    const excludeInsolvent = searchParams.get('excludeInsolvent') === 'true'
 
     if (!schoolYear) {
       return NextResponse.json(
@@ -49,6 +52,41 @@ export async function GET(request: Request) {
       semester,
       classId,
     })
+
+    // ---- Exclude insolvent students ----
+    // If excludeInsolvent is true, we remove students who have pending or
+    // failed payments for the school year. A student is considered "solvent"
+    // if they have NO payments with status "pending" or "failed".
+    if (excludeInsolvent && result.entries.length > 0) {
+      const studentIds = result.entries.map((e: { studentId: string }) => e.studentId)
+      // Find students with at least one pending or failed payment
+      const insolventPayments = await db.payment.findMany({
+        where: {
+          studentId: { in: studentIds },
+          status: { in: ['pending', 'failed'] },
+          schoolYear,
+        },
+        select: { studentId: true },
+        distinct: ['studentId'],
+      })
+      const insolventIds = new Set(insolventPayments.map((p) => p.studentId))
+
+      // Filter out insolvent students and re-rank
+      const filtered = result.entries.filter(
+        (e: { studentId: string }) => !insolventIds.has(e.studentId)
+      )
+      // Re-rank
+      filtered.forEach((entry: { rank: number }, i: number) => {
+        entry.rank = i + 1
+      })
+
+      result.entries = filtered
+      result.stats = {
+        ...result.stats,
+        totalStudents: filtered.length,
+        excludedCount: result.entries.length - filtered.length,
+      }
+    }
 
     return NextResponse.json(result)
   } catch (error) {
