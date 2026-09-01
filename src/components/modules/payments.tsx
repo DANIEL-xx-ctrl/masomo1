@@ -156,6 +156,7 @@ export default function PaymentsModule() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterMethod, setFilterMethod] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
+  const [filterClassId, setFilterClassId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Pagination
@@ -205,6 +206,9 @@ export default function PaymentsModule() {
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptError, setReceiptError] = useState<string | null>(null);
 
+  // Classes list for the class filter dropdown
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+
   const fetchStudents = useCallback(async () => {
     try {
       const res = await fetch(withSchoolYear('/api/students', schoolYear));
@@ -214,6 +218,16 @@ export default function PaymentsModule() {
       addToast('error', 'Erreur', 'Impossible de charger les élèves');
     }
   }, [addToast, schoolYear]);
+
+  const fetchClasses = useCallback(async () => {
+    try {
+      const res = await fetch(withSchoolYear('/api/classes', schoolYear));
+      const data = await res.json();
+      setClasses(data.classes || []);
+    } catch {
+      // Silent — classes filter just won't be available
+    }
+  }, [schoolYear]);
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
@@ -232,7 +246,8 @@ export default function PaymentsModule() {
 
   useEffect(() => {
     fetchStudents();
-  }, [fetchStudents]);
+    fetchClasses();
+  }, [fetchStudents, fetchClasses]);
 
   useEffect(() => {
     fetchPayments();
@@ -247,13 +262,15 @@ export default function PaymentsModule() {
   const filteredPayments = payments.filter((payment) => {
     if (filterMethod && filterMethod !== 'all' && payment.method !== filterMethod) return false;
     if (filterType && filterType !== 'all' && payment.type !== filterType) return false;
+    if (filterClassId && filterClassId !== 'all' && payment.student?.classId !== filterClassId) return false;
     if (searchQuery) {
       const name = payment.student
         ? `${payment.student.firstName} ${payment.student.lastName}`.toLowerCase()
         : '';
       const ref = payment.reference?.toLowerCase() || '';
+      const className = payment.student?.class?.name?.toLowerCase() || '';
       const q = searchQuery.toLowerCase();
-      if (!name.includes(q) && !ref.includes(q)) return false;
+      if (!name.includes(q) && !ref.includes(q) && !className.includes(q)) return false;
     }
     return true;
   });
@@ -321,7 +338,7 @@ export default function PaymentsModule() {
   // Reset to page 1 when filters or search change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterStatus, filterMethod, filterType, searchQuery, schoolYear]);
+  }, [filterStatus, filterMethod, filterType, filterClassId, searchQuery, schoolYear]);
 
   // Generate page numbers with ellipsis (1 2 3 ... 8 9 10)
   const getPageNumbers = (): (number | 'ellipsis')[] => {
@@ -655,7 +672,7 @@ export default function PaymentsModule() {
       {/* Filter Bar */}
       <Card>
         <CardContent className="p-3 sm:p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
             <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Statut" />
@@ -689,10 +706,21 @@ export default function PaymentsModule() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={filterClassId} onValueChange={setFilterClassId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Classe" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les classes</SelectItem>
+                {classes.map((cls) => (
+                  <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <div className="relative col-span-2 sm:col-span-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Rechercher..."
+                placeholder="Rechercher par nom, classe, réf..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 w-full"
