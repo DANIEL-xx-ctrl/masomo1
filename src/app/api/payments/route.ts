@@ -25,6 +25,9 @@ export async function GET(request: Request) {
             lastName: true,
             image: true,
             updatedAt: true,
+            class: {
+              select: { id: true, name: true, level: true },
+            },
           },
         },
       },
