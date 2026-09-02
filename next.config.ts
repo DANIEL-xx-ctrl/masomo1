@@ -13,6 +13,15 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/": ["./node_modules/.prisma/client/**/*", "./node_modules/@prisma/client/**/*"],
   },
+  // Allow large file uploads (videos up to 50MB) via API routes.
+  // Vercel's default body size limit is 4.5MB; this raises it to 50MB.
+  // NOTE: On Vercel Hobby plan, the actual limit is 4.5MB for serverless
+  // function body. For larger uploads, use Vercel Blob or direct-to-storage.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "50mb",
+    },
+  },
 };
 
 export default nextConfig;
