@@ -191,3 +191,41 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'ID de l\'annonce requis' },
+        { status: 400 }
+      )
+    }
+
+    const existing = await db.announcement.findUnique({ where: { id } })
+    if (!existing) {
+      return NextResponse.json(
+        { error: 'Annonce non trouvée' },
+        { status: 404 }
+      )
+    }
+
+    // Delete related notifications first
+    await db.notification.deleteMany({
+      where: { linkParams: id, category: 'announcement' },
+    })
+
+    // Delete the announcement
+    await db.announcement.delete({ where: { id } })
+
+    return NextResponse.json({ message: 'Annonce supprimée avec succès' })
+  } catch (error) {
+    console.error('Delete announcement error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la suppression de l\'annonce' },
+      { status: 500 }
+    )
+  }
+}
