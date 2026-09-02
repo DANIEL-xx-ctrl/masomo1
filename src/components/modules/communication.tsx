@@ -21,6 +21,7 @@ import {
   Video,
   Upload,
   Download,
+  Trash2,
   X,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,6 +80,8 @@ export default function CommunicationModule() {
   const addToast = useAppStore((s) => s.addToast);
   const currentUser = useAppStore((s) => s.currentUser);
   const schoolYear = useAppStore((s) => s.schoolYear);
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+  const isSuperAdmin = currentUser?.role === 'super_admin';
 
   // ---- Announcements State ----
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -326,6 +329,32 @@ export default function CommunicationModule() {
     }
   };
 
+  // ---- Delete announcement ----
+  const [deletingAnnouncementId, setDeletingAnnouncementId] = useState<string | null>(null);
+
+  const handleDeleteAnnouncement = async (id: string, title: string) => {
+    if (!confirm(`Supprimer l'annonce "${title}" ? Cette action est irréversible.`)) return;
+    setDeletingAnnouncementId(id);
+    try {
+      const res = await fetch(`/api/announcements?id=${id}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-id': currentUser?.id || '',
+          'x-institution-id': currentUser?.institutionId || '',
+          'x-user-role': currentUser?.role || '',
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Échec de la suppression');
+      addToast('success', 'Annonce supprimée', `"${title}" a été supprimée.`);
+      await fetchAnnouncements();
+    } catch (err) {
+      addToast('error', 'Erreur', err instanceof Error ? err.message : 'Erreur inconnue');
+    } finally {
+      setDeletingAnnouncementId(null);
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!msgFormReceiverId || !msgFormContent) {
       addToast('warning', 'Champs requis', 'Veuillez sélectionner un destinataire et écrire un message');
@@ -526,6 +555,20 @@ export default function CommunicationModule() {
                                     {announcement.mediaType === 'video' ? <Video className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
                                     {announcement.mediaType === 'video' ? 'Vidéo' : 'Image'}
                                   </span>
+                                )}
+                                {/* Delete button — visible only for admin/super_admin */}
+                                {(isAdmin || isSuperAdmin) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteAnnouncement(announcement.id, announcement.title)}
+                                    disabled={deletingAnnouncementId === announcement.id}
+                                    className="ml-auto p-1.5 rounded-md text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-50 shrink-0"
+                                    title="Supprimer cette annonce"
+                                  >
+                                    {deletingAnnouncementId === announcement.id
+                                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      : <Trash2 className="w-3.5 h-3.5" />}
+                                  </button>
                                 )}
                               </div>
                             </div>
