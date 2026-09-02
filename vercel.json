@@ -6,6 +6,10 @@
   "functions": {
     "src/app/api/**/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/upload-media/route.ts": {
+      "maxDuration": 120,
+      "memory": 1024
     }
   },
   "crons": []
