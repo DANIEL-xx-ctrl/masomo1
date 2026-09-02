@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getInstitutionIdWithFallback } from '@/lib/api-auth'
-import { writeFile, mkdir } from 'fs/promises'
+import { writeFile, mkdir, readFile } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
 
 export const maxDuration = 120
+
+// Use /tmp for file storage — it's the ONLY writable directory on Vercel
+// serverless functions. In local dev, process.cwd()/public/uploads also works,
+// but on Vercel the filesystem is read-only except for /tmp.
+function getUploadDir() {
+  // On Vercel: /tmp/uploads/communications
+  // In local dev: we can also use /tmp to keep it consistent
+  return join('/tmp', 'uploads', 'communications')
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,11 +86,14 @@ export async function POST(request: NextRequest) {
     const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`
 
     // ---- Storage strategy ----
-    // ALL files (images and videos) are saved to the filesystem to avoid
-    // Vercel's 4.5MB body size limit and DB memory issues with base64.
-    // The public/uploads/communications/ directory is served by the
-    // /api/uploads/[...path] route.
-    const uploadDir = join(process.cwd(), 'public', 'uploads', 'communications')
+    // Store ALL files in /tmp (the only writable directory on Vercel).
+    // For images (≤ 4.5MB): also store in DB as base64 fallback so they survive
+    //   across serverless invocations (files in /tmp are ephemeral on Vercel).
+    // For videos (> 4.5MB): store in /tmp and serve via /api/media-file/[name]
+    //   route. The file will be available for the current serverless invocation
+    //   and may persist for a while. For production reliability, use Vercel Blob.
+
+    const uploadDir = getUploadDir()
     if (!existsSync(uploadDir)) {
       await mkdir(uploadDir, { recursive: true })
     }
@@ -90,7 +102,32 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes)
     await writeFile(filePath, buffer)
 
-    const url = `/uploads/communications/${uniqueName}`
+    // For images small enough, also store in DB as base64 for persistence
+    if (isImage && buffer.length <= 4 * 1024 * 1024) {
+      const base64Data = buffer.toString('base64')
+      try {
+        const mediaFile = await db.mediaFile.create({
+          data: {
+            filename: uniqueName,
+            mimeType,
+            data: base64Data,
+            size: buffer.length,
+            institutionId,
+          },
+        })
+        // Return DB-based URL for images (persistent across invocations)
+        const url = `/api/media/${mediaFile.id}${ext}`
+        return NextResponse.json({ url, message: 'Fichier uploadé avec succès' })
+      } catch (dbError) {
+        // If DB fails, fall back to file-based URL
+        console.error('DB storage failed, using file URL:', dbError)
+        const url = `/api/media-file/${uniqueName}`
+        return NextResponse.json({ url, message: 'Fichier uploadé avec succès' })
+      }
+    }
+
+    // For videos and large images: use file-based URL
+    const url = `/api/media-file/${uniqueName}`
     return NextResponse.json({ url, message: 'Fichier uploadé avec succès' })
   } catch (error) {
     console.error('Upload media error:', error)
@@ -99,5 +136,47 @@ export async function POST(request: NextRequest) {
       { error: `Erreur lors de l'upload du fichier: ${msg}` },
       { status: 500 }
     )
+  }
+}
+
+// GET handler to serve files from /tmp
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const name = searchParams.get('name')
+
+    if (!name) {
+      return NextResponse.json({ error: 'Nom de fichier requis' }, { status: 400 })
+    }
+
+    // Prevent path traversal
+    const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '')
+    const filePath = join(getUploadDir(), safeName)
+
+    if (!existsSync(filePath)) {
+      return NextResponse.json({ error: 'Fichier non trouvé' }, { status: 404 })
+    }
+
+    const buffer = await readFile(filePath)
+    // Determine content type from extension
+    const ext = safeName.substring(safeName.lastIndexOf('.')).toLowerCase()
+    const mimeMap: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.gif': 'image/gif', '.webp': 'image/webp',
+      '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
+      '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
+      '.mkv': 'video/x-matroska',
+    }
+    const contentType = mimeMap[ext] || 'application/octet-stream'
+
+    return new NextResponse(buffer, {
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400',
+      },
+    })
+  } catch (error) {
+    console.error('Serve media file error:', error)
+    return NextResponse.json({ error: 'Erreur lors de la lecture du fichier' }, { status: 500 })
   }
 }
