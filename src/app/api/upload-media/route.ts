@@ -1,20 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { put } from '@vercel/blob'
 import { getInstitutionIdWithFallback } from '@/lib/api-auth'
-import { writeFile, mkdir, readFile } from 'fs/promises'
-import { join } from 'path'
-import { existsSync } from 'fs'
 
 export const maxDuration = 120
-
-// Use /tmp for file storage — it's the ONLY writable directory on Vercel
-// serverless functions. In local dev, process.cwd()/public/uploads also works,
-// but on Vercel the filesystem is read-only except for /tmp.
-function getUploadDir() {
-  // On Vercel: /tmp/uploads/communications
-  // In local dev: we can also use /tmp to keep it consistent
-  return join('/tmp', 'uploads', 'communications')
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,155 +16,34 @@ export async function POST(request: NextRequest) {
 
     const isVideo = file.type.startsWith('video/')
     const isImage = file.type.startsWith('image/')
-
-    if (!isVideo && !isImage) {
-      return NextResponse.json(
-        { error: 'Type de fichier non supporté. Utilisez des images ou des vidéos.' },
-        { status: 400 }
-      )
-    }
-
-    // Validate file size — images: max 10MB, videos: max 50MB
     const maxBytes = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024
-    const maxLabel = isVideo ? '50 Mo' : '10 Mo'
+
     if (file.size > maxBytes) {
       return NextResponse.json(
-        { error: `Le fichier dépasse la limite de ${maxLabel}` },
+        { error: `Le fichier dépasse la limite de ${isVideo ? '50 Mo' : '10 Mo'}` },
         { status: 400 }
       )
-    }
-
-    // Validate file type
-    const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff']
-    const validVideoTypes = [
-      'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
-      'video/x-msvideo', 'video/avi', 'video/x-matroska', 'video/x-flv',
-      'video/3gpp', 'video/x-m4v', 'video/MP2T', 'video/x-ms-wmv',
-    ]
-    const validImageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.tiff']
-    const validVideoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.flv', '.3gp', '.m4v', '.ts', '.wmv']
-    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
-    const isValidMime = [...validImageTypes, ...validVideoTypes].includes(file.type)
-    const isValidExtension = [...validImageExtensions, ...validVideoExtensions].includes(ext)
-
-    if (!isValidMime && !isValidExtension) {
-      return NextResponse.json(
-        { error: `Type de fichier non supporté (${file.type || 'inconnu'}). Utilisez des images (JPEG, PNG, GIF, WebP) ou vidéos (MP4, WebM, MOV, AVI).` },
-        { status: 400 }
-      )
-    }
-
-    // Determine MIME type
-    let mimeType = file.type
-    if (!mimeType || !isValidMime) {
-      const mimeMap: Record<string, string> = {
-        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-        '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-        '.bmp': 'image/bmp', '.tiff': 'image/tiff',
-        '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
-        '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
-        '.mkv': 'video/x-matroska', '.flv': 'video/x-flv',
-        '.3gp': 'video/3gpp', '.m4v': 'video/x-m4v',
-        '.ts': 'video/MP2T', '.wmv': 'video/x-ms-wmv',
-      }
-      mimeType = mimeMap[ext] || 'application/octet-stream'
     }
 
     // Generate unique filename
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
     const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`
 
-    // ---- Storage strategy ----
-    // Store ALL files in /tmp (the only writable directory on Vercel).
-    // For images (≤ 4.5MB): also store in DB as base64 fallback so they survive
-    //   across serverless invocations (files in /tmp are ephemeral on Vercel).
-    // For videos (> 4.5MB): store in /tmp and serve via /api/media-file/[name]
-    //   route. The file will be available for the current serverless invocation
-    //   and may persist for a while. For production reliability, use Vercel Blob.
+    // Upload to Vercel Blob
+    const blob = await put(uniqueName, file, {
+      access: 'public',
+      contentType: file.type || 'application/octet-stream',
+    })
 
-    const uploadDir = getUploadDir()
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true })
-    }
-    const filePath = join(uploadDir, uniqueName)
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    await writeFile(filePath, buffer)
-
-    // For images small enough, also store in DB as base64 for persistence
-    if (isImage && buffer.length <= 4 * 1024 * 1024) {
-      const base64Data = buffer.toString('base64')
-      try {
-        const mediaFile = await db.mediaFile.create({
-          data: {
-            filename: uniqueName,
-            mimeType,
-            data: base64Data,
-            size: buffer.length,
-            institutionId,
-          },
-        })
-        // Return DB-based URL for images (persistent across invocations)
-        const url = `/api/media/${mediaFile.id}${ext}`
-        return NextResponse.json({ url, message: 'Fichier uploadé avec succès' })
-      } catch (dbError) {
-        // If DB fails, fall back to file-based URL
-        console.error('DB storage failed, using file URL:', dbError)
-        const url = `/api/media-file/${uniqueName}`
-        return NextResponse.json({ url, message: 'Fichier uploadé avec succès' })
-      }
-    }
-
-    // For videos and large images: use file-based URL
-    const url = `/api/media-file/${uniqueName}`
-    return NextResponse.json({ url, message: 'Fichier uploadé avec succès' })
-  } catch (error) {
-    console.error('Upload media error:', error)
-    const msg = error instanceof Error ? error.message : 'Erreur inconnue'
-    return NextResponse.json(
-      { error: `Erreur lors de l'upload du fichier: ${msg}` },
-      { status: 500 }
-    )
-  }
-}
-
-// GET handler to serve files from /tmp
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const name = searchParams.get('name')
-
-    if (!name) {
-      return NextResponse.json({ error: 'Nom de fichier requis' }, { status: 400 })
-    }
-
-    // Prevent path traversal
-    const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '')
-    const filePath = join(getUploadDir(), safeName)
-
-    if (!existsSync(filePath)) {
-      return NextResponse.json({ error: 'Fichier non trouvé' }, { status: 404 })
-    }
-
-    const buffer = await readFile(filePath)
-    // Determine content type from extension
-    const ext = safeName.substring(safeName.lastIndexOf('.')).toLowerCase()
-    const mimeMap: Record<string, string> = {
-      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-      '.gif': 'image/gif', '.webp': 'image/webp',
-      '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
-      '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
-      '.mkv': 'video/x-matroska',
-    }
-    const contentType = mimeMap[ext] || 'application/octet-stream'
-
-    return new NextResponse(buffer, {
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=86400',
-      },
+    return NextResponse.json({ 
+      url: blob.url, 
+      message: 'Fichier uploadé avec succès' 
     })
   } catch (error) {
-    console.error('Serve media file error:', error)
-    return NextResponse.json({ error: 'Erreur lors de la lecture du fichier' }, { status: 500 })
+    console.error('Upload media error:', error)
+    return NextResponse.json(
+      { error: `Erreur lors de l'upload: ${error instanceof Error ? error.message : 'inconnue'}` },
+      { status: 500 }
+    )
   }
 }
