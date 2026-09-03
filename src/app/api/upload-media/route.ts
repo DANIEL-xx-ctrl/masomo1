@@ -77,21 +77,16 @@ export async function POST(request: NextRequest) {
     const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`
 
     // Upload to Vercel Blob with the hardcoded token
-    // The store is configured as "private", so we use access: 'private'
-    // and generate a signed URL for reading.
+    // The store is configured as "public" — we don't pass the `access` option
+    // so Vercel uses the store's default access mode.
     const blob = await put(uniqueName, file, {
-      access: 'private',
       contentType: mimeType,
       token: BLOB_TOKEN,
     })
 
-    // For private stores, we need to create a readable URL using the blob's
-    // pathname. The /api/media-proxy route will serve the file by fetching
-    // it from Vercel Blob with the token.
-    const url = `/api/media-proxy?path=${encodeURIComponent(blob.pathname)}`
-
+    // The blob.url is a direct public URL that can be used in <img> and <video>
     return NextResponse.json({
-      url,
+      url: blob.url,
       message: 'Fichier uploadé avec succès',
     })
   } catch (error) {
