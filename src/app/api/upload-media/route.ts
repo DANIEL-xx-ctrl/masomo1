@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { put } from '@vercel/blob'
+import { db } from '@/lib/db'
 import { getInstitutionIdWithFallback } from '@/lib/api-auth'
 
 export const maxDuration = 120
-
-// Vercel Blob token — hardcoded so it works without environment variable configuration.
-const BLOB_TOKEN = 'vercel_blob_rw_r8JmjzAFADRUjfFp_k1VHgwDe3FSaMoH1tYZqad5miz7ku9'
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,12 +24,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate file size — images: max 10MB, videos: max 50MB
-    const maxBytes = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024
-    const maxLabel = isVideo ? '50 Mo' : '10 Mo'
+    // Vercel Hobby plan limits request body to ~4.5MB
+    const maxBytes = 4 * 1024 * 1024
     if (file.size > maxBytes) {
       return NextResponse.json(
-        { error: `Le fichier dépasse la limite de ${maxLabel}` },
+        { error: 'Le fichier dépasse la limite de 4 Mo. Veuillez compresser le fichier.' },
         { status: 400 }
       )
     }
@@ -52,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     if (!isValidMime && !isValidExtension) {
       return NextResponse.json(
-        { error: `Type de fichier non supporté. Utilisez des images (JPEG, PNG, GIF, WebP) ou vidéos (MP4, WebM, MOV, AVI).` },
+        { error: `Type de fichier non supporté. Utilisez des images (JPEG, PNG, GIF, WebP) ou vidéos (MP4, WebM, MOV).` },
         { status: 400 }
       )
     }
@@ -76,19 +72,23 @@ export async function POST(request: NextRequest) {
     // Generate unique filename
     const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`
 
-    // Upload to Vercel Blob with the hardcoded token
-    // The store is configured as "public" — we don't pass the `access` option
-    // so Vercel uses the store's default access mode.
-    const blob = await put(uniqueName, file, {
-      contentType: mimeType,
-      token: BLOB_TOKEN,
+    // Store in PostgreSQL database as base64
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+    const base64Data = buffer.toString('base64')
+
+    const mediaFile = await db.mediaFile.create({
+      data: {
+        filename: uniqueName,
+        mimeType,
+        data: base64Data,
+        size: buffer.length,
+        institutionId,
+      },
     })
 
-    // The blob.url is a direct public URL that can be used in <img> and <video>
-    return NextResponse.json({
-      url: blob.url,
-      message: 'Fichier uploadé avec succès',
-    })
+    const url = `/api/media/${mediaFile.id}${ext}`
+    return NextResponse.json({ url, message: 'Fichier uploadé avec succès' })
   } catch (error) {
     console.error('Upload media error:', error)
     const msg = error instanceof Error ? error.message : 'Erreur inconnue'
