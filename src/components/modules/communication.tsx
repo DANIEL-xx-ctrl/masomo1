@@ -243,14 +243,14 @@ export default function CommunicationModule() {
       e.target.value = '';
       return;
     }
-    // Images: max 10 MB, Videos: max 50 MB
-    const maxBytes = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-    const maxLabel = isVideo ? '50 Mo' : '10 Mo';
+    // Images and videos: max 4 MB (Vercel Hobby plan body limit)
+    const maxBytes = 4 * 1024 * 1024;
+    const maxLabel = '4 Mo';
     if (file.size > maxBytes) {
       addToast(
         'error',
         'Fichier trop volumineux',
-        `La taille maximale pour une ${isVideo ? 'vidéo' : 'image'} est de ${maxLabel}`
+        `La taille maximale est de ${maxLabel}. Veuillez compresser le fichier (ex: https://compressvideo.com).`
       );
       e.target.value = '';
       return;
