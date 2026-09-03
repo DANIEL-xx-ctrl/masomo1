@@ -24,6 +24,7 @@ import {
   FileSpreadsheet,
   Printer,
   CalendarIcon,
+  ChevronDown,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -124,6 +125,29 @@ export default function AttendanceModule() {
   const addToast = useAppStore((s) => s.addToast);
   const globalSchoolYear = useAppStore((s) => s.schoolYear);
   const currentUser = useAppStore((s) => s.currentUser);
+
+  // ---- Custom school years from localStorage ----
+  // Merge the default SCHOOL_YEARS with any custom years the user has typed
+  // in the school year dropdown. Custom years are persisted in localStorage
+  // so they survive page reloads.
+  const [customYears, setCustomYears] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('masomo-custom-years')
+      if (stored) setCustomYears(JSON.parse(stored))
+    } catch { /* ignore */ }
+  }, [])
+  const getAvailableYears = () => {
+    return Array.from(new Set([...SCHOOL_YEARS, ...customYears, globalSchoolYear])).sort()
+  }
+  const addCustomYear = (year: string) => {
+    setCustomYears((prev) => {
+      if (prev.includes(year)) return prev
+      const next = [...prev, year].sort()
+      try { localStorage.setItem('masomo-custom-years', JSON.stringify(next)) } catch { /* ignore */ }
+      return next
+    })
+  }
 
   // Role-based access control.
   // Only admins, super-admins and teachers can create / edit / delete
@@ -617,16 +641,49 @@ export default function AttendanceModule() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
             <div className="space-y-2">
               <Label className="text-sm font-medium">Année scolaire</Label>
-              <Select value={listSchoolYear} onValueChange={setListSchoolYear}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCHOOL_YEARS.map((year) => (
-                    <SelectItem key={year} value={year}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between font-normal">
+                    {listSchoolYear || 'Sélectionner'}
+                    <ChevronDown className="w-4 h-4 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[200px] p-2" align="start">
+                  <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                    {getAvailableYears().map((year) => (
+                      <button
+                        key={year}
+                        type="button"
+                        onClick={() => { setListSchoolYear(year); }}
+                        className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${year === listSchoolYear ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'}`}
+                      >
+                        {year}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="my-2 border-t" />
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-muted-foreground">Nouvelle année</p>
+                    <div className="flex gap-1">
+                      <Input
+                        type="text"
+                        placeholder="2026-2027"
+                        className="h-8 text-sm font-mono"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const val = (e.target as HTMLInputElement).value.trim()
+                            if (/^\d{4}-\d{4}$/.test(val)) {
+                              addCustomYear(val)
+                              setListSchoolYear(val)
+                              ;(e.target as HTMLInputElement).value = ''
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-2 pr-5">
               <Label className="text-sm font-medium">Classe</Label>
@@ -1000,16 +1057,49 @@ export default function AttendanceModule() {
             {/* School Year */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Année scolaire *</Label>
-              <Select value={formSchoolYear} onValueChange={setFormSchoolYear}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCHOOL_YEARS.map((year) => (
-                    <SelectItem key={year} value={year}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between font-normal">
+                    {formSchoolYear || 'Sélectionner'}
+                    <ChevronDown className="w-4 h-4 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[200px] p-2" align="start">
+                  <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                    {getAvailableYears().map((year) => (
+                      <button
+                        key={year}
+                        type="button"
+                        onClick={() => { setFormSchoolYear(year); }}
+                        className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${year === formSchoolYear ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'}`}
+                      >
+                        {year}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="my-2 border-t" />
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-muted-foreground">Nouvelle année</p>
+                    <div className="flex gap-1">
+                      <Input
+                        type="text"
+                        placeholder="2026-2027"
+                        className="h-8 text-sm font-mono"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const val = (e.target as HTMLInputElement).value.trim()
+                            if (/^\d{4}-\d{4}$/.test(val)) {
+                              addCustomYear(val)
+                              setFormSchoolYear(val)
+                              ;(e.target as HTMLInputElement).value = ''
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Class */}
