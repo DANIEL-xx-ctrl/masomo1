@@ -376,6 +376,41 @@ export default function SettingsModule() {
     { value: 'system', label: 'Système', icon: Monitor },
   ]
 
+  // Color themes — override the --primary CSS variable to change the accent
+  // color across the app. Dark mode is NOT affected (themes only apply in
+  // light mode). The selected color theme is persisted in localStorage
+  // via next-themes (the value is stored as part of the theme string,
+  // e.g. "light theme-rose").
+  const colorThemes = [
+    { value: 'emerald', label: 'Émeraude', color: '#059669' },
+    { value: 'rose', label: 'Rose', color: '#e11d48' },
+    { value: 'violet', label: 'Violet', color: '#7c3aed' },
+    { value: 'amber', label: 'Ambre', color: '#d97706' },
+    { value: 'sky', label: 'Ciel', color: '#0284c7' },
+  ]
+
+  // Read the current color theme from localStorage (default: emerald)
+  const [colorTheme, setColorTheme] = useState<string>('emerald')
+  useEffect(() => {
+    const stored = localStorage.getItem('masomo-color-theme') || 'emerald'
+    setColorTheme(stored)
+    applyColorTheme(stored)
+  }, [])
+  const applyColorTheme = (ct: string) => {
+    if (typeof document === 'undefined') return
+    const html = document.documentElement
+    // Remove all existing theme-* classes
+    colorThemes.forEach((t) => html.classList.remove(`theme-${t.value}`))
+    // Add the selected one (only in light mode — in dark mode, themes don't
+    // apply because .dark overrides --primary with higher specificity)
+    html.classList.add(`theme-${ct}`)
+  }
+  const handleColorThemeChange = (ct: string) => {
+    setColorTheme(ct)
+    localStorage.setItem('masomo-color-theme', ct)
+    applyColorTheme(ct)
+  }
+
   return (
     <motion.div
       variants={containerVariants}
@@ -490,6 +525,44 @@ export default function SettingsModule() {
                         </button>
                       )
                     })}
+                  </div>
+
+                  {/* Color theme selector — changes the accent color (primary)
+                      in light mode. Dark mode is not affected. */}
+                  <div className="pt-3 border-t">
+                    <Label className="mb-2 block">Couleur d&apos;accent</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {colorThemes.map((ct) => {
+                        const isActive = colorTheme === ct.value
+                        return (
+                          <button
+                            key={ct.value}
+                            onClick={() => handleColorThemeChange(ct.value)}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all text-sm font-medium
+                              ${isActive
+                                ? 'border-foreground/20 shadow-sm'
+                                : 'border-muted hover:border-foreground/20'
+                              }
+                            `}
+                            title={ct.label}
+                          >
+                            <span
+                              className="w-5 h-5 rounded-full shrink-0 border-2 border-white shadow-sm"
+                              style={{ backgroundColor: ct.color }}
+                            />
+                            <span className={isActive ? 'text-foreground' : 'text-muted-foreground'}>
+                              {ct.label}
+                            </span>
+                            {isActive && (
+                              <Check className="w-3.5 h-3.5 text-foreground" />
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      La couleur d&apos;accent s&apos;applique uniquement en mode clair. Le mode sombre reste inchangé.
+                    </p>
                   </div>
                 </div>
               </CardContent>
