@@ -199,6 +199,19 @@ export default function AppShell() {
     logout()
   }, [logout])
 
+  // ---- Apply color theme on mount ----
+  // Reads the saved color theme from localStorage and applies it to <html>.
+  // This runs early so the correct accent color is visible immediately.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const ct = localStorage.getItem('masomo-color-theme') || 'emerald'
+    const html = document.documentElement
+    ;['emerald', 'rose', 'violet', 'amber', 'sky'].forEach((t) =>
+      html.classList.remove(`theme-${t}`)
+    )
+    html.classList.add(`theme-${ct}`)
+  }, [])
+
   // Refresh the current user's profile from the API on mount so the
   // persisted Zustand state (avatar, name, role, etc.) stays in sync
   // with the latest DB values — e.g. after the user changed their
