@@ -147,3 +147,65 @@
     background-color: oklch(0.5 0.02 155 / 60%);
   }
 }
+
+/* ============================================================
+   Color Themes (light mode only — dark mode is unchanged)
+   Each theme overrides --primary, --ring, --chart-1, etc.
+   The theme is applied by adding a class to <html> alongside
+   "light" or "dark" (e.g. class="light theme-rose").
+   ============================================================ */
+
+/* Default / Emerald (already the :root values, kept for consistency) */
+.theme-emerald {
+  --primary: oklch(0.50 0.15 160);
+  --primary-foreground: oklch(0.99 0.01 155);
+  --ring: oklch(0.50 0.15 160);
+  --chart-1: oklch(0.50 0.15 160);
+  --chart-2: oklch(0.60 0.13 175);
+  --sidebar-primary: oklch(0.50 0.15 160);
+  --sidebar-ring: oklch(0.50 0.15 160);
+}
+
+/* Rose / Pink */
+.theme-rose {
+  --primary: oklch(0.55 0.20 350);
+  --primary-foreground: oklch(0.99 0.01 350);
+  --ring: oklch(0.55 0.20 350);
+  --chart-1: oklch(0.55 0.20 350);
+  --chart-2: oklch(0.60 0.18 10);
+  --sidebar-primary: oklch(0.55 0.20 350);
+  --sidebar-ring: oklch(0.55 0.20 350);
+}
+
+/* Violet / Purple */
+.theme-violet {
+  --primary: oklch(0.50 0.20 280);
+  --primary-foreground: oklch(0.99 0.01 280);
+  --ring: oklch(0.50 0.20 280);
+  --chart-1: oklch(0.50 0.20 280);
+  --chart-2: oklch(0.55 0.18 300);
+  --sidebar-primary: oklch(0.50 0.20 280);
+  --sidebar-ring: oklch(0.50 0.20 280);
+}
+
+/* Amber / Orange */
+.theme-amber {
+  --primary: oklch(0.60 0.16 60);
+  --primary-foreground: oklch(0.99 0.01 60);
+  --ring: oklch(0.60 0.16 60);
+  --chart-1: oklch(0.60 0.16 60);
+  --chart-2: oklch(0.65 0.14 30);
+  --sidebar-primary: oklch(0.60 0.16 60);
+  --sidebar-ring: oklch(0.60 0.16 60);
+}
+
+/* Sky / Blue */
+.theme-sky {
+  --primary: oklch(0.50 0.15 230);
+  --primary-foreground: oklch(0.99 0.01 230);
+  --ring: oklch(0.50 0.15 230);
+  --chart-1: oklch(0.50 0.15 230);
+  --chart-2: oklch(0.55 0.13 200);
+  --sidebar-primary: oklch(0.50 0.15 230);
+  --sidebar-ring: oklch(0.50 0.15 230);
+}
