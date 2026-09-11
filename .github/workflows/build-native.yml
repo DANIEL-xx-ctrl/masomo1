@@ -1,5 +1,14 @@
 name: Build Native Apps
 
+# ============================================================================
+# Build MASOMO native installers for all platforms WITHOUT Tauri:
+#   - Windows: .exe (NSIS installer) + portable .exe   — via Electron
+#   - macOS:   .dmg (x64 + arm64)                      — via Electron
+#   - Linux:   .deb + .AppImage                        — via Electron
+#   - Android: .apk (debug + release)                  — via Capacitor
+#   - iOS:     .ipa (unsigned)                         — via Capacitor
+# ============================================================================
+
 on:
   workflow_dispatch:
     inputs:
@@ -96,7 +105,8 @@ jobs:
           ls -la electron/app/
 
       - name: Build Electron app
-        run: bunx electron-builder --config electron-builder.yml ${{ matrix.build_cmd }}
+        # L'argument additionnel résout l'erreur assistedInstaller.nsh de NSIS sur Windows
+        run: bunx electron-builder --config electron-builder.yml ${{ matrix.build_cmd }} --config.nsis.assistedInstaller=false
         env:
           CI: true
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -119,7 +129,7 @@ jobs:
   # ==========================================================================
   mobile:
     name: Mobile Apps (Android & iOS)
-    runs-on: macos-latest # Utilisation de macOS pour pouvoir faire l'APK ET l'IPA
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -146,7 +156,6 @@ jobs:
       - name: Update Capacitor config URL (Robust Regex)
         run: |
           SERVER_URL="${{ github.event.inputs.server_url }}"
-          # Remplace l'URL qu'elle soit entourée de guillemets simples ou doubles
           sed -i "" "s|url:.*|url: '${SERVER_URL}'|g" capacitor.config.ts || sed -i "s|url:.*|url: '${SERVER_URL}'|g" capacitor.config.ts
           echo "=== capacitor.config.ts updated ==="
           cat capacitor.config.ts
