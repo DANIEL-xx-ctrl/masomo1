@@ -23,6 +23,9 @@ import {
   Heart,
   LayoutGrid,
   List,
+  FileText,
+  Download,
+  Loader2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -213,6 +216,10 @@ export default function HomeworkModule() {
   const [formAssignedDate, setFormAssignedDate] = useState('')
   const [formType, setFormType] = useState('homework')
   const [formStatus, setFormStatus] = useState('active')
+  // File attachment state
+  const [formFileUrl, setFormFileUrl] = useState('')
+  const [formFileName, setFormFileName] = useState('')
+  const [uploadingFile, setUploadingFile] = useState(false)
 
   // Submission grading
   const [gradingSubmission, setGradingSubmission] = useState<SubmissionInfo | null>(null)
@@ -376,6 +383,8 @@ export default function HomeworkModule() {
     setFormAssignedDate(new Date().toISOString().split('T')[0])
     setFormType('homework')
     setFormStatus('active')
+    setFormFileUrl('')
+    setFormFileName('')
     setShowFormDialog(true)
   }
 
@@ -391,7 +400,50 @@ export default function HomeworkModule() {
     setFormAssignedDate(hw.assignedDate)
     setFormType(hw.type)
     setFormStatus(hw.status)
+    setFormFileUrl((hw as HomeworkItem & { fileUrl?: string }).fileUrl || '')
+    setFormFileName((hw as HomeworkItem & { fileName?: string }).fileName || '')
     setShowFormDialog(true)
+  }
+
+  // Handle file upload for homework attachment
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 4 * 1024 * 1024) {
+      addToast('error', 'Fichier trop volumineux', 'La taille maximale est de 4 Mo')
+      e.target.value = ''
+      return
+    }
+    setUploadingFile(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/upload-media', {
+        method: 'POST',
+        headers: {
+          'x-user-id': currentUser?.id || '',
+          'x-institution-id': currentUser?.institutionId || '',
+          'x-user-role': currentUser?.role || '',
+        },
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Échec de l\'upload')
+      setFormFileUrl(data.url)
+      setFormFileName(file.name)
+      addToast('success', 'Fichier uploadé', `${file.name} a été ajouté au devoir`)
+    } catch (err) {
+      addToast('error', 'Erreur', err instanceof Error ? err.message : 'Erreur inconnue')
+    } finally {
+      setUploadingFile(false)
+      e.target.value = ''
+    }
+  }
+
+  // Remove file attachment
+  function handleRemoveFile() {
+    setFormFileUrl('')
+    setFormFileName('')
   }
 
   // Save homework
@@ -415,6 +467,8 @@ export default function HomeworkModule() {
             assignedDate: formAssignedDate,
             type: formType,
             status: formStatus,
+            fileUrl: formFileUrl || null,
+            fileName: formFileName || null,
           }
         : {
             title: formTitle.trim(),
@@ -427,6 +481,8 @@ export default function HomeworkModule() {
             type: formType,
             status: formStatus,
             schoolYear,
+            fileUrl: formFileUrl || null,
+            fileName: formFileName || null,
           }
 
       const res = await fetch(url, {
@@ -968,6 +1024,24 @@ export default function HomeworkModule() {
                 </>
               )}
 
+              {/* File attachment — download link for all users */}
+              {(detailHomework as HomeworkItem & { fileUrl?: string; fileName?: string }).fileUrl && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Fichier joint:</p>
+                    <a
+                      href={(detailHomework as HomeworkItem & { fileUrl?: string }).fileUrl!}
+                      download
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-sm font-medium hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      {(detailHomework as HomeworkItem & { fileName?: string }).fileName || 'Télécharger le fichier'}
+                    </a>
+                  </div>
+                </>
+              )}
+
               {/* Submissions */}
               {detailHomework.submissions && detailHomework.submissions.length > 0 && (
                 <>
@@ -1174,6 +1248,31 @@ export default function HomeworkModule() {
                 placeholder="Détails du devoir (optionnel)"
                 rows={3}
               />
+            </div>
+
+            {/* File attachment — upload a document (PDF, Word, Excel, etc.) */}
+            <div className="space-y-2">
+              <Label>Fichier joint (PDF, Word, Excel — max 4 Mo)</Label>
+              {formFileUrl ? (
+                <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/30">
+                  <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="text-sm font-medium truncate flex-1">{formFileName}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={handleRemoveFile} className="text-red-500 hover:text-red-600 shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.csv,.rtf,.odt,.ods"
+                    onChange={handleFileUpload}
+                    disabled={uploadingFile || saving}
+                    className="flex-1"
+                  />
+                  {uploadingFile && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground shrink-0" />}
+                </div>
+              )}
             </div>
           </div>
 
