@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getInstitutionIdWithFallback } from '@/lib/api-auth'
 import { getTeacherClassIds, getTeacherIdFromUserId } from '@/lib/teacher-classes'
+import { resolveSubjectId } from '@/lib/subject-resolve'
 
 export async function GET(request: Request) {
   try {
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, description, subjectId, classId, teacherId, dueDate, assignedDate, type, status, schoolYear, fileUrl, fileName } = body
+    const { title, description, subjectId, subjectName, classId, teacherId, dueDate, assignedDate, type, status, schoolYear, fileUrl, fileName } = body
 
     if (!title || !classId || !dueDate) {
       return NextResponse.json(
@@ -122,11 +123,15 @@ export async function POST(request: NextRequest) {
       resolvedTeacherId = await getTeacherIdFromUserId(headerUserId)
     }
 
+    // Resolve the subject: prefer an explicit subjectId, otherwise
+    // find-or-create a subject from the free-text subjectName.
+    const finalSubjectId = await resolveSubjectId(subjectId, subjectName)
+
     const homework = await db.homework.create({
       data: {
         title,
         description: description || null,
-        subjectId: subjectId || null,
+        subjectId: finalSubjectId,
         classId,
         teacherId: resolvedTeacherId,
         dueDate,
