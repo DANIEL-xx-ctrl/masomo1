@@ -18,15 +18,31 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10)))
 
-    // ---- Fetch ALL notifications for the institution (no pagination) ----
-    // We fetch up to `limit` notifications (default 50) for the institution,
-    // then deduplicate by title+message+type+category so the same
-    // announcement sent to multiple users appears only once.
+    // ---- Fetch notifications with privacy rules ----
+    //
+    // Privacy rules:
+    // 1. Announcements, homework, events, payments → visible to ALL users
+    //    in the institution (deduplicated by title+message+type+category).
+    // 2. Private messages (category = 'message') → visible ONLY to the
+    //    sender and receiver (userId matches). NOT visible institution-wide.
+    //
+    // We achieve this with an OR clause:
+    //   - category != 'message' (institution-wide, deduplicated)
+    //   - category = 'message' AND userId = currentUser (private to user)
     const where: Record<string, unknown> = {}
 
     if (institutionId && institutionId !== 'inst_default') {
       where.institutionId = institutionId
     }
+
+    // For non-super_admin users: restrict private messages to their own
+    if (userId && userRole !== 'super_admin') {
+      where.OR = [
+        { category: { not: 'message' } },
+        { category: 'message', userId },
+      ]
+    }
+    // For super_admin: no restriction (they see all, including private messages)
 
     const allNotifications = await db.notification.findMany({
       where,
@@ -34,9 +50,14 @@ export async function GET(request: Request) {
       take: limit,
     })
 
-    // Deduplicate by title+message+type+category
+    // Deduplicate by title+message+type+category — but ONLY for
+    // institution-wide notifications (not private messages, which are
+    // unique per user and must not be deduplicated).
     const seen = new Set<string>()
     const dedupedNotifications = allNotifications.filter((n) => {
+      // Don't deduplicate private messages — each one is unique to its user
+      if (n.category === 'message') return true
+
       const key = `${n.title}|${n.message}|${n.type}|${n.category}`
       if (seen.has(key)) return false
       seen.add(key)
