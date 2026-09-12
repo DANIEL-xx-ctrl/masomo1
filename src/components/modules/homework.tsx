@@ -115,6 +115,8 @@ interface HomeworkItem {
   type: string
   status: string
   schoolYear: string
+  fileUrl: string | null
+  fileName: string | null
   class: ClassInfo
   teacher: TeacherInfo | null
   subject: SubjectInfo | null
@@ -400,8 +402,8 @@ export default function HomeworkModule() {
     setFormAssignedDate(hw.assignedDate)
     setFormType(hw.type)
     setFormStatus(hw.status)
-    setFormFileUrl((hw as HomeworkItem & { fileUrl?: string }).fileUrl || '')
-    setFormFileName((hw as HomeworkItem & { fileName?: string }).fileName || '')
+    setFormFileUrl(hw.fileUrl || '')
+    setFormFileName(hw.fileName || '')
     setShowFormDialog(true)
   }
 
@@ -529,7 +531,13 @@ export default function HomeworkModule() {
   // View detail
   async function handleViewDetail(hw: HomeworkItem) {
     try {
-      const res = await fetch(`/api/homework/${hw.id}`)
+      const res = await fetch(`/api/homework/${hw.id}`, {
+        headers: {
+          'x-user-id': currentUser?.id || '',
+          'x-institution-id': currentUser?.institutionId || '',
+          'x-user-role': currentUser?.role || '',
+        },
+      })
       if (res.ok) {
         const json = await res.json()
         setDetailHomework(json.homework)
@@ -1025,18 +1033,18 @@ export default function HomeworkModule() {
               )}
 
               {/* File attachment — download link for all users */}
-              {(detailHomework as HomeworkItem & { fileUrl?: string; fileName?: string }).fileUrl && (
+              {detailHomework.fileUrl && (
                 <>
                   <Separator />
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Fichier joint:</p>
                     <a
-                      href={(detailHomework as HomeworkItem & { fileUrl?: string }).fileUrl!}
+                      href={detailHomework.fileUrl}
                       download
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-sm font-medium hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-colors"
                     >
                       <Download className="w-4 h-4" />
-                      {(detailHomework as HomeworkItem & { fileName?: string }).fileName || 'Télécharger le fichier'}
+                      {detailHomework.fileName || 'Télécharger le fichier'}
                     </a>
                   </div>
                 </>
