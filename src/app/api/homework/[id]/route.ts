@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { getInstitutionIdWithFallback } from '@/lib/api-auth'
 import { getTeacherClassIds, getTeacherIdFromUserId } from '@/lib/teacher-classes'
+import { resolveSubjectId } from '@/lib/subject-resolve'
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -45,7 +46,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     const { id } = await params
     const body = await request.json()
-    const { title, description, subjectId, classId, teacherId, dueDate, assignedDate, type, status, fileUrl, fileName } = body
+    const { title, description, subjectId, subjectName, classId, teacherId, dueDate, assignedDate, type, status, fileUrl, fileName } = body
 
     const existing = await db.homework.findFirst({ where: { id, institutionId } })
     if (!existing) {
@@ -77,21 +78,28 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }
     }
 
+    // Resolve the subject when either subjectId or a free-text subjectName
+    // is provided. If both are undefined we leave the existing subject
+    // untouched.
+    let updateData: Record<string, unknown> = {}
+    if (subjectId !== undefined || subjectName !== undefined) {
+      const finalSubjectId = await resolveSubjectId(subjectId, subjectName)
+      updateData.subjectId = finalSubjectId
+    }
+    if (title !== undefined) updateData.title = title
+    if (description !== undefined) updateData.description = description || null
+    if (classId !== undefined) updateData.classId = classId
+    if (teacherId !== undefined) updateData.teacherId = teacherId || null
+    if (dueDate !== undefined) updateData.dueDate = dueDate
+    if (assignedDate !== undefined) updateData.assignedDate = assignedDate
+    if (type !== undefined) updateData.type = type
+    if (status !== undefined) updateData.status = status
+    if (fileUrl !== undefined) updateData.fileUrl = fileUrl || null
+    if (fileName !== undefined) updateData.fileName = fileName || null
+
     const homework = await db.homework.update({
       where: { id },
-      data: {
-        ...(title !== undefined && { title }),
-        ...(description !== undefined && { description: description || null }),
-        ...(subjectId !== undefined && { subjectId: subjectId || null }),
-        ...(classId !== undefined && { classId }),
-        ...(teacherId !== undefined && { teacherId: teacherId || null }),
-        ...(dueDate !== undefined && { dueDate }),
-        ...(assignedDate !== undefined && { assignedDate }),
-        ...(type !== undefined && { type }),
-        ...(status !== undefined && { status }),
-        ...(fileUrl !== undefined && { fileUrl: fileUrl || null }),
-        ...(fileName !== undefined && { fileName: fileName || null }),
-      },
+      data: updateData,
       include: {
         class: { select: { id: true, name: true } },
         teacher: { select: { id: true, firstName: true, lastName: true } },
