@@ -45,7 +45,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     const { id } = await params
     const body = await request.json()
-    const { title, description, subjectId, classId, teacherId, dueDate, assignedDate, type, status } = body
+    const { title, description, subjectId, classId, teacherId, dueDate, assignedDate, type, status, fileUrl, fileName } = body
 
     const existing = await db.homework.findFirst({ where: { id, institutionId } })
     if (!existing) {
@@ -89,6 +89,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         ...(assignedDate !== undefined && { assignedDate }),
         ...(type !== undefined && { type }),
         ...(status !== undefined && { status }),
+        ...(fileUrl !== undefined && { fileUrl: fileUrl || null }),
+        ...(fileName !== undefined && { fileName: fileName || null }),
       },
       include: {
         class: { select: { id: true, name: true } },
