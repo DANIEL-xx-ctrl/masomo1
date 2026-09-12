@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Check,
   Send,
   GraduationCap,
   ClipboardList,
@@ -60,6 +61,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from '@/components/ui/command'
+import { cn } from '@/lib/utils'
 import { useAppStore } from '@/lib/store'
 
 // ---------- Types ----------
@@ -212,6 +227,8 @@ export default function HomeworkModule() {
   const [formTitle, setFormTitle] = useState('')
   const [formDescription, setFormDescription] = useState('')
   const [formSubjectId, setFormSubjectId] = useState('')
+  const [formSubjectName, setFormSubjectName] = useState('')
+  const [subjectPopoverOpen, setSubjectPopoverOpen] = useState(false)
   const [formClassId, setFormClassId] = useState('')
   const [formTeacherId, setFormTeacherId] = useState('')
   const [formDueDate, setFormDueDate] = useState('')
@@ -379,6 +396,7 @@ export default function HomeworkModule() {
     setFormTitle('')
     setFormDescription('')
     setFormSubjectId('')
+    setFormSubjectName('')
     setFormClassId(classes.length > 0 ? classes[0].id : '')
     setFormTeacherId('')
     setFormDueDate('')
@@ -396,6 +414,7 @@ export default function HomeworkModule() {
     setFormTitle(hw.title)
     setFormDescription(hw.description || '')
     setFormSubjectId(hw.subjectId || '')
+    setFormSubjectName(hw.subject?.name || '')
     setFormClassId(hw.classId)
     setFormTeacherId(hw.teacherId || '')
     setFormDueDate(hw.dueDate)
@@ -454,6 +473,15 @@ export default function HomeworkModule() {
       addToast('error', 'Champs requis', 'Titre, classe et date limite sont obligatoires')
       return
     }
+    // Resolve subject: prefer an existing subject that matches the typed
+    // name (case-insensitive). If the typed name does not match any
+    // existing subject, send the name so the backend can create it.
+    const trimmedSubjectName = formSubjectName.trim()
+    const matchedSubject = trimmedSubjectName
+      ? subjects.find(s => s.name.toLowerCase() === trimmedSubjectName.toLowerCase())
+      : undefined
+    const resolvedSubjectId = matchedSubject?.id || formSubjectId || null
+    const resolvedSubjectName = !matchedSubject && trimmedSubjectName ? trimmedSubjectName : null
     setSaving(true)
     try {
       const url = editingHomework ? `/api/homework/${editingHomework.id}` : '/api/homework'
@@ -462,7 +490,8 @@ export default function HomeworkModule() {
         ? {
             title: formTitle.trim(),
             description: formDescription.trim(),
-            subjectId: formSubjectId || null,
+            subjectId: resolvedSubjectId,
+            subjectName: resolvedSubjectName,
             classId: formClassId,
             teacherId: formTeacherId || null,
             dueDate: formDueDate,
@@ -475,7 +504,8 @@ export default function HomeworkModule() {
         : {
             title: formTitle.trim(),
             description: formDescription.trim(),
-            subjectId: formSubjectId || null,
+            subjectId: resolvedSubjectId,
+            subjectName: resolvedSubjectName,
             classId: formClassId,
             teacherId: formTeacherId || null,
             dueDate: formDueDate,
@@ -1165,17 +1195,92 @@ export default function HomeworkModule() {
               </div>
               <div className="space-y-2">
                 <Label>Matière</Label>
-                <Select value={formSubjectId} onValueChange={setFormSubjectId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Aucune</SelectItem>
-                    {subjects.map(s => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={subjectPopoverOpen} onOpenChange={setSubjectPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={subjectPopoverOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      <span className={cn('truncate', !formSubjectName && 'text-muted-foreground')}>
+                        {formSubjectName || 'Saisir ou sélectionner'}
+                      </span>
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder="Saisir le nom de la matière..."
+                        value={formSubjectName}
+                        onValueChange={(v) => {
+                          setFormSubjectName(v)
+                          // If the typed text no longer matches the selected
+                          // subject, clear the selected id so a new subject
+                          // can be created from the typed name.
+                          const stillMatches = subjects.some(
+                            s => s.name.toLowerCase() === v.trim().toLowerCase()
+                          )
+                          if (!stillMatches) setFormSubjectId('')
+                        }}
+                      />
+                      <CommandList>
+                        <CommandEmpty>
+                          {formSubjectName.trim()
+                            ? 'Appuyez sur Entrée pour créer cette matière'
+                            : 'Aucune matière trouvée'}
+                        </CommandEmpty>
+                        <CommandGroup>
+                          {formSubjectName.trim() &&
+                            !subjects.some(
+                              s => s.name.toLowerCase() === formSubjectName.trim().toLowerCase()
+                            ) && (
+                              <CommandItem
+                                value={`__create__${formSubjectName.trim()}`}
+                                onSelect={() => {
+                                  setFormSubjectId('')
+                                  setSubjectPopoverOpen(false)
+                                }}
+                                className="text-muted-foreground"
+                              >
+                                <Plus className="mr-2 h-4 w-4" />
+                                <span>
+                                  Créer « <span className="text-foreground">{formSubjectName.trim()}</span> »
+                                </span>
+                              </CommandItem>
+                            )}
+                          {subjects
+                            .filter(s =>
+                              !formSubjectName.trim()
+                                ? true
+                                : s.name.toLowerCase().includes(formSubjectName.trim().toLowerCase())
+                            )
+                            .map(s => (
+                              <CommandItem
+                                key={s.id}
+                                value={s.name}
+                                onSelect={() => {
+                                  setFormSubjectId(s.id)
+                                  setFormSubjectName(s.name)
+                                  setSubjectPopoverOpen(false)
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    'mr-2 h-4 w-4',
+                                    formSubjectId === s.id ? 'opacity-100' : 'opacity-0'
+                                  )}
+                                />
+                                {s.name}
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
 
