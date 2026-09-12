@@ -16,10 +16,11 @@ export async function POST(request: NextRequest) {
 
     const isVideo = file.type.startsWith('video/')
     const isImage = file.type.startsWith('image/')
+    const isDocument = file.type.startsWith('application/') || file.type.startsWith('text/')
 
-    if (!isVideo && !isImage) {
+    if (!isVideo && !isImage && !isDocument) {
       return NextResponse.json(
-        { error: 'Type de fichier non supporté. Utilisez des images ou des vidéos.' },
+        { error: 'Type de fichier non supporté. Utilisez des images, vidéos ou documents.' },
         { status: 400 }
       )
     }
@@ -40,11 +41,22 @@ export async function POST(request: NextRequest) {
       'video/x-msvideo', 'video/avi', 'video/x-matroska', 'video/x-flv',
       'video/3gpp', 'video/x-m4v', 'video/MP2T', 'video/x-ms-wmv',
     ]
+    const validDocumentTypes = [
+      'application/pdf', 'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/zip', 'application/x-rar-compressed',
+      'text/plain', 'text/csv',
+    ]
     const validImageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.tiff']
     const validVideoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.flv', '.3gp', '.m4v', '.ts', '.wmv']
+    const validDocumentExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.zip', '.rar', '.txt', '.csv', '.rtf', '.odt', '.ods']
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
-    const isValidMime = [...validImageTypes, ...validVideoTypes].includes(file.type)
-    const isValidExtension = [...validImageExtensions, ...validVideoExtensions].includes(ext)
+    const isValidMime = [...validImageTypes, ...validVideoTypes, ...validDocumentTypes].includes(file.type)
+    const isValidExtension = [...validImageExtensions, ...validVideoExtensions, ...validDocumentExtensions].includes(ext)
 
     if (!isValidMime && !isValidExtension) {
       return NextResponse.json(
@@ -65,6 +77,16 @@ export async function POST(request: NextRequest) {
         '.mkv': 'video/x-matroska', '.flv': 'video/x-flv',
         '.3gp': 'video/3gpp', '.m4v': 'video/x-m4v',
         '.ts': 'video/MP2T', '.wmv': 'video/x-ms-wmv',
+        '.pdf': 'application/pdf', '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.ppt': 'application/vnd.ms-powerpoint',
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.zip': 'application/zip', '.rar': 'application/x-rar-compressed',
+        '.txt': 'text/plain', '.csv': 'text/csv',
+        '.rtf': 'application/rtf', '.odt': 'application/vnd.oasis.opendocument.text',
+        '.ods': 'application/vnd.oasis.opendocument.spreadsheet',
       }
       mimeType = mimeMap[ext] || 'application/octet-stream'
     }
