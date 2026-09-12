@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, description, subjectId, classId, teacherId, dueDate, assignedDate, type, status, schoolYear } = body
+    const { title, description, subjectId, classId, teacherId, dueDate, assignedDate, type, status, schoolYear, fileUrl, fileName } = body
 
     if (!title || !classId || !dueDate) {
       return NextResponse.json(
@@ -135,6 +135,8 @@ export async function POST(request: NextRequest) {
         status: status || 'active',
         schoolYear: schoolYear || '2024-2025',
         institutionId,
+        fileUrl: fileUrl || null,
+        fileName: fileName || null,
       },
       include: {
         class: { select: { id: true, name: true } },
