@@ -212,6 +212,20 @@ export async function DELETE(request: Request) {
       )
     }
 
+    // ---- Authorization: author-based deletion ----
+    // Any role can delete their OWN announcements. Only admin / super_admin
+    // can delete announcements published by OTHER users.
+    const requesterUserId = request.headers.get('x-user-id')
+    const requesterRole = request.headers.get('x-user-role')
+    const isAdmin = requesterRole === 'admin' || requesterRole === 'super_admin'
+    const isAuthor = !!requesterUserId && existing.authorId === requesterUserId
+    if (!isAdmin && !isAuthor) {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez supprimer que vos propres annonces. Seul un administrateur peut supprimer celles des autres.' },
+        { status: 403 }
+      )
+    }
+
     // Delete related notifications first
     await db.notification.deleteMany({
       where: { linkParams: id, category: 'announcement' },
