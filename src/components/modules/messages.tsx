@@ -42,6 +42,7 @@ import {
   X,
   File as FileIcon,
   Download,
+  Trash2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { avatarUrl } from '@/lib/utils'
@@ -257,9 +258,13 @@ function AttachmentView({
 function MessageBubble({
   message,
   isMine,
+  canDelete,
+  onDelete,
 }: {
   message: ChatMessagePayload
   isMine: boolean
+  canDelete?: boolean
+  onDelete?: (id: string) => void
 }) {
   const html = useMemo(() => {
     const raw = message.content || ''
@@ -277,31 +282,44 @@ function MessageBubble({
   const hasAttachment = !!message.attachmentUrl
 
   return (
-    <div className={cn('flex flex-col gap-1', isMine ? 'items-end' : 'items-start')}>
-      <div
-        className={cn(
-          'max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm break-words',
-          isMine
-            ? 'bg-primary text-primary-foreground rounded-br-md'
-            : 'bg-muted text-foreground rounded-bl-md'
-        )}
-      >
-        {hasAttachment && (
-          <div className="mb-1.5 last:mb-0">
-            <AttachmentView
-              attachmentUrl={message.attachmentUrl!}
-              attachmentType={message.attachmentType}
-              attachmentName={message.attachmentName}
-              attachmentSize={message.attachmentSize}
+    <div className={cn('group flex flex-col gap-1', isMine ? 'items-end' : 'items-start')}>
+      <div className="relative flex items-center gap-1">
+        <div
+          className={cn(
+            'max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm break-words',
+            isMine
+              ? 'bg-primary text-primary-foreground rounded-br-md'
+              : 'bg-muted text-foreground rounded-bl-md'
+          )}
+        >
+          {hasAttachment && (
+            <div className="mb-1.5 last:mb-0">
+              <AttachmentView
+                attachmentUrl={message.attachmentUrl!}
+                attachmentType={message.attachmentType}
+                attachmentName={message.attachmentName}
+                attachmentSize={message.attachmentSize}
+              />
+            </div>
+          )}
+          {html ? (
+            <div
+              className="prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_blockquote]:italic [&_code]:bg-black/10 [&_code]:px-1 [&_code]:rounded [&_pre]:bg-black/10 [&_pre]:p-2 [&_pre]:rounded"
+              dangerouslySetInnerHTML={{ __html: html }}
             />
-          </div>
+          ) : null}
+        </div>
+        {canDelete && onDelete && (
+          <button
+            type="button"
+            onClick={() => onDelete(message.id)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 shrink-0"
+            title="Supprimer ce message"
+            aria-label="Supprimer ce message"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         )}
-        {html ? (
-          <div
-            className="prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_blockquote]:italic [&_code]:bg-black/10 [&_code]:px-1 [&_code]:rounded [&_pre]:bg-black/10 [&_pre]:p-2 [&_pre]:rounded"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        ) : null}
       </div>
       <span className="text-[10px] text-muted-foreground px-1">
         {formatTime(message.createdAt)}
@@ -595,6 +613,32 @@ export default function MessagesModule() {
       )
     )
   }, [me])
+
+  // ---- Delete a message (only the sender can delete their own messages;
+  //      admin/super_admin can delete any) ----
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
+    if (!me) return
+    if (!confirm('Supprimer ce message ? Cette action est irréversible.')) return
+    try {
+      const res = await fetch(`/api/messages/${messageId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-id': me.id,
+          'x-institution-id': me.institutionId || '',
+          'x-user-role': me.role,
+        },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Échec de la suppression')
+      // Remove from the active thread
+      setThread((prev) => prev.filter((m) => m.id !== messageId))
+      // Refresh conversations (last message may have changed)
+      fetchConversations()
+      addToast('success', 'Message supprimé', '')
+    } catch (err) {
+      addToast('error', 'Erreur', err instanceof Error ? err.message : 'Erreur inconnue')
+    }
+  }, [me, addToast, fetchConversations])
 
   const { connected, sendMessage, sendTyping, sendRead } = useChat({
     onMessage: handleIncomingMessage,
@@ -1207,8 +1251,15 @@ export default function MessagesModule() {
                           lastDay = day
                         }
                         const isMine = m.senderId === me?.id
+                        const canDeleteMsg = !!me && (isMine || me.role === 'admin' || me.role === 'super_admin')
                         items.push(
-                          <MessageBubble key={m.id} message={m} isMine={isMine} />
+                          <MessageBubble
+                            key={m.id}
+                            message={m}
+                            isMine={isMine}
+                            canDelete={canDeleteMsg}
+                            onDelete={handleDeleteMessage}
+                          />
                         )
                       })
                       return items
@@ -1286,7 +1337,10 @@ export default function MessagesModule() {
                 autoFocus
               />
             </div>
-            <ScrollArea className="max-h-[360px] -mx-1">
+            <div
+              className="max-h-[360px] overflow-y-auto -mx-1 px-1"
+              style={{ scrollbarWidth: 'thin' }}
+            >
               {loadingUsers ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -1335,7 +1389,7 @@ export default function MessagesModule() {
                   })}
                 </div>
               )}
-            </ScrollArea>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

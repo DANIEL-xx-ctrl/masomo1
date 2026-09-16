@@ -113,6 +113,7 @@ interface TeacherFormData {
   lastName: string
   email: string
   subject: string
+  subjects: string[]
   phone: string
   qualification: string
   gender: string
@@ -128,6 +129,7 @@ const emptyForm: TeacherFormData = {
   lastName: '',
   email: '',
   subject: '',
+  subjects: [],
   phone: '',
   qualification: '',
   gender: '',
@@ -211,6 +213,28 @@ export default function TeachersModule() {
   const [deletingTeacher, setDeletingTeacher] = useState<Teacher | null>(null)
   const [form, setForm] = useState<TeacherFormData>(emptyForm)
   const [imageField, setImageField] = useState<string | null>(null)
+  // Multi-subject input field (free text for each subject added)
+  const [subjectInput, setSubjectInput] = useState('')
+
+  // Add a subject to the form.subjects array (deduplicated, trimmed).
+  const addSubject = () => {
+    const value = subjectInput.trim()
+    if (!value) return
+    if (form.subjects.some((s) => s.toLowerCase() === value.toLowerCase())) {
+      setSubjectInput('')
+      return
+    }
+    setForm((prev) => ({ ...prev, subjects: [...prev.subjects, value] }))
+    setSubjectInput('')
+  }
+
+  // Remove a subject by index.
+  const removeSubject = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      subjects: prev.subjects.filter((_, i) => i !== index),
+    }))
+  }
 
   // ---------- Data Fetching ----------
 
@@ -262,6 +286,7 @@ export default function TeachersModule() {
     setEditingTeacher(null)
     setForm({ ...emptyForm, hireDate: todayISO() })
     setImageField(null)
+    setSubjectInput('')
     setFormOpen(true)
   }
 
@@ -273,6 +298,11 @@ export default function TeachersModule() {
       email: teacher.user?.email || '',
       password: '',
       subject: teacher.subject,
+      subjects: Array.isArray(teacher.subjects) && teacher.subjects.length > 0
+        ? teacher.subjects
+        : teacher.subject
+          ? [teacher.subject]
+          : [],
       phone: teacher.phone || '',
       qualification: teacher.qualification || '',
       gender: '',
@@ -281,6 +311,7 @@ export default function TeachersModule() {
       statusDate: teacher.statusDate || '',
     })
     setImageField(teacher.image || null)
+    setSubjectInput('')
     setFormOpen(true)
   }
 
@@ -307,8 +338,8 @@ export default function TeachersModule() {
       return
     }
 
-    if (!editingTeacher && !form.subject) {
-      addToast('error', 'Erreur', 'La matière est requise')
+    if (!editingTeacher && form.subjects.length === 0 && !form.subject) {
+      addToast('error', 'Erreur', 'Au moins une matière est requise')
       return
     }
 
@@ -327,7 +358,8 @@ export default function TeachersModule() {
             email: form.email || undefined,
             firstName: form.firstName,
             lastName: form.lastName,
-            subject: form.subject,
+            subject: form.subjects.length > 0 ? form.subjects[0] : form.subject || undefined,
+            subjects: form.subjects.length > 0 ? form.subjects : (form.subject ? [form.subject] : undefined),
             phone: form.phone || undefined,
             qualification: form.qualification || undefined,
             hireDate: form.hireDate || undefined,
@@ -353,7 +385,8 @@ export default function TeachersModule() {
             email: form.email || undefined,
             firstName: form.firstName,
             lastName: form.lastName,
-            subject: form.subject,
+            subject: form.subjects.length > 0 ? form.subjects[0] : form.subject || undefined,
+            subjects: form.subjects.length > 0 ? form.subjects : (form.subject ? [form.subject] : undefined),
             phone: form.phone || undefined,
             qualification: form.qualification || undefined,
             hireDate: form.hireDate || undefined,
@@ -384,6 +417,7 @@ export default function TeachersModule() {
       setForm(emptyForm)
       setEditingTeacher(null)
       setImageField(null)
+      setSubjectInput('')
 
       if (statusChanged && !newStatusVisibleWithFilter) {
         // Le useEffect surveillant statusFilter déclenchera fetchTeachers.
@@ -1192,13 +1226,60 @@ export default function TeachersModule() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="t-subject">Matière *</Label>
+                <Label htmlFor="t-subject">Matières *</Label>
                 <Input
                   id="t-subject"
                   value={form.subject}
                   onChange={(e) => updateForm('subject', e.target.value)}
                   placeholder="Ex: Mathématiques"
                 />
+                {/* Multi-subject entry: type a subject and press Enter / click
+                    "+" to add it to the list. Each subject is a free-text
+                    value (e.g. "Mathématiques", "Histoire-Géo"). */}
+                <div className="flex gap-2">
+                  <Input
+                    id="t-subject-add"
+                    value={subjectInput}
+                    onChange={(e) => setSubjectInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        addSubject()
+                      }
+                    }}
+                    placeholder="Ajouter une matière…"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addSubject}
+                    disabled={!subjectInput.trim()}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                {form.subjects.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {form.subjects.map((subj, idx) => (
+                      <Badge
+                        key={`${subj}-${idx}`}
+                        variant="secondary"
+                        className="gap-1 pr-1"
+                      >
+                        {subj}
+                        <button
+                          type="button"
+                          onClick={() => removeSubject(idx)}
+                          className="rounded-full hover:bg-muted-foreground/20 p-0.5"
+                          aria-label={`Retirer ${subj}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="t-qualification">Qualification</Label>

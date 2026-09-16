@@ -207,7 +207,7 @@ export default function PaymentsModule() {
   const [receiptError, setReceiptError] = useState<string | null>(null);
 
   // Classes list for the class filter dropdown
-  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+  const [classes, setClasses] = useState<{ id: string; name: string; teachers?: { teacherId: string }[] }[]>([]);
 
   const fetchStudents = useCallback(async () => {
     try {
@@ -228,6 +228,15 @@ export default function PaymentsModule() {
       // Silent — classes filter just won't be available
     }
   }, [schoolYear]);
+
+  // For teachers, restrict the class dropdown to only their own classes.
+  // The /api/classes response includes a `teachers` array of { teacherId }
+  // on each class — we filter client-side to avoid an extra API call.
+  const isTeacher = currentUser?.role === 'teacher';
+  const myTeacherId = currentUser?.teacher?.id;
+  const visibleClasses = isTeacher && myTeacherId
+    ? classes.filter((cls) => (cls.teachers || []).some((t) => t.teacherId === myTeacherId))
+    : classes;
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
@@ -710,9 +719,9 @@ export default function PaymentsModule() {
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Classe" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes les classes</SelectItem>
-                {classes.map((cls) => (
+              <SelectContent className="max-h-60">
+                <SelectItem value="all">{isTeacher ? 'Toutes mes classes' : 'Toutes les classes'}</SelectItem>
+                {visibleClasses.map((cls) => (
                   <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -1318,8 +1327,9 @@ export default function PaymentsModule() {
               </Button>
             )}
 
-            {/* Export & print dropdown */}
-            {detailPayment && (
+            {/* Export & print dropdown — hidden for teachers (they can view
+                payment details but cannot print/export receipts). */}
+            {detailPayment && isAdmin && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button

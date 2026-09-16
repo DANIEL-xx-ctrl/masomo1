@@ -15,6 +15,10 @@ import {
   CheckCircle2,
   XCircle,
   GraduationCap,
+  Download,
+  FileSpreadsheet,
+  FileType2,
+  ChevronDown,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -58,6 +62,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import {
   Pagination as PaginationNav,
   PaginationContent,
   PaginationItem,
@@ -77,6 +89,17 @@ import {
   MAX_GRADE_VALUE,
 } from '@/lib/constants';
 import type { Grade, Class, Subject, Student } from '@/lib/types';
+
+/** Format an ISO date string (e.g. "2024-12-15") as a French date string. */
+function formatDateFR(dateStr: string): string {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+}
 
 /** Generate page numbers with ellipsis for pagination (1 … 4 5 6 … 12). */
 function generatePageNumbers(current: number, total: number): (number | 'ellipsis')[] {
@@ -475,6 +498,37 @@ export default function GradesModule() {
   const isTeacher = currentUser?.role === 'teacher';
   const currentTeacherId = currentUser?.teacher?.id || null;
 
+  // ---- Export grades to PDF / Excel / Word ----
+  // Builds a GET URL with the current filters + the caller's identity, then
+  // triggers a browser download. The backend routes already implement
+  // teacher scoping (admin sees all, teacher sees only their classes).
+  const exportGrades = useCallback(
+    async (format: 'pdf' | 'excel' | 'word') => {
+      try {
+        const params = new URLSearchParams();
+        if (filterClassId && filterClassId !== 'all') params.set('classId', filterClassId);
+        if (filterSubjectId && filterSubjectId !== 'all') params.set('subjectId', filterSubjectId);
+        if (filterTrimester && filterTrimester !== 'all') params.set('trimester', filterTrimester);
+        if (schoolYear) params.set('schoolYear', schoolYear);
+        if (currentUser?.id) params.set('userId', currentUser.id);
+        if (currentUser?.role) params.set('role', currentUser.role);
+        const url = `/api/grades/export/${format}?${params.toString()}`;
+        // Trigger download via a hidden anchor (so the browser shows the
+        // native "download" UX and keeps SPA navigation intact).
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `notes.${format === 'excel' ? 'xlsx' : format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        addToast('success', 'Export lancé', `Export ${format.toUpperCase()} en cours…`);
+      } catch (err) {
+        addToast('error', 'Erreur', err instanceof Error ? err.message : 'Erreur inconnue');
+      }
+    },
+    [filterClassId, filterSubjectId, filterTrimester, schoolYear, currentUser, addToast]
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -500,6 +554,46 @@ export default function GradesModule() {
             Ajouter une note
           </Button>
         )}
+        {/* Export dropdown — PDF / Excel / Word. Visible to admin, teacher, super_admin. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              disabled={loading || grades.length === 0}
+              title="Exporter les notes affichées"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline">Exporter</span>
+              <span className="sm:hidden">Export</span>
+              <ChevronDown className="w-3 h-3 ml-1" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>Exporter les notes</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => exportGrades('pdf')}
+            >
+              <FileType2 className="w-4 h-4 mr-2 text-red-600" />
+              <span>Exporter en PDF</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => exportGrades('excel')}
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />
+              <span>Exporter en Excel</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => exportGrades('word')}
+            >
+              <FileText className="w-4 h-4 mr-2 text-blue-600" />
+              <span>Exporter en Word</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Teacher scope banner */}
@@ -724,7 +818,7 @@ export default function GradesModule() {
                             <Badge variant="outline">{GRADE_TYPE_LABELS[grade.type] || grade.type}</Badge>
                           </TableCell>
                           <TableCell>{TRIMESTER_LABELS[grade.trimester] || grade.trimester}</TableCell>
-                          <TableCell className="text-muted-foreground text-sm">{grade.date}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{formatDateFR(grade.date)}</TableCell>
                           {isAdmin && (
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
@@ -788,7 +882,7 @@ export default function GradesModule() {
                       <div className="flex items-center gap-2 mt-3">
                         <Badge variant="outline">{GRADE_TYPE_LABELS[grade.type] || grade.type}</Badge>
                         <Badge variant="outline">{TRIMESTER_LABELS[grade.trimester] || grade.trimester}</Badge>
-                        <span className="text-xs text-muted-foreground">{grade.date}</span>
+                        <span className="text-xs text-muted-foreground">{formatDateFR(grade.date)}</span>
                       </div>
                       {isAdmin && (
                         <div className="flex gap-2 mt-3 pt-3 border-t">

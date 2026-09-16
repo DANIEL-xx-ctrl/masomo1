@@ -556,8 +556,9 @@ export default function CommunicationModule() {
                                     {announcement.mediaType === 'video' ? 'Vidéo' : 'Image'}
                                   </span>
                                 )}
-                                {/* Delete button — visible only for admin/super_admin */}
-                                {(isAdmin || isSuperAdmin) && (
+                                {/* Delete button — visible for admin/super_admin (any announcement)
+                                    OR for the author of the announcement (their own publications). */}
+                                {(isAdmin || isSuperAdmin || announcement.authorId === currentUser?.id) && (
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteAnnouncement(announcement.id, announcement.title)}
@@ -869,7 +870,7 @@ export default function CommunicationModule() {
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner un destinataire" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-60 overflow-y-auto">
                   {users
                     .filter((u) => u.id !== currentUser?.id)
                     .map((user) => (

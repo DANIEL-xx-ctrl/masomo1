@@ -24,7 +24,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
@@ -1043,17 +1042,27 @@ export default function BulletinsModule() {
               </div>
             </div>
 
-            {/* Exclude insolvent checkbox */}
-            <div className="flex items-center gap-2 mt-3">
-              <Checkbox
-                id="exclude-insolvent"
-                checked={procExcludeInsolvent}
-                onCheckedChange={(checked) => setProcExcludeInsolvent(checked === true)}
-              />
-              <Label htmlFor="exclude-insolvent" className="text-xs cursor-pointer flex items-center gap-1">
+            {/* Solvability filter — select only solvent students
+                (those with no pending/failed payments) for the proclamation
+                list. Insolvent students are excluded when "solvent" is
+                selected. The backend already supports excludeInsolvent=true. */}
+            <div className="grid gap-1.5 mt-3 max-w-xs">
+              <Label htmlFor="proc-solvency" className="text-xs flex items-center gap-1">
                 <Wallet className="w-3 h-3" />
-                Exclure les insolvables (élèves avec paiements en attente ou impayés)
+                Solvabilité
               </Label>
+              <Select
+                value={procExcludeInsolvent ? 'solvent' : 'all'}
+                onValueChange={(v) => setProcExcludeInsolvent(v === 'solvent')}
+              >
+                <SelectTrigger id="proc-solvency" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les élèves</SelectItem>
+                  <SelectItem value="solvent">Élèves solvables uniquement</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
