@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { checkAdminOrSuperAdmin } from '@/lib/auth-guards'
+import { getTeacherClassIds } from '@/lib/teacher-classes'
 
 export async function GET(request: Request) {
   try {
@@ -14,6 +15,22 @@ export async function GET(request: Request) {
     if (studentId) where.studentId = studentId
     if (status) where.status = status
     if (schoolYear) where.schoolYear = schoolYear
+
+    // ---- Teacher scoping ----
+    // A teacher should only see payments for students in their own classes.
+    // We resolve the caller's teacher class ids via the x-user-id header
+    // (set by the client fetch interceptor) and filter the student set.
+    const userRole = request.headers.get('x-user-role')
+    const headerUserId = request.headers.get('x-user-id')
+    if (userRole === 'teacher' && headerUserId) {
+      const teacherClassIds = await getTeacherClassIds(headerUserId, schoolYear || undefined)
+      if (teacherClassIds.length > 0) {
+        where.student = { classId: { in: teacherClassIds } }
+      } else {
+        // Teacher with no assigned classes → no payments visible
+        return NextResponse.json({ payments: [] })
+      }
+    }
 
     const payments = await db.payment.findMany({
       where,
