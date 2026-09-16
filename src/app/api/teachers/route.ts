@@ -143,6 +143,7 @@ export async function POST(request: Request) {
       firstName,
       lastName,
       subject,
+      subjects,
       phone,
       qualification,
       hireDate,
@@ -151,9 +152,26 @@ export async function POST(request: Request) {
       image,
     } = body
 
-    if (!firstName || !lastName || !subject) {
+    // Resolve subjects: accept either the new `subjects` array or the legacy
+    // single `subject` string. We keep `subject` (single) as a backward-compat
+    // "primary subject" field so existing reads keep working.
+    const subjectsArray: string[] = Array.isArray(subjects)
+      ? subjects.map((s: unknown) => String(s).trim()).filter(Boolean)
+      : []
+    // Backward-compat: if only `subject` (single) was provided, use it as
+    // the only element of `subjects`.
+    const finalSubjects =
+      subjectsArray.length > 0
+        ? subjectsArray
+        : subject
+          ? [String(subject).trim()]
+          : []
+    // Primary subject for the legacy `subject` column (first of the list).
+    const primarySubject = finalSubjects[0] || ''
+
+    if (!firstName || !lastName || finalSubjects.length === 0) {
       return NextResponse.json(
-        { error: 'Prénom, nom et matière requis' },
+        { error: 'Prénom, nom et au moins une matière requis' },
         { status: 400 }
       )
     }
@@ -204,7 +222,8 @@ export async function POST(request: Request) {
         userId: user.id,
         firstName,
         lastName,
-        subject,
+        subject: primarySubject,
+        subjects: finalSubjects,
         phone,
         qualification,
         hireDate: hireDate || new Date().toISOString().split('T')[0],
