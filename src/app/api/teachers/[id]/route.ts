@@ -55,6 +55,7 @@ export async function PUT(
       firstName,
       lastName,
       subject,
+      subjects,
       phone,
       qualification,
       hireDate,
@@ -74,6 +75,23 @@ export async function PUT(
         { status: 404 }
       )
     }
+
+    // Resolve subjects array (new multi-subject feature). Accept either the
+    // new `subjects` array or the legacy single `subject` string.
+    const subjectsArray: string[] = Array.isArray(subjects)
+      ? subjects.map((s: unknown) => String(s).trim()).filter(Boolean)
+      : []
+    const finalSubjects =
+      subjectsArray.length > 0
+        ? subjectsArray
+        : subject !== undefined
+          ? subject
+            ? [String(subject).trim()]
+            : []
+          : undefined // undefined → don't touch the field
+    // Primary subject for the legacy `subject` column (first of the list).
+    const primarySubject =
+      finalSubjects !== undefined ? finalSubjects[0] || '' : undefined
 
     // Règle métier : si le statut est "active", on efface statusDate.
     // Sinon (abandoned/migrated/deceased), on accepte la date fournie (ou la date du jour
@@ -105,7 +123,8 @@ export async function PUT(
       data: {
         firstName,
         lastName,
-        subject,
+        ...(primarySubject !== undefined ? { subject: primarySubject } : {}),
+        ...(finalSubjects !== undefined ? { subjects: finalSubjects } : {}),
         phone,
         qualification,
         hireDate,
