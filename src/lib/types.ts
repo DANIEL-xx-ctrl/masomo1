@@ -132,6 +132,7 @@ export interface Teacher {
   firstName: string;
   lastName: string;
   subject: string;
+  subjects?: string[];
   phone: string | null;
   qualification: string | null;
   hireDate: string;
