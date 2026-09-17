@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
+import { formatDateFR } from '@/lib/grades-export'
 
 const GRADE_TYPE_LABELS: Record<string, string> = {
   devoir: 'Devoir',
@@ -152,7 +153,7 @@ export async function GET(request: Request) {
         parseFloat(scaledValue.toFixed(2)),
         GRADE_TYPE_LABELS[grade.type] || grade.type,
         TRIMESTER_LABELS[grade.trimester] || grade.trimester,
-        grade.date,
+        formatDateFR(grade.date),
         grade.comment || '',
       ]
     })
