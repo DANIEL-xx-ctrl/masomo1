@@ -44,6 +44,11 @@ export async function getFilteredGrades(request: Request): Promise<FilteredGrade
   const schoolYear = searchParams.get('schoolYear') || '2024-2025'
   const userId = searchParams.get('userId')
   const userRole = searchParams.get('role')
+  // Additional client-side filters that we now also apply server-side so the
+  // PDF/Excel/Word exports honor the search box + type filter exactly like the
+  // UI table does.
+  const type = searchParams.get('type')
+  const search = searchParams.get('search')?.trim() || ''
 
   const where: Record<string, unknown> = { schoolYear }
 
@@ -51,6 +56,7 @@ export async function getFilteredGrades(request: Request): Promise<FilteredGrade
   if (classId) where.classId = classId
   if (subjectId) where.subjectId = subjectId
   if (trimester) where.trimester = trimester
+  if (type) where.type = type
 
   // If the user is a teacher, only show grades from their assigned classes
   if (userId && userRole === 'teacher') {
@@ -99,7 +105,7 @@ export async function getFilteredGrades(request: Request): Promise<FilteredGrade
     }
   }
 
-  const grades = await db.grade.findMany({
+  const allGrades = await db.grade.findMany({
     where,
     include: {
       student: {
@@ -113,6 +119,17 @@ export async function getFilteredGrades(request: Request): Promise<FilteredGrade
     },
     orderBy: { date: 'desc' },
   })
+
+  // Apply the search query (match by student name OR subject name),
+  // exactly like the UI does on the client side.
+  const grades = search
+    ? allGrades.filter((g) => {
+        const studentName = `${g.student.firstName} ${g.student.lastName}`.toLowerCase()
+        const subjectName = (g.subject?.name || '').toLowerCase()
+        const q = search.toLowerCase()
+        return studentName.includes(q) || subjectName.includes(q)
+      })
+    : allGrades
 
   return { grades, schoolYear, classId, subjectId, trimester }
 }
