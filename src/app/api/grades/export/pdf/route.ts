@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { formatDateFR } from '@/lib/grades-export'
 
 const GRADE_TYPE_LABELS: Record<string, string> = {
   devoir: 'Devoir',
@@ -186,7 +187,7 @@ export async function GET(request: Request) {
         scaledValue.toFixed(2),
         GRADE_TYPE_LABELS[grade.type] || grade.type,
         TRIMESTER_LABELS[grade.trimester] || grade.trimester,
-        grade.date,
+        formatDateFR(grade.date),
       ]
     })
 
