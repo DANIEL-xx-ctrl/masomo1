@@ -14,9 +14,6 @@ import { db } from '@/lib/db'
  *
  * A student is considered "solvent" if they have NO payments with status
  * "pending" or "failed" for the school year.
- *
- * Response shape:
- *  { students: [{ id, firstName, lastName, className, solvent }] }
  */
 export async function GET(request: Request) {
   try {
@@ -31,7 +28,6 @@ export async function GET(request: Request) {
       )
     }
 
-    // Fetch all active students in the class
     const students = await db.student.findMany({
       where: { classId, status: 'active' },
       select: {
@@ -47,7 +43,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ students: [] })
     }
 
-    // Find students with at least one pending or failed payment = insolvent
     const studentIds = students.map((s) => s.id)
     const insolventPayments = await db.payment.findMany({
       where: {
@@ -77,4 +72,3 @@ export async function GET(request: Request) {
     )
   }
 }
-
