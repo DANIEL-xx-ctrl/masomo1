@@ -778,7 +778,7 @@ export default function TeachersModule() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Rechercher un enseignant..."
+                placeholder="Rechercher par nom, matière, email…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 w-full"
