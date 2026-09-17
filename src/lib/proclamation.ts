@@ -299,9 +299,8 @@ export { TRIMESTER_LABELS, SEMESTER_LABELS }
  * students (if requested), then we restrict to the pre-selected student IDs
  * (if any). Ranks are re-computed after each filter step.
  *
- * This is shared by the list endpoint AND the 3 export endpoints (PDF /
- * Excel / Word) so the exported files always match what the user sees in
- * the dialog.
+ * Shared by the list endpoint AND the 3 export endpoints so the exported
+ * files always match what the user sees in the dialog.
  */
 export async function applyProclamationFilters(
   result: ProclamationResult,
