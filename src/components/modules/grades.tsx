@@ -509,6 +509,12 @@ export default function GradesModule() {
         if (filterClassId && filterClassId !== 'all') params.set('classId', filterClassId);
         if (filterSubjectId && filterSubjectId !== 'all') params.set('subjectId', filterSubjectId);
         if (filterTrimester && filterTrimester !== 'all') params.set('trimester', filterTrimester);
+        // Send the type filter + search query too, so the export honors the
+        // EXACT same filter set the user sees in the UI (not just the
+        // server-side filters). This way "Exporter" exports the filtered
+        // search results, not the full list.
+        if (filterType && filterType !== 'all') params.set('type', filterType);
+        if (searchQuery.trim()) params.set('search', searchQuery.trim());
         if (schoolYear) params.set('schoolYear', schoolYear);
         if (currentUser?.id) params.set('userId', currentUser.id);
         if (currentUser?.role) params.set('role', currentUser.role);
@@ -526,7 +532,7 @@ export default function GradesModule() {
         addToast('error', 'Erreur', err instanceof Error ? err.message : 'Erreur inconnue');
       }
     },
-    [filterClassId, filterSubjectId, filterTrimester, schoolYear, currentUser, addToast]
+    [filterClassId, filterSubjectId, filterTrimester, filterType, searchQuery, schoolYear, currentUser, addToast]
   );
 
   return (
