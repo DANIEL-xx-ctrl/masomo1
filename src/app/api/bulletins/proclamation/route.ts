@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getProclamationData } from '@/lib/proclamation'
-import { db } from '@/lib/db'
+import { getProclamationData, applyProclamationFilters } from '@/lib/proclamation'
 
 /**
  * GET /api/bulletins/proclamation
@@ -12,6 +11,9 @@ import { db } from '@/lib/db'
  *  - semester: "1" | "2"                            (when period=semester)
  *  - classId: optional — restrict to a single class
  *  - excludeInsolvent: "true" — exclude students with pending/unpaid payments
+ *  - studentIds: comma-separated list of student IDs — when provided, only
+ *    those students are included in the proclamation list (used by the
+ *    pre-selection checkbox UI).
  *
  * Returns a proclamation list sorted by average DESC (rank 1 = best).
  */
@@ -24,6 +26,12 @@ export async function GET(request: Request) {
     const semester = searchParams.get('semester')
     const classId = searchParams.get('classId')
     const excludeInsolvent = searchParams.get('excludeInsolvent') === 'true'
+    // Optional pre-selected student IDs (comma-separated). When provided,
+    // the proclamation list is restricted to only these students.
+    const studentIdsParam = searchParams.get('studentIds')
+    const selectedStudentIds = studentIdsParam
+      ? studentIdsParam.split(',').map((s) => s.trim()).filter(Boolean)
+      : []
 
     if (!schoolYear) {
       return NextResponse.json(
@@ -53,40 +61,13 @@ export async function GET(request: Request) {
       classId,
     })
 
-    // ---- Exclude insolvent students ----
-    // If excludeInsolvent is true, we remove students who have pending or
-    // failed payments for the school year. A student is considered "solvent"
-    // if they have NO payments with status "pending" or "failed".
-    if (excludeInsolvent && result.entries.length > 0) {
-      const studentIds = result.entries.map((e: { studentId: string }) => e.studentId)
-      // Find students with at least one pending or failed payment
-      const insolventPayments = await db.payment.findMany({
-        where: {
-          studentId: { in: studentIds },
-          status: { in: ['pending', 'failed'] },
-          schoolYear,
-        },
-        select: { studentId: true },
-        distinct: ['studentId'],
-      })
-      const insolventIds = new Set(insolventPayments.map((p) => p.studentId))
-
-      // Filter out insolvent students and re-rank
-      const filtered = result.entries.filter(
-        (e: { studentId: string }) => !insolventIds.has(e.studentId)
-      )
-      // Re-rank
-      filtered.forEach((entry: { rank: number }, i: number) => {
-        entry.rank = i + 1
-      })
-
-      result.entries = filtered
-      result.stats = {
-        ...result.stats,
-        totalStudents: filtered.length,
-        excludedCount: result.entries.length - filtered.length,
-      }
-    }
+    // Apply insolvent filter + pre-selected student IDs filter (shared
+    // with the export routes so exports always match the dialog).
+    await applyProclamationFilters(result, {
+      excludeInsolvent,
+      selectedStudentIds,
+      schoolYear,
+    })
 
     return NextResponse.json(result)
   } catch (error) {
