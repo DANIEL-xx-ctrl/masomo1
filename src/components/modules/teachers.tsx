@@ -106,6 +106,17 @@ import {
   PaginationEllipsis,
 } from '@/components/ui/pagination'
 
+// ---------- Helpers ----------
+
+/** Return the list of subjects a teacher teaches. Prefers the new `subjects`
+ *  array (multi-subject) and falls back to the legacy single `subject` field
+ *  for teachers created before the multi-subject feature. */
+function getTeacherSubjects(t: { subject?: string; subjects?: string[] }): string[] {
+  if (Array.isArray(t.subjects) && t.subjects.length > 0) return t.subjects
+  if (t.subject && t.subject.trim()) return [t.subject.trim()]
+  return []
+}
+
 // ---------- Types ----------
 
 interface TeacherFormData {
@@ -144,6 +155,7 @@ interface TeacherDetail {
   firstName: string
   lastName: string
   subject: string
+  subjects?: string[]
   phone: string | null
   qualification: string | null
   hireDate: string
@@ -338,7 +350,7 @@ export default function TeachersModule() {
       return
     }
 
-    if (!editingTeacher && form.subjects.length === 0 && !form.subject) {
+    if (!editingTeacher && form.subjects.length === 0) {
       addToast('error', 'Erreur', 'Au moins une matière est requise')
       return
     }
@@ -358,8 +370,8 @@ export default function TeachersModule() {
             email: form.email || undefined,
             firstName: form.firstName,
             lastName: form.lastName,
-            subject: form.subjects.length > 0 ? form.subjects[0] : form.subject || undefined,
-            subjects: form.subjects.length > 0 ? form.subjects : (form.subject ? [form.subject] : undefined),
+            subject: form.subjects[0] || undefined,
+            subjects: form.subjects.length > 0 ? form.subjects : undefined,
             phone: form.phone || undefined,
             qualification: form.qualification || undefined,
             hireDate: form.hireDate || undefined,
@@ -385,8 +397,8 @@ export default function TeachersModule() {
             email: form.email || undefined,
             firstName: form.firstName,
             lastName: form.lastName,
-            subject: form.subjects.length > 0 ? form.subjects[0] : form.subject || undefined,
-            subjects: form.subjects.length > 0 ? form.subjects : (form.subject ? [form.subject] : undefined),
+            subject: form.subjects[0] || undefined,
+            subjects: form.subjects.length > 0 ? form.subjects : undefined,
             phone: form.phone || undefined,
             qualification: form.qualification || undefined,
             hireDate: form.hireDate || undefined,
@@ -932,9 +944,13 @@ export default function TeachersModule() {
                           <TableCell className="font-medium">{teacher.lastName}</TableCell>
                           <TableCell>{teacher.firstName}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800">
-                              {teacher.subject}
-                            </Badge>
+                            <div className="flex flex-wrap gap-1">
+                              {getTeacherSubjects(teacher).map((subj, idx) => (
+                                <Badge key={`${subj}-${idx}`} variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800">
+                                  {subj}
+                                </Badge>
+                              ))}
+                            </div>
                           </TableCell>
                           <TableCell className="text-sm">{teacher.phone || '—'}</TableCell>
                           <TableCell className="text-sm">{teacher.user?.email || '—'}</TableCell>
@@ -1036,12 +1052,15 @@ export default function TeachersModule() {
                             {teacher.firstName} {teacher.lastName}
                           </p>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            <Badge
-                              variant="outline"
-                              className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800 text-xs max-w-full truncate"
-                            >
-                              <span className="truncate">{teacher.subject}</span>
-                            </Badge>
+                            {getTeacherSubjects(teacher).map((subj, idx) => (
+                              <Badge
+                                key={`${subj}-${idx}`}
+                                variant="outline"
+                                className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800 text-xs max-w-full truncate"
+                              >
+                                <span className="truncate">{subj}</span>
+                              </Badge>
+                            ))}
                             <Badge
                               variant="outline"
                               className={`text-xs shrink-0 ${PERSON_STATUS_BADGE_CLASSES[teacher.status] || PERSON_STATUS_BADGE_CLASSES.active}`}
@@ -1226,16 +1245,12 @@ export default function TeachersModule() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="t-subject">Matières *</Label>
-                <Input
-                  id="t-subject"
-                  value={form.subject}
-                  onChange={(e) => updateForm('subject', e.target.value)}
-                  placeholder="Ex: Mathématiques"
-                />
+                <Label htmlFor="t-subject-add">Matières *</Label>
                 {/* Multi-subject entry: type a subject and press Enter / click
                     "+" to add it to the list. Each subject is a free-text
-                    value (e.g. "Mathématiques", "Histoire-Géo"). */}
+                    value (e.g. "Mathématiques", "Histoire-Géo"). The subject is
+                    added to the `subjects` array and displayed as a removable
+                    badge below. */}
                 <div className="flex gap-2">
                   <Input
                     id="t-subject-add"
@@ -1435,9 +1450,11 @@ export default function TeachersModule() {
                       {viewingTeacher.firstName} {viewingTeacher.lastName}
                     </h3>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800">
-                        {viewingTeacher.subject}
-                      </Badge>
+                      {getTeacherSubjects(viewingTeacher).map((subj, idx) => (
+                        <Badge key={`${subj}-${idx}`} variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800">
+                          {subj}
+                        </Badge>
+                      ))}
                       <Badge
                         variant="outline"
                         className={`text-xs ${PERSON_STATUS_BADGE_CLASSES[viewingTeacher.status || 'active'] || PERSON_STATUS_BADGE_CLASSES.active}`}
