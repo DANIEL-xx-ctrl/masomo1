@@ -45,8 +45,8 @@ export async function GET(request: Request) {
       classId,
     })
 
-    // Apply the same filters as the list endpoint (insolvent + selected IDs)
-    // so the exported Word always matches what the user sees in the dialog.
+    // Apply the same filters as the list endpoint so the exported Word
+    // always matches what the user sees in the dialog.
     await applyProclamationFilters(data, {
       excludeInsolvent,
       selectedStudentIds,
