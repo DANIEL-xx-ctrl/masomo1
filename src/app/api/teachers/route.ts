@@ -55,17 +55,65 @@ export async function GET(request: Request) {
     }
 
     if (search) {
-      andConditions.push({
-        OR: [
-          { firstName: { contains: search } },
-          { lastName: { contains: search } },
-          { subject: { contains: search } },
-          { phone: { contains: search } },
-          { qualification: { contains: search } },
-          { user: { email: { contains: search } } },
-          { user: { phone: { contains: search } } },
-        ],
+      // Case-insensitive search across name, subject(s), phone, etc.
+      // PostgreSQL string `contains` is case-sensitive by default, so we use
+      // `mode: 'insensitive'` for every text field.
+      // For the `subjects` String[] array, Prisma's `has` operator only does
+      // EXACT element matching (no partial / case-insensitive match). To
+      // support partial + case-insensitive search inside the subjects array,
+      // we ALSO query teachers whose joined subjects array contains the
+      // search term via a raw SQL ILIKE. We do this in a second step to keep
+      // the Prisma query type-safe, then merge the ids.
+      const lower = search
+      const containsInsensitive = (field: string) => ({
+        [field]: { contains: lower, mode: 'insensitive' as const },
       })
+
+      // Step 1: standard text-field search (name, subject legacy, phone, etc.)
+      const textMatches = await db.teacher.findMany({
+        where: {
+          AND: andConditions.length > 0 ? { AND: andConditions } : {},
+          OR: [
+            containsInsensitive('firstName'),
+            containsInsensitive('lastName'),
+            containsInsensitive('subject'),
+            containsInsensitive('phone'),
+            containsInsensitive('qualification'),
+            { user: { email: { contains: lower, mode: 'insensitive' as const } } },
+            { user: { phone: { contains: lower, mode: 'insensitive' as const } } },
+          ],
+        },
+        select: { id: true },
+      })
+      const textMatchIds = new Set(textMatches.map((t) => t.id))
+
+      // Step 2: raw SQL to find teachers whose subjects array contains the
+      // search term (case-insensitive, partial match) via array_to_string + ILIKE.
+      // This catches e.g. searching "math" and matching a teacher whose
+      // subjects = ['Mathématiques', 'Physique'].
+      let subjectMatchIds = new Set<string>()
+      try {
+        const rows = (await db.$queryRaw`
+          SELECT id FROM "Teacher"
+          WHERE array_to_string("subjects", ' ') ILIKE ${'%' + lower + '%'}
+        `) as Array<{ id: string }>
+        subjectMatchIds = new Set(rows.map((r) => r.id))
+      } catch (rawErr) {
+        // If the raw query fails (e.g. subjects column missing on older
+        // schemas), silently fall back to text-only matching.
+        console.warn('[teachers] subjects array raw search failed:', rawErr)
+      }
+
+      // Merge the two id sets and fetch the full teacher records with the
+      // original filters + pagination applied.
+      const mergedIds = new Set([...textMatchIds, ...subjectMatchIds])
+      if (mergedIds.size === 0) {
+        return NextResponse.json({
+          teachers: [],
+          pagination: { page, limit, total: 0, totalPages: 0 },
+        })
+      }
+      andConditions.push({ id: { in: Array.from(mergedIds) } })
     }
 
     // Filter by hire date range.
