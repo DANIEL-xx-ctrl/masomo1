@@ -15,7 +15,6 @@ export async function GET(request: Request) {
     const trimester = searchParams.get('trimester')
     const semester = searchParams.get('semester')
     const classId = searchParams.get('classId')
-    const excludeInsolvent = searchParams.get('excludeInsolvent') === 'true'
     const studentIdsParam = searchParams.get('studentIds')
     const selectedStudentIds = studentIdsParam
       ? studentIdsParam.split(',').map((s) => s.trim()).filter(Boolean)
@@ -33,12 +32,10 @@ export async function GET(request: Request) {
       classId,
     })
 
-    // Apply the same filters as the list endpoint so the exported PDF
-    // always matches what the user sees in the dialog.
+    // Apply the same studentIds filter as the list endpoint so the exported
+    // PDF always matches what the user sees in the dialog. NO payment filter.
     await applyProclamationFilters(data, {
-      excludeInsolvent,
       selectedStudentIds,
-      schoolYear,
     })
 
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
