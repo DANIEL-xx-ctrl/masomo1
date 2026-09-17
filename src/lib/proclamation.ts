@@ -294,10 +294,9 @@ export async function getProclamationData(
 export { TRIMESTER_LABELS, SEMESTER_LABELS }
 
 /**
- * Apply the insolvent filter + the pre-selected studentIds filter on top of
- * a ProclamationResult. Both filters compose: first we remove insolvent
- * students (if requested), then we restrict to the pre-selected student IDs
- * (if any). Ranks are re-computed after each filter step.
+ * Apply the pre-selected studentIds filter on top of a ProclamationResult.
+ * NO payment / solvency filter is applied — only the user's selection
+ * matters. Ranks are re-computed after filtering.
  *
  * Shared by the list endpoint AND the 3 export endpoints so the exported
  * files always match what the user sees in the dialog.
@@ -305,30 +304,14 @@ export { TRIMESTER_LABELS, SEMESTER_LABELS }
 export async function applyProclamationFilters(
   result: ProclamationResult,
   opts: {
-    excludeInsolvent?: boolean
     selectedStudentIds?: string[]
-    schoolYear?: string
   }
 ): Promise<void> {
-  const { excludeInsolvent, selectedStudentIds, schoolYear } = opts
-
-  // ---- Exclude insolvent students ----
-  if (excludeInsolvent && result.entries.length > 0) {
-    const studentIds = result.entries.map((e) => e.studentId)
-    const insolventPayments = await db.payment.findMany({
-      where: {
-        studentId: { in: studentIds },
-        status: { in: ['pending', 'failed'] },
-        schoolYear: schoolYear || '2024-2025',
-      },
-      select: { studentId: true },
-      distinct: ['studentId'],
-    })
-    const insolventIds = new Set(insolventPayments.map((p) => p.studentId))
-    result.entries = result.entries.filter((e) => !insolventIds.has(e.studentId))
-  }
+  const { selectedStudentIds } = opts
 
   // ---- Filter by pre-selected student IDs ----
+  // Only the students the user selected (via the checkbox UI + "Passer à la
+  // proclamation" button) appear in the proclamation. NO payment filter.
   if (selectedStudentIds && selectedStudentIds.length > 0 && result.entries.length > 0) {
     const allowed = new Set(selectedStudentIds)
     result.entries = result.entries.filter((e) => allowed.has(e.studentId))
