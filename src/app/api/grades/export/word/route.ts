@@ -18,6 +18,7 @@ import {
   resolveFilterLabels,
   GRADE_TYPE_LABELS,
   TRIMESTER_LABELS,
+  formatDateFR,
 } from '@/lib/grades-export'
 
 /**
@@ -76,7 +77,7 @@ export async function GET(request: Request) {
         scaledValue.toFixed(2),
         GRADE_TYPE_LABELS[grade.type] || grade.type,
         TRIMESTER_LABELS[grade.trimester] || grade.trimester,
-        grade.date,
+        formatDateFR(grade.date),
       ]
       return new TableRow({
         children: cells.map(
