@@ -12,6 +12,28 @@ export const TRIMESTER_LABELS: Record<string, string> = {
   '3eme': '3ème Trimestre',
 }
 
+/**
+ * Format an ISO date string (e.g. "2024-12-15") as a French date string
+ * (e.g. "15/12/2024"). Used by the PDF / Excel / Word export routes so
+ * exported dates are always in French regardless of the server's locale.
+ *
+ * The date is parsed with a `T00:00:00` suffix to avoid UTC off-by-one
+ * shifts that would otherwise turn "2024-12-15" into "14/12/2024".
+ */
+export function formatDateFR(dateStr: string): string {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
 export interface FilteredGradesResult {
   grades: Array<{
     id: string
