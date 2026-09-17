@@ -19,6 +19,7 @@ import {
   Trophy,
   FileType2,
   Wallet,
+  X,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -142,18 +143,17 @@ export default function BulletinsModule() {
   const [procResult, setProcResult] = useState<ProcResult | null>(null);
   const [procError, setProcError] = useState<string>('');
   const [procExporting, setProcExporting] = useState<'pdf' | 'excel' | 'word' | null>(null);
-  // When true, students with unpaid/pending payments are excluded from the
-  // proclamation list (only "solvent" students appear).
-  const [procExcludeInsolvent, setProcExcludeInsolvent] = useState(true);
   // Pre-selection of students: after the admin loads the candidate list for
-  // a class, they can check which solvent students should appear in the
-  // proclamation. The confirmed IDs are sent as a `studentIds` query param.
-  const [procCandidates, setProcCandidates] = useState<Array<{ id: string; firstName: string; lastName: string; className: string; solvent: boolean }>>([]);
+  // a class, they can check which students should appear in the proclamation.
+  // The "Passer à la proclamation" button MOVES the checked students into a
+  // separate "destination" zone (procConfirmedStudents). Only students in
+  // that zone appear in the generated proclamation list.
+  const [procCandidates, setProcCandidates] = useState<Array<{ id: string; firstName: string; lastName: string; className: string }>>([]);
   const [procCandidatesLoading, setProcCandidatesLoading] = useState(false);
   const [procSelectedIds, setProcSelectedIds] = useState<Set<string>>(new Set());
-  // Confirmed students — moved here after the admin clicks
-  // "Passer à la proclamation". Only these students appear in the generated list.
-  const [procConfirmedIds, setProcConfirmedIds] = useState<Set<string>>(new Set());
+  // Destination zone — students moved here via "Passer à la proclamation".
+  // Only these students appear in the generated proclamation list.
+  const [procConfirmedStudents, setProcConfirmedStudents] = useState<Array<{ id: string; firstName: string; lastName: string; className: string }>>([]);
 
   const fetchClasses = useCallback(async () => {
     try {
@@ -358,11 +358,11 @@ export default function BulletinsModule() {
     if (procClassId && procClassId !== 'all') params.set('classId', procClassId);
     if (procPeriod === 'trimester') params.set('trimester', procTrimester);
     if (procPeriod === 'semester') params.set('semester', procSemester);
-    if (procExcludeInsolvent) params.set('excludeInsolvent', 'true');
-    // When the admin has confirmed specific students via the checkbox list,
-    // send their IDs so the proclamation + exports only include those.
-    if (procConfirmedIds.size > 0) {
-      params.set('studentIds', Array.from(procConfirmedIds).join(','));
+    // When the admin has moved specific students into the destination zone
+    // via "Passer à la proclamation", send their IDs so the proclamation +
+    // exports only include those students.
+    if (procConfirmedStudents.length > 0) {
+      params.set('studentIds', procConfirmedStudents.map((s) => s.id).join(','));
     }
     const base =
       endpoint === 'list'
@@ -372,8 +372,8 @@ export default function BulletinsModule() {
   };
 
   // ===== Load candidate students for the selected class =====
-  // Fetches all active students in the class, annotated with their solvency
-  // status. Solvent students are pre-checked; insolvent ones are disabled.
+  // Fetches all active students in the class (NO solvency filter — the user
+  // decides who to include by checking boxes).
   const handleLoadProcCandidates = async () => {
     if (!procClassId || procClassId === 'all') {
       addToast('error', 'Classe requise', 'Veuillez sélectionner une classe spécifique');
@@ -386,23 +386,25 @@ export default function BulletinsModule() {
       );
       if (!res.ok) throw new Error('Échec du chargement des élèves');
       const data = await res.json();
-      const students: Array<{ id: string; firstName: string; lastName: string; className: string; solvent: boolean }> = data.students || [];
+      const students: Array<{ id: string; firstName: string; lastName: string; className: string }> = (data.students || []).map((s: { id: string; firstName: string; lastName: string; className: string; solvent?: boolean }) => ({
+        id: s.id,
+        firstName: s.firstName,
+        lastName: s.lastName,
+        className: s.className,
+      }));
       setProcCandidates(students);
-      // Pre-check all solvent students
-      setProcSelectedIds(new Set(students.filter((s) => s.solvent).map((s) => s.id)));
-      // Reset confirmed when reloading the candidate list
-      setProcConfirmedIds(new Set());
+      // Start with nothing checked — the user picks who to include.
+      setProcSelectedIds(new Set());
     } catch (error) {
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Erreur inconnue');
       setProcCandidates([]);
       setProcSelectedIds(new Set());
-      setProcConfirmedIds(new Set());
     } finally {
       setProcCandidatesLoading(false);
     }
   };
 
-  // Toggle a single student's selection.
+  // Toggle a single student's checkbox in the source list.
   const toggleProcStudent = (id: string) => {
     setProcSelectedIds((prev) => {
       const next = new Set(prev);
@@ -412,16 +414,31 @@ export default function BulletinsModule() {
     });
   };
 
-  // Confirm the selection: move the checked students into procConfirmedIds
-  // so they will be used when generating / exporting the proclamation.
-  // Students NOT in this set will not appear in the proclamation list.
+  // Move the checked students from the source list into the destination zone.
+  // Only students in the destination zone will appear in the proclamation.
   const handleConfirmProcSelection = () => {
     if (procSelectedIds.size === 0) {
-      addToast('error', 'Aucun élève sélectionné', 'Cochez au moins un élève solvent');
+      addToast('error', 'Aucun élève sélectionné', 'Cochez au moins un élève');
       return;
     }
-    setProcConfirmedIds(new Set(procSelectedIds));
-    addToast('success', 'Sélection confirmée', `${procSelectedIds.size} élève(s) passeront dans la proclamation`);
+    // Build the list of students to move (those checked and not already in destination)
+    const existingIds = new Set(procConfirmedStudents.map((s) => s.id));
+    const toMove = procCandidates.filter((s) => procSelectedIds.has(s.id) && !existingIds.has(s.id));
+    if (toMove.length === 0) {
+      addToast('info', 'Déjà ajoutés', 'Tous les élèves cochés sont déjà dans la zone de proclamation');
+      // Still clear the checkboxes
+      setProcSelectedIds(new Set());
+      return;
+    }
+    setProcConfirmedStudents((prev) => [...prev, ...toMove]);
+    // Clear the checkboxes (students stay in the source list, un-checked)
+    setProcSelectedIds(new Set());
+    addToast('success', 'Élèves passés', `${toMove.length} élève(s) ajouté(s) à la zone de proclamation`);
+  };
+
+  // Remove a student from the destination zone.
+  const removeFromProcConfirmed = (id: string) => {
+    setProcConfirmedStudents((prev) => prev.filter((s) => s.id !== id));
   };
 
   const handleGenerateProclamation = async () => {
@@ -471,7 +488,7 @@ export default function BulletinsModule() {
     setProcSemester('1');
     setProcCandidates([]);
     setProcSelectedIds(new Set());
-    setProcConfirmedIds(new Set());
+    setProcConfirmedStudents([]);
     setProcDialogOpen(true);
   };
 
@@ -1026,7 +1043,7 @@ export default function BulletinsModule() {
                     // from a previous class doesn't persist.
                     setProcCandidates([]);
                     setProcSelectedIds(new Set());
-                    setProcConfirmedIds(new Set());
+                    setProcConfirmedStudents([]);
                   }}
                 >
                   <SelectTrigger className="h-9">
@@ -1123,11 +1140,11 @@ export default function BulletinsModule() {
               </div>
             </div>
 
-            {/* Student pre-selection panel — load the class's students, then
-                check which solvent ones should appear in the proclamation.
-                A "Passer à la proclamation" button moves the checked students
-                into the confirmed set used by "Générer la liste".
-                Only shown when a specific class is selected (not "all"). */}
+            {/* Student selection panel — two zones side by side:
+                LEFT  = source list (all students in the class, checkboxes)
+                RIGHT = destination zone (students passed via the button)
+                Only students in the RIGHT zone appear in the proclamation.
+                No solvency filter — the user picks who to include. */}
             {procClassId && procClassId !== 'all' && (
               <div className="mt-3 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/10 p-3">
                 <div className="flex items-center justify-between gap-2 mb-2">
@@ -1135,115 +1152,144 @@ export default function BulletinsModule() {
                     <Users className="w-3.5 h-3.5" />
                     Sélection des élèves à proclamer
                   </Label>
-                  <div className="flex items-center gap-2">
-                    {procConfirmedIds.size > 0 && (
-                      <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900">
-                        {procConfirmedIds.size} confirmé{procConfirmedIds.size > 1 ? 's' : ''}
-                      </Badge>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleLoadProcCandidates}
+                    disabled={procCandidatesLoading}
+                    title="Charger la liste des élèves de la classe sélectionnée"
+                  >
+                    {procCandidatesLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Users className="w-3.5 h-3.5 mr-1" />
                     )}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={handleLoadProcCandidates}
-                      disabled={procCandidatesLoading}
-                      title="Charger la liste des élèves de la classe sélectionnée"
-                    >
-                      {procCandidatesLoading ? (
-                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                      ) : (
-                        <Users className="w-3.5 h-3.5 mr-1" />
-                      )}
-                      {procCandidates.length > 0 ? 'Recharger' : 'Charger les élèves'}
-                    </Button>
-                  </div>
+                    {procCandidates.length > 0 ? 'Recharger' : 'Charger les élèves'}
+                  </Button>
                 </div>
 
                 {procCandidates.length > 0 && (
-                  <>
-                    <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                      <span className="text-xs text-muted-foreground">
-                        {procSelectedIds.size} sélectionné{procSelectedIds.size > 1 ? 's' : ''} sur {procCandidates.length} élève{procCandidates.length > 1 ? 's' : ''}
-                        {' · '}
-                        {procCandidates.filter((c) => c.solvent).length} solvable{procCandidates.filter((c) => c.solvent).length > 1 ? 's' : ''}
-                        {', '}
-                        {procCandidates.filter((c) => !c.solvent).length} insolvable{procCandidates.filter((c) => !c.solvent).length > 1 ? 's' : ''}
-                      </span>
-                      <div className="flex gap-2">
-                        <button
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* ---- LEFT: source list (checkboxes) ---- */}
+                    <div className="rounded-md border border-amber-200/50 dark:border-amber-900/30 bg-background overflow-hidden flex flex-col">
+                      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-muted/40">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Élèves de la classe
+                        </span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="text-xs text-emerald-600 hover:text-emerald-700 hover:underline"
+                            onClick={() => setProcSelectedIds(new Set(procCandidates.map((c) => c.id)))}
+                          >
+                            Tout cocher
+                          </button>
+                          <span className="text-muted-foreground">|</span>
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                            onClick={() => setProcSelectedIds(new Set())}
+                          >
+                            Décocher
+                          </button>
+                        </div>
+                      </div>
+                      <div className="max-h-56 overflow-y-auto divide-y divide-border">
+                        {procCandidates.map((student) => {
+                          const checked = procSelectedIds.has(student.id);
+                          const alreadyMoved = procConfirmedStudents.some((s) => s.id === student.id);
+                          return (
+                            <label
+                              key={student.id}
+                              className={`flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 transition-colors ${alreadyMoved ? 'opacity-40' : ''}`}
+                            >
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() => toggleProcStudent(student.id)}
+                              />
+                              <span className="flex-1 truncate font-medium">
+                                {student.lastName} {student.firstName}
+                              </span>
+                              {alreadyMoved && (
+                                <Badge variant="outline" className="text-[9px] h-4 px-1 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900">
+                                  Ajouté
+                                </Badge>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {/* "Passer à la proclamation" button — moves the checked
+                          students into the destination zone on the RIGHT. */}
+                      <div className="px-3 py-2 border-t bg-muted/40">
+                        <Button
                           type="button"
-                          className="text-xs text-emerald-600 hover:text-emerald-700 hover:underline"
-                          onClick={() => setProcSelectedIds(new Set(procCandidates.filter((c) => c.solvent).map((c) => c.id)))}
+                          size="sm"
+                          className="w-full h-8 bg-amber-600 hover:bg-amber-700 text-white text-xs"
+                          onClick={handleConfirmProcSelection}
+                          disabled={procSelectedIds.size === 0}
+                          title="Passer les élèves cochés dans la zone de proclamation (à droite)"
                         >
-                          Tout cocher (solvables)
-                        </button>
-                        <span className="text-muted-foreground">|</span>
-                        <button
-                          type="button"
-                          className="text-xs text-muted-foreground hover:text-foreground hover:underline"
-                          onClick={() => setProcSelectedIds(new Set())}
-                        >
-                          Tout décocher
-                        </button>
+                          <Trophy className="w-3.5 h-3.5 mr-1" />
+                          Passer à la proclamation ({procSelectedIds.size})
+                        </Button>
                       </div>
                     </div>
-                    <div className="max-h-48 overflow-y-auto rounded-md border border-amber-200/50 dark:border-amber-900/30 bg-background divide-y divide-border">
-                      {procCandidates.map((student) => {
-                        const checked = procSelectedIds.has(student.id);
-                        return (
-                          <label
-                            key={student.id}
-                            className={`flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 transition-colors ${!student.solvent ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          >
-                            <Checkbox
-                              checked={checked}
-                              disabled={!student.solvent}
-                              onCheckedChange={() => student.solvent && toggleProcStudent(student.id)}
-                            />
-                            <span className="flex-1 truncate font-medium">
-                              {student.lastName} {student.firstName}
-                            </span>
-                            {student.solvent ? (
-                              <Badge variant="outline" className="text-[9px] h-4 px-1 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900">
-                                Solvable
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-[9px] h-4 px-1 bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900">
-                                Insolvable
-                              </Badge>
-                            )}
-                          </label>
-                        );
-                      })}
+
+                    {/* ---- RIGHT: destination zone (students passed to proclamation) ---- */}
+                    <div className="rounded-md border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/30 dark:bg-emerald-950/10 overflow-hidden flex flex-col">
+                      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-emerald-100/40 dark:bg-emerald-950/20">
+                        <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                          <Trophy className="w-3.5 h-3.5" />
+                          Élèves à proclamer
+                        </span>
+                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900">
+                          {procConfirmedStudents.length}
+                        </Badge>
+                      </div>
+                      <div className="max-h-56 overflow-y-auto divide-y divide-border">
+                        {procConfirmedStudents.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-6 px-3">
+                            Cochez des élèves à gauche, puis cliquez « Passer à la proclamation » pour les ajouter ici. Seuls les élèves de cette zone apparaîtront dans la proclamation.
+                          </p>
+                        ) : (
+                          procConfirmedStudents.map((student) => (
+                            <div
+                              key={student.id}
+                              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                            >
+                              <span className="flex-1 truncate font-medium">
+                                {student.lastName} {student.firstName}
+                              </span>
+                              <button
+                                type="button"
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded p-1 transition-colors"
+                                onClick={() => removeFromProcConfirmed(student.id)}
+                                title="Retirer de la proclamation"
+                                aria-label={`Retirer ${student.firstName} ${student.lastName}`}
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      {procConfirmedStudents.length > 0 && (
+                        <div className="px-3 py-2 border-t bg-emerald-100/40 dark:bg-emerald-950/20">
+                          <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                            <Trophy className="w-3 h-3" />
+                            {procConfirmedStudents.length} élève(s) — seuls eux apparaîtront dans la proclamation.
+                          </p>
+                        </div>
+                      )}
                     </div>
-                    {/* "Passer à la proclamation" button — moves the checked
-                        students into the confirmed set. Only confirmed students
-                        will appear in the generated proclamation list. */}
-                    <div className="mt-2 flex items-center justify-end">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-8 bg-amber-600 hover:bg-amber-700 text-white text-xs"
-                        onClick={handleConfirmProcSelection}
-                        disabled={procSelectedIds.size === 0}
-                        title="Passer les élèves cochés dans la zone de génération de la proclamation"
-                      >
-                        <Trophy className="w-3.5 h-3.5 mr-1" />
-                        Passer à la proclamation ({procSelectedIds.size})
-                      </Button>
-                    </div>
-                    {procConfirmedIds.size > 0 && (
-                      <p className="mt-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                        <Wallet className="w-3 h-3" />
-                        {procConfirmedIds.size} élève(s) confirmé(s) — seuls eux apparaîtront dans la proclamation.
-                      </p>
-                    )}
-                  </>
+                  </div>
                 )}
                 {procCandidates.length === 0 && !procCandidatesLoading && (
                   <p className="text-xs text-muted-foreground text-center py-3">
-                    Cliquez sur « Charger les élèves » pour afficher la liste des élèves de la classe avec leur statut de solvabilité.
+                    Cliquez sur « Charger les élèves » pour afficher la liste des élèves de la classe à cocher.
                   </p>
                 )}
               </div>
