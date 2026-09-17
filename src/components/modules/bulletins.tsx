@@ -29,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -144,6 +145,12 @@ export default function BulletinsModule() {
   // When true, students with unpaid/pending payments are excluded from the
   // proclamation list (only "solvent" students appear).
   const [procExcludeInsolvent, setProcExcludeInsolvent] = useState(true);
+  // Pre-selection of students: after the admin loads the candidate list for a
+  // class, they can check which solvent students should appear in the
+  // proclamation. The selected IDs are sent as a `studentIds` query param.
+  const [procCandidates, setProcCandidates] = useState<Array<{ id: string; firstName: string; lastName: string; className: string; solvent: boolean }>>([]);
+  const [procCandidatesLoading, setProcCandidatesLoading] = useState(false);
+  const [procSelectedIds, setProcSelectedIds] = useState<Set<string>>(new Set());
 
   const fetchClasses = useCallback(async () => {
     try {
@@ -349,11 +356,54 @@ export default function BulletinsModule() {
     if (procPeriod === 'trimester') params.set('trimester', procTrimester);
     if (procPeriod === 'semester') params.set('semester', procSemester);
     if (procExcludeInsolvent) params.set('excludeInsolvent', 'true');
+    // When the admin has pre-selected specific students via the checkbox
+    // list, send their IDs so the proclamation + exports only include those.
+    if (procSelectedIds.size > 0) {
+      params.set('studentIds', Array.from(procSelectedIds).join(','));
+    }
     const base =
       endpoint === 'list'
         ? '/api/bulletins/proclamation'
         : `/api/bulletins/proclamation/export/${endpoint}`;
     return `${base}?${params.toString()}`;
+  };
+
+  // ===== Load candidate students for the selected class =====
+  // Fetches all active students in the class, annotated with their solvency
+  // status. Solvent students are pre-checked; insolvent ones are disabled.
+  const handleLoadProcCandidates = async () => {
+    if (!procClassId || procClassId === 'all') {
+      addToast('error', 'Classe requise', 'Veuillez sélectionner une classe spécifique');
+      return;
+    }
+    setProcCandidatesLoading(true);
+    try {
+      const res = await fetch(
+        `/api/bulletins/proclamation/candidates?classId=${procClassId}&schoolYear=${encodeURIComponent(schoolYear)}`
+      );
+      if (!res.ok) throw new Error('Échec du chargement des élèves');
+      const data = await res.json();
+      const students: Array<{ id: string; firstName: string; lastName: string; className: string; solvent: boolean }> = data.students || [];
+      setProcCandidates(students);
+      // Pre-check all solvent students
+      setProcSelectedIds(new Set(students.filter((s) => s.solvent).map((s) => s.id)));
+    } catch (error) {
+      addToast('error', 'Erreur', error instanceof Error ? error.message : 'Erreur inconnue');
+      setProcCandidates([]);
+      setProcSelectedIds(new Set());
+    } finally {
+      setProcCandidatesLoading(false);
+    }
+  };
+
+  // Toggle a single student's selection.
+  const toggleProcStudent = (id: string) => {
+    setProcSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const handleGenerateProclamation = async () => {
@@ -401,6 +451,8 @@ export default function BulletinsModule() {
     setProcClassId('all');
     setProcTrimester('1er');
     setProcSemester('1');
+    setProcCandidates([]);
+    setProcSelectedIds(new Set());
     setProcDialogOpen(true);
   };
 
@@ -947,7 +999,16 @@ export default function BulletinsModule() {
               {/* Classe */}
               <div className="grid gap-1.5">
                 <Label className="text-xs">Classe</Label>
-                <Select value={procClassId} onValueChange={setProcClassId}>
+                <Select
+                  value={procClassId}
+                  onValueChange={(v) => {
+                    setProcClassId(v);
+                    // Clear candidates when the class changes so stale data
+                    // from a previous class doesn't persist.
+                    setProcCandidates([]);
+                    setProcSelectedIds(new Set());
+                  }}
+                >
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="Toutes les classes" />
                   </SelectTrigger>
@@ -1064,6 +1125,96 @@ export default function BulletinsModule() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Student pre-selection — load the class's students, then check
+                which solvent ones should appear in the proclamation list.
+                Only shown when a specific class is selected (not "all"). */}
+            {procClassId && procClassId !== 'all' && (
+              <div className="mt-3 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/10 p-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <Label className="text-xs flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-300">
+                    <Users className="w-3.5 h-3.5" />
+                    Sélection des élèves à proclamer
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleLoadProcCandidates}
+                    disabled={procCandidatesLoading}
+                    title="Charger la liste des élèves de la classe sélectionnée"
+                  >
+                    {procCandidatesLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Users className="w-3.5 h-3.5 mr-1" />
+                    )}
+                    {procCandidates.length > 0 ? 'Recharger' : 'Charger les élèves'}
+                  </Button>
+                </div>
+
+                {procCandidates.length > 0 && (
+                  <>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-xs text-muted-foreground">
+                        {procSelectedIds.size} sélectionné{procSelectedIds.size > 1 ? 's' : ''} sur {procCandidates.length} élève{procCandidates.length > 1 ? 's' : ''}
+                        {' · '}
+                        {procCandidates.filter((c) => c.solvent).length} solvable{procCandidates.filter((c) => c.solvent).length > 1 ? 's' : ''}
+                        {', '}
+                        {procCandidates.filter((c) => !c.solvent).length} insolvable{procCandidates.filter((c) => !c.solvent).length > 1 ? 's' : ''}
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          className="text-xs text-emerald-600 hover:text-emerald-700 hover:underline"
+                          onClick={() => setProcSelectedIds(new Set(procCandidates.filter((c) => c.solvent).map((c) => c.id)))}
+                        >
+                          Tout cocher (solvables)
+                        </button>
+                        <span className="text-muted-foreground">|</span>
+                        <button
+                          type="button"
+                          className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                          onClick={() => setProcSelectedIds(new Set())}
+                        >
+                          Tout décocher
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto rounded-md border border-amber-200/50 dark:border-amber-900/30 bg-background divide-y divide-border">
+                      {procCandidates.map((student) => {
+                        const checked = procSelectedIds.has(student.id);
+                        return (
+                          <label
+                            key={student.id}
+                            className={`flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 transition-colors ${!student.solvent ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              disabled={!student.solvent}
+                              onCheckedChange={() => student.solvent && toggleProcStudent(student.id)}
+                            />
+                            <span className="flex-1 truncate font-medium">
+                              {student.lastName} {student.firstName}
+                            </span>
+                            {student.solvent ? (
+                              <Badge variant="outline" className="text-[9px] h-4 px-1 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900">
+                                Solvable
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[9px] h-4 px-1 bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900">
+                                Insolvable
+                              </Badge>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Results */}
