@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { getProclamationData } from '@/lib/proclamation'
+import { getProclamationData, applyProclamationFilters } from '@/lib/proclamation'
 
 /**
  * GET /api/bulletins/proclamation/export/pdf
@@ -15,6 +15,11 @@ export async function GET(request: Request) {
     const trimester = searchParams.get('trimester')
     const semester = searchParams.get('semester')
     const classId = searchParams.get('classId')
+    const excludeInsolvent = searchParams.get('excludeInsolvent') === 'true'
+    const studentIdsParam = searchParams.get('studentIds')
+    const selectedStudentIds = studentIdsParam
+      ? studentIdsParam.split(',').map((s) => s.trim()).filter(Boolean)
+      : []
 
     if (!schoolYear) {
       return NextResponse.json({ error: 'Année scolaire requise' }, { status: 400 })
@@ -26,6 +31,14 @@ export async function GET(request: Request) {
       trimester,
       semester,
       classId,
+    })
+
+    // Apply the same filters as the list endpoint (insolvent + selected IDs)
+    // so the exported PDF always matches what the user sees in the dialog.
+    await applyProclamationFilters(data, {
+      excludeInsolvent,
+      selectedStudentIds,
+      schoolYear,
     })
 
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
