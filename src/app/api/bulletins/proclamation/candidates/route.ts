@@ -4,16 +4,13 @@ import { db } from '@/lib/db'
 /**
  * GET /api/bulletins/proclamation/candidates
  *
- * Returns the list of students for a given class + schoolYear, annotated
- * with their solvency status. Used by the proclamation dialog to let the
- * admin check which solvent students should appear in the proclamation list.
+ * Returns the list of students for a given class + schoolYear.
+ * NO solvency/payment filter is applied — all active students in the class
+ * are returned. The user decides who to include by checking boxes.
  *
  * Query params:
  *  - classId   (required) — restrict to a single class
  *  - schoolYear (required)
- *
- * A student is considered "solvent" if they have NO payments with status
- * "pending" or "failed" for the school year.
  */
 export async function GET(request: Request) {
   try {
@@ -39,28 +36,11 @@ export async function GET(request: Request) {
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     })
 
-    if (students.length === 0) {
-      return NextResponse.json({ students: [] })
-    }
-
-    const studentIds = students.map((s) => s.id)
-    const insolventPayments = await db.payment.findMany({
-      where: {
-        studentId: { in: studentIds },
-        status: { in: ['pending', 'failed'] },
-        schoolYear,
-      },
-      select: { studentId: true },
-      distinct: ['studentId'],
-    })
-    const insolventIds = new Set(insolventPayments.map((p) => p.studentId))
-
     const result = students.map((s) => ({
       id: s.id,
       firstName: s.firstName,
       lastName: s.lastName,
       className: s.class?.name || '',
-      solvent: !insolventIds.has(s.id),
     }))
 
     return NextResponse.json({ students: result })
