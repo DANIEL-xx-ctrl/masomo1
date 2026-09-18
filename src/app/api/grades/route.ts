@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { getTeacherClassIds, getTeacherIdFromUserId } from '@/lib/teacher-classes'
+import { resolveSubjectId } from '@/lib/subject-resolve'
 
 /**
  * Resolve the active school year for a request.
@@ -100,6 +101,7 @@ export async function POST(request: Request) {
     const {
       studentId,
       subjectId,
+      subjectName,
       classId,
       teacherId,
       value,
@@ -111,9 +113,15 @@ export async function POST(request: Request) {
       date,
     } = body
 
-    if (!studentId || !subjectId || value === undefined || !type || !trimester || !date) {
+    // Resolve the subject: prefer an explicit subjectId, otherwise
+    // find-or-create a subject from the free-text subjectName. This lets
+    // the grades form accept a typed subject name (Input) instead of only
+    // a pre-existing subject id.
+    const finalSubjectId = await resolveSubjectId(subjectId, subjectName)
+
+    if (!studentId || !finalSubjectId || value === undefined || !type || !trimester || !date) {
       return NextResponse.json(
-        { error: 'studentId, subjectId, value, type, trimester et date requis' },
+        { error: 'studentId, matière, value, type, trimester et date requis' },
         { status: 400 }
       )
     }
@@ -144,7 +152,7 @@ export async function POST(request: Request) {
     const grade = await db.grade.create({
       data: {
         studentId,
-        subjectId,
+        subjectId: finalSubjectId,
         classId,
         teacherId: resolvedTeacherId,
         value: parseFloat(String(value)),
