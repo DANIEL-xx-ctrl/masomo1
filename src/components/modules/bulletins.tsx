@@ -1029,8 +1029,11 @@ export default function BulletinsModule() {
             </p>
           </DialogHeader>
 
-          {/* Filters */}
-          <div className="shrink-0 px-6 py-3 border-b bg-muted/30">
+          {/* Filters + Results (scrollable together on mobile so the
+              selection panel + export buttons stay reachable) */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {/* Filters */}
+            <div className="px-6 py-3 border-b bg-muted/30">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Classe */}
               <div className="grid gap-1.5">
@@ -1294,10 +1297,10 @@ export default function BulletinsModule() {
                 )}
               </div>
             )}
-          </div>
+            </div>
 
-          {/* Results */}
-          <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4">
+            {/* Results */}
+            <div className="px-6 py-4">
             {procError && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-4 text-sm text-amber-800 dark:text-amber-300 mb-4">
                 {procError}
@@ -1448,6 +1451,7 @@ export default function BulletinsModule() {
                 <p>Sélectionnez vos critères ci-dessus puis cliquez sur « Générer la liste ».</p>
               </div>
             ) : null}
+            </div>
           </div>
 
           {/* Footer with export buttons */}
