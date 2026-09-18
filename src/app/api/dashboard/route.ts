@@ -37,6 +37,10 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const schoolYear = searchParams.get('schoolYear')
 
+    // ---- Role + userId for personal stats (student/parent paid total) ----
+    const userRole = request.headers.get('x-user-role') || ''
+    const userId = request.headers.get('x-user-id') || ''
+
     // Build institution-aware filters
     // - Class has a direct institutionId field
     // - Student/Teacher/Parent/Staff link through User.institutionId
@@ -431,6 +435,62 @@ export async function GET(request: Request) {
       }
     }
 
+    // ---- Personal paid total for student/parent ----
+    // Students see only their own total paid amount for the school year.
+    // Parents see the sum of payments made by their children.
+    // Admin / super_admin / teacher see the full revenue chart instead.
+    let personalPaidTotal: number | null = null
+    if ((userRole === 'student' || userRole === 'parent') && userId) {
+      try {
+        if (userRole === 'student') {
+          // Resolve the Student record from the userId, then sum their completed payments
+          const student = await db.student.findFirst({
+            where: { userId },
+            select: { id: true },
+          })
+          if (student) {
+            const myPayments = await db.payment.findMany({
+              where: {
+                studentId: student.id,
+                status: 'completed',
+                schoolYear: schoolYear || undefined,
+              },
+              select: { amount: true },
+            })
+            personalPaidTotal = myPayments.reduce((s, p) => s + p.amount, 0)
+          }
+        } else if (userRole === 'parent') {
+          // Resolve the Parent record, then sum payments of all their children
+          const parent = await db.parent.findFirst({
+            where: { userId },
+            select: { id: true },
+          })
+          if (parent) {
+            const children = await db.student.findMany({
+              where: { parentId: parent.id },
+              select: { id: true },
+            })
+            const childIds = children.map((c) => c.id)
+            if (childIds.length > 0) {
+              const myPayments = await db.payment.findMany({
+                where: {
+                  studentId: { in: childIds },
+                  status: 'completed',
+                  schoolYear: schoolYear || undefined,
+                },
+                select: { amount: true },
+              })
+              personalPaidTotal = myPayments.reduce((s, p) => s + p.amount, 0)
+            } else {
+              personalPaidTotal = 0
+            }
+          }
+        }
+      } catch {
+        // Non-blocking: if the personal total can't be computed, leave it null
+      }
+    }
+
     return NextResponse.json({
       stats: {
         totalStudents,
@@ -461,6 +521,7 @@ export async function GET(request: Request) {
       recentEnrollments,
       upcomingEvents,
       statusCases,
+      personalPaidTotal,
     })
   } catch (error) {
     console.error('Get dashboard stats error:', error)
