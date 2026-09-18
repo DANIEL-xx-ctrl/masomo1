@@ -582,7 +582,8 @@ export default function Dashboard() {
           </Card>
         </motion.div>
 
-        {/* Revenus Total — teal */}
+        {/* Revenus Total — teal (admin only) */}
+        {isAdmin && (
         <motion.div variants={itemVariants}>
           <Card className="overflow-hidden border-l-4 border-l-teal-500 hover:shadow-md transition-shadow h-full">
             <CardContent className="p-6 flex flex-col justify-between h-full min-h-[160px]">
@@ -602,6 +603,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </motion.div>
+        )}
 
         {/* Personnel — cyan */}
         <motion.div variants={itemVariants}>
