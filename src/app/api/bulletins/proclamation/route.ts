@@ -59,6 +59,7 @@ export async function GET(request: Request) {
       trimester,
       semester,
       classId,
+      studentIds: selectedStudentIds.length > 0 ? selectedStudentIds : null,
     })
 
     // ---- Filter by pre-selected student IDs ----
