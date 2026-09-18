@@ -42,6 +42,7 @@ export async function GET(request: Request) {
       trimester,
       semester,
       classId,
+      studentIds: selectedStudentIds.length > 0 ? selectedStudentIds : null,
     })
 
     // Apply the same studentIds filter as the list endpoint so the exported
