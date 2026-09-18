@@ -8,11 +8,8 @@ import { db } from '@/lib/db'
 //  - When deactivating: also deactivates all the institution's users
 //    and ends their active sessions (so they can't keep using the app
 //    even if they're already logged in).
-//  - When reactivating: re-enables the institution but does NOT
-//    automatically reactivate individual users — the super admin must
-//    explicitly re-enable users from the Super Admin module (this
-//    prevents accidentally re-granting access to accounts that were
-//    individually disabled for cause).
+//  - When reactivating: re-enables the institution AND all its users
+//    so they can log in again immediately.
 //
 // Body:
 //   { active: boolean }   // true = reactivate, false = block/deactivate
@@ -117,23 +114,27 @@ export async function PATCH(
   const userIds = existing.users.map((u) => u.id)
 
   if (active) {
-    // ---- Reactivate institution ONLY (users stay as-is) ----
-    // The super admin must explicitly re-enable individual users from the
-    // Super Admin module after reactivating the institution. This is
-    // intentional: blocking an institution is a severe action, and
-    // re-enabling everything in one click could re-grant access to
-    // accounts that were individually disabled for cause.
-    await db.institution.update({
-      where: { id },
-      data: { active: true },
-    })
+    // ---- Reactivate institution AND all its users ----
+    // When the super admin reactivates an institution, all its users are
+    // re-enabled so they can log in again immediately. This avoids the
+    // "Compte désactivé" error that occurred when only the institution
+    // flag was toggled but users stayed inactive.
+    await db.$transaction([
+      db.institution.update({
+        where: { id },
+        data: { active: true },
+      }),
+      db.user.updateMany({
+        where: { institutionId: id },
+        data: { active: true },
+      }),
+    ])
     return NextResponse.json({
       message:
         `Institution « ${existing.name} » réactivée. ` +
-        `${userIds.length} utilisateur(s) restent désactivé(s) — réactivez-les ` +
-        `individuellement depuis le module Super Admin si nécessaire.`,
+        `${userIds.length} utilisateur(s) réactivé(s) — ils peuvent se connecter à nouveau.`,
       institution: { id: existing.id, name: existing.name, active: true },
-      affectedUsers: 0,
+      affectedUsers: userIds.length,
     })
   } else {
     // ---- Deactivate institution + all its users + end active sessions ----
