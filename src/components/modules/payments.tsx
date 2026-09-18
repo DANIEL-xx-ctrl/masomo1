@@ -651,6 +651,7 @@ export default function PaymentsModule() {
           </CardContent>
         </Card>
         )}
+        {isAdmin && (
         <Card>
           <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
             <div className="p-2 sm:p-2.5 rounded-xl bg-yellow-50 dark:bg-yellow-950/50 text-yellow-600 shrink-0">
@@ -662,6 +663,8 @@ export default function PaymentsModule() {
             </div>
           </CardContent>
         </Card>
+        )}
+        {isAdmin && (
         <Card>
           <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
             <div className="p-2 sm:p-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 shrink-0">
@@ -673,6 +676,8 @@ export default function PaymentsModule() {
             </div>
           </CardContent>
         </Card>
+        )}
+        {isAdmin && (
         <Card>
           <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
             <div className="p-2 sm:p-2.5 rounded-xl bg-green-50 dark:bg-green-950/50 text-green-600 shrink-0">
@@ -684,6 +689,7 @@ export default function PaymentsModule() {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
 
       {/* Filter Bar */}
