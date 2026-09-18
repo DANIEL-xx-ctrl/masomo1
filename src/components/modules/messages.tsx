@@ -999,7 +999,7 @@ export default function MessagesModule() {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-[calc(100vh-11rem)] sm:h-[calc(100vh-13rem)]">
+    <div className="flex flex-col gap-4 h-[calc(100vh-9rem)] sm:h-[calc(100vh-13rem)]">
       <input
         ref={fileInputRef}
         type="file"
@@ -1323,12 +1323,12 @@ export default function MessagesModule() {
 
       {/* ---- New conversation dialog ---- */}
       <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[85vh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Nouvelle conversation</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="relative">
+          <div className="space-y-3 flex-1 overflow-y-auto min-h-0">
+            <div className="relative shrink-0">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Rechercher par nom, email, code…"
@@ -1342,7 +1342,7 @@ export default function MessagesModule() {
               />
             </div>
             <div
-              className="max-h-[360px] overflow-y-auto -mx-1 px-1"
+              className="flex-1 overflow-y-auto -mx-1 px-1"
               style={{ scrollbarWidth: 'thin' }}
             >
               {loadingUsers ? (
