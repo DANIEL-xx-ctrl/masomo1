@@ -152,6 +152,7 @@ export default function GradesModule() {
   // Add form
   const [formStudentId, setFormStudentId] = useState('');
   const [formSubjectId, setFormSubjectId] = useState('');
+  const [formSubjectName, setFormSubjectName] = useState('');
   const [formValue, setFormValue] = useState('');
   const [formType, setFormType] = useState<'devoir' | 'examen' | 'controle'>('devoir');
   const [formTrimester, setFormTrimester] = useState<'1er' | '2eme' | '3eme'>('1er');
@@ -365,7 +366,17 @@ export default function GradesModule() {
   });
 
   const handleAddGrade = async () => {
-    if (!formClassId || !formStudentId || !formSubjectId || !formValue || !formType || !formTrimester || !formDate) {
+    // The subject is now a free-text field (formSubjectName). We resolve it
+    // to an existing subject by name (case-insensitive) if possible, otherwise
+    // the backend will create a new subject from the typed name.
+    const trimmedSubjectName = formSubjectName.trim();
+    const matchedSubject = trimmedSubjectName
+      ? subjects.find((s) => s.name.toLowerCase() === trimmedSubjectName.toLowerCase())
+      : undefined;
+    const resolvedSubjectId = matchedSubject?.id || '';
+    const resolvedSubjectName = !matchedSubject && trimmedSubjectName ? trimmedSubjectName : null;
+
+    if (!formClassId || !formStudentId || (!resolvedSubjectId && !resolvedSubjectName) || !formValue || !formType || !formTrimester || !formDate) {
       addToast('warning', 'Champs requis', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
@@ -382,7 +393,8 @@ export default function GradesModule() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentId: formStudentId,
-          subjectId: formSubjectId,
+          subjectId: resolvedSubjectId || undefined,
+          subjectName: resolvedSubjectName || undefined,
           classId: formClassId,
           value: val,
           maxValue: maxVal,
@@ -459,6 +471,7 @@ export default function GradesModule() {
     setEditingGrade(grade);
     setFormStudentId(grade.studentId);
     setFormSubjectId(grade.subjectId);
+    setFormSubjectName(grade.subject?.name || '');
     setFormValue(String(grade.value));
     setFormMaxValue(String(grade.maxValue));
     setFormType(grade.type);
@@ -474,6 +487,7 @@ export default function GradesModule() {
     setFormClassId('');
     setFormStudentId('');
     setFormSubjectId('');
+    setFormSubjectName('');
     setFormValue('');
     setFormMaxValue('20');
     setFormType('devoir');
@@ -1059,17 +1073,27 @@ export default function GradesModule() {
               )}
             </div>
             <div className="grid gap-2">
-              <Label>Matière *</Label>
-              <Select value={formSubjectId} onValueChange={setFormSubjectId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une matière" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subjects.map((sub) => (
-                    <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="form-subject">Matière *</Label>
+              <Input
+                id="form-subject"
+                value={formSubjectName}
+                onChange={(e) => {
+                  setFormSubjectName(e.target.value);
+                  // Clear the subjectId when the user types a new name —
+                  // the backend will resolve it (find-or-create) from the
+                  // typed name.
+                  setFormSubjectId('');
+                }}
+                placeholder="Ex: Mathématiques"
+                list="subjects-list"
+              />
+              {/* Datalist with existing subjects for autocomplete suggestions.
+                  The user can type freely or pick from the list. */}
+              <datalist id="subjects-list">
+                {subjects.map((sub) => (
+                  <option key={sub.id} value={sub.name} />
+                ))}
+              </datalist>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
