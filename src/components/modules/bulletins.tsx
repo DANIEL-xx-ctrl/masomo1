@@ -1335,8 +1335,8 @@ export default function BulletinsModule() {
                   </div>
                 </div>
 
-                {/* Proclamation table — sorted by rank ascending (1 = best) */}
-                <div className="rounded-lg border overflow-hidden">
+                {/* Proclamation table (desktop) — sorted by rank ascending (1 = best) */}
+                <div className="hidden sm:block rounded-lg border overflow-hidden">
                   <div className="overflow-x-auto max-h-[40vh] overflow-y-auto">
                     <Table>
                       <TableHeader className="sticky top-0 z-10 bg-card">
@@ -1408,6 +1408,31 @@ export default function BulletinsModule() {
                       </TableBody>
                     </Table>
                   </div>
+                </div>
+
+                {/* Proclamation cards (mobile) — same data as the desktop table
+                    but laid out as cards so it fits on small screens. */}
+                <div className="sm:hidden space-y-2 max-h-[40vh] overflow-y-auto">
+                  {procResult.entries.map((e) => (
+                    <div key={e.studentId} className="rounded-lg border p-3 bg-card flex items-center gap-3">
+                      <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold shrink-0 ${getProcRankBadge(e.rank)}`}>
+                        {e.rank}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm truncate">{e.lastName} {e.firstName}</p>
+                        <p className="text-xs text-muted-foreground truncate">{e.className}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={`font-bold text-sm ${e.average >= 10 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {e.average.toFixed(2)}
+                          <span className="text-xs text-muted-foreground">/20</span>
+                        </p>
+                        <Badge variant="outline" className={`text-[9px] h-4 px-1 mt-0.5 ${e.average >= 16 ? 'border-emerald-400 text-emerald-700' : e.average >= 14 ? 'border-teal-400 text-teal-700' : e.average >= 12 ? 'border-sky-400 text-sky-700' : e.average >= 10 ? 'border-yellow-400 text-yellow-700' : 'border-red-400 text-red-700'}`}>
+                          {e.mention}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 {/* Context line */}
