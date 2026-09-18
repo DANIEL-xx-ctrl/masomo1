@@ -999,7 +999,7 @@ export default function MessagesModule() {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-[calc(100vh-13rem)]">
+    <div className="flex flex-col gap-4 h-[calc(100vh-11rem)] sm:h-[calc(100vh-13rem)]">
       <input
         ref={fileInputRef}
         type="file"
@@ -1277,10 +1277,14 @@ export default function MessagesModule() {
                 )}
               </div>
 
-              {/* Composer */}
-              <div className="border-t border-border bg-card">
-                <FormatToolbar onCommand={execCmd} onAttach={triggerFileInput} uploading={uploading} />
-                <div className="flex items-end gap-2 p-2.5">
+              {/* Composer — sticky at the bottom of the thread so the Send
+                  button stays visible even on mobile when the keyboard is open. */}
+              <div className="shrink-0 border-t border-border bg-card">
+                {/* Format toolbar hidden on mobile to save vertical space */}
+                <div className="hidden sm:block">
+                  <FormatToolbar onCommand={execCmd} onAttach={triggerFileInput} uploading={uploading} />
+                </div>
+                <div className="flex items-end gap-2 p-2 sm:p-2.5">
                   <div
                     ref={editorRef}
                     contentEditable
@@ -1289,7 +1293,7 @@ export default function MessagesModule() {
                     onKeyDown={handleKeyDown}
                     data-placeholder="Écrivez un message…"
                     className={cn(
-                      'flex-1 min-h-[96px] max-h-[260px] overflow-y-auto px-3.5 py-2.5 text-sm rounded-lg leading-relaxed',
+                      'flex-1 min-h-[44px] sm:min-h-[96px] max-h-[200px] overflow-y-auto px-3 py-2 text-sm rounded-lg leading-relaxed',
                       'border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20',
                       '[&:empty]:before:content-[attr(data-placeholder)] [&:empty]:before:text-muted-foreground'
                     )}
@@ -1298,7 +1302,7 @@ export default function MessagesModule() {
                     onClick={handleSend}
                     disabled={sending || uploading}
                     size="icon"
-                    className="shrink-0 h-11 w-11 rounded-full self-end"
+                    className="shrink-0 h-10 w-10 sm:h-11 sm:w-11 rounded-full self-end"
                     title="Envoyer (Entrée)"
                   >
                     {sending || uploading ? (
@@ -1308,7 +1312,7 @@ export default function MessagesModule() {
                     )}
                   </Button>
                 </div>
-                <p className="text-[10px] text-muted-foreground px-3 pb-2">
+                <p className="hidden sm:block text-[10px] text-muted-foreground px-3 pb-2">
                   Entrée pour envoyer · Maj+Entrée pour un saut de ligne · Ctrl+B/I/U pour formater
                 </p>
               </div>
