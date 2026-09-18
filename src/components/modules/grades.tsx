@@ -413,6 +413,8 @@ export default function GradesModule() {
       setAddDialogOpen(false);
       resetForm();
       fetchGrades();
+      // Reload the page to refresh the dashboard stats immediately
+      setTimeout(() => window.location.reload(), 800);
     } catch (error) {
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Impossible d\'ajouter la note');
     } finally {
@@ -446,6 +448,8 @@ export default function GradesModule() {
       setEditDialogOpen(false);
       setEditingGrade(null);
       fetchGrades();
+      // Reload the page to refresh the dashboard stats immediately
+      setTimeout(() => window.location.reload(), 800);
     } catch (error) {
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Impossible de modifier la note');
     } finally {
@@ -462,6 +466,8 @@ export default function GradesModule() {
       setDeleteDialogOpen(false);
       setDeletingGradeId('');
       fetchGrades();
+      // Reload the page to refresh the dashboard stats immediately
+      setTimeout(() => window.location.reload(), 800);
     } catch {
       addToast('error', 'Erreur', 'Impossible de supprimer la note');
     }

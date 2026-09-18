@@ -394,6 +394,8 @@ export default function StudentsModule() {
       } else {
         fetchStudents()
       }
+      // Reload the page to refresh the dashboard stats immediately
+      setTimeout(() => window.location.reload(), 800)
 
       // Notify the rest of the app that a student's photo may have changed,
       // so any component displaying it (this list, the detail view, other
@@ -421,6 +423,8 @@ export default function StudentsModule() {
       setDeleteOpen(false)
       setDeletingStudent(null)
       fetchStudents()
+      // Reload the page to refresh the dashboard stats immediately
+      setTimeout(() => window.location.reload(), 800)
     } catch (err) {
       addToast('error', 'Erreur', err instanceof Error ? err.message : 'Une erreur est survenue')
     }

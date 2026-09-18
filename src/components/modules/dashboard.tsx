@@ -25,6 +25,7 @@ import {
   CalendarClock,
   Plus,
   UserX,
+  Wallet,
 } from 'lucide-react'
 import {
   BarChart,
@@ -126,6 +127,7 @@ interface DashboardData {
       reference: string
     }>
   }
+  personalPaidTotal?: number | null
 }
 
 // ---------- Helpers ----------
@@ -305,6 +307,10 @@ export default function Dashboard() {
   const { setActiveModule } = useAppStore()
   const schoolYear = useAppStore((s) => s.schoolYear)
   const activeInstitutionId = useAppStore((s) => s.activeInstitutionId)
+  const currentUser = useAppStore((s) => s.currentUser)
+  // Only admin / super_admin see the full monthly revenue chart.
+  // Students / parents see their personal total paid instead.
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin'
 
   useEffect(() => {
     async function fetchDashboard() {
@@ -713,9 +719,12 @@ export default function Dashboard() {
         </motion.div>
       </div>
 
-      {/* ===== Revenue Chart Section — Full width (clean mountain silhouette, readable peaks) ===== */}
-      <motion.div variants={itemVariants}>
-        <Card className="hover:shadow-md transition-shadow overflow-hidden">
+      {/* ===== Revenue Section ===== */}
+      {/* Admin / super_admin: full monthly revenue chart.
+          Student / parent: personal total paid for the school year. */}
+      {isAdmin ? (
+        <motion.div variants={itemVariants}>
+          <Card className="hover:shadow-md transition-shadow overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-teal-600" />
@@ -811,6 +820,40 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </motion.div>
+      ) : (
+        /* Student / parent: personal total paid for the school year */
+        <motion.div variants={itemVariants}>
+          <Card className="hover:shadow-md transition-shadow overflow-hidden">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-teal-600" />
+                {currentUser?.role === 'parent' ? 'Total payé par mes enfants' : 'Total de mes paiements'}
+                <span className="ml-auto text-xs font-normal text-muted-foreground">
+                  Année {schoolYear || 'en cours'}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="w-20 h-20 rounded-full bg-teal-50 dark:bg-teal-950/40 flex items-center justify-center mb-4">
+                  <Wallet className="w-10 h-10 text-teal-600" />
+                </div>
+                <p className="text-sm text-muted-foreground mb-1">Montant total payé</p>
+                <p className="text-4xl font-bold text-teal-700 dark:text-teal-400">
+                  {data?.personalPaidTotal != null
+                    ? formatCurrency(data.personalPaidTotal)
+                    : '—'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {data?.personalPaidTotal != null && data.personalPaidTotal > 0
+                    ? 'Paiements complétés pour cette année scolaire'
+                    : 'Aucun paiement complété pour cette année scolaire'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* ===== Cas particuliers : élèves & enseignants non actifs (selon l'année scolaire) ===== */}
       <motion.div variants={itemVariants}>

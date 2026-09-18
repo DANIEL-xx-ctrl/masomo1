@@ -321,6 +321,8 @@ export default function CommunicationModule() {
       setAnnFormTarget('all');
       handleRemoveMedia();
       fetchAnnouncements();
+      // Reload the page to refresh the dashboard stats immediately
+      setTimeout(() => window.location.reload(), 800);
     } catch (error) {
       setUploadingMedia(false);
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Impossible de publier l\'annonce');
@@ -348,6 +350,8 @@ export default function CommunicationModule() {
       if (!res.ok) throw new Error(data?.error || 'Échec de la suppression');
       addToast('success', 'Annonce supprimée', `"${title}" a été supprimée.`);
       await fetchAnnouncements();
+      // Reload the page to refresh the dashboard stats immediately
+      setTimeout(() => window.location.reload(), 800);
     } catch (err) {
       addToast('error', 'Erreur', err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {

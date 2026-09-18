@@ -527,6 +527,8 @@ export default function HomeworkModule() {
         addToast('success', editingHomework ? 'Devoir modifié' : 'Devoir créé', formTitle)
         setShowFormDialog(false)
         fetchData()
+        // Reload the page to refresh the dashboard stats immediately
+        setTimeout(() => window.location.reload(), 800)
       } else {
         const json = await res.json()
         addToast('error', 'Erreur', json.error || 'Impossible de sauvegarder')
@@ -550,6 +552,8 @@ export default function HomeworkModule() {
         addToast('success', 'Devoir supprimé', deleteHomework.title)
         setDeleteHomework(null)
         fetchData()
+        // Reload the page to refresh the dashboard stats immediately
+        setTimeout(() => window.location.reload(), 800)
       } else {
         addToast('error', 'Erreur', 'Impossible de supprimer')
       }

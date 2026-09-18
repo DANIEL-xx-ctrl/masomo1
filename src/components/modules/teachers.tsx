@@ -437,6 +437,8 @@ export default function TeachersModule() {
       } else {
         fetchTeachers()
       }
+      // Reload the page to refresh the dashboard stats immediately
+      setTimeout(() => window.location.reload(), 800)
 
       // Notify the rest of the app that a teacher's photo may have changed.
       notifyAvatarChanged({ role: 'teacher' })
@@ -462,6 +464,8 @@ export default function TeachersModule() {
       setDeleteOpen(false)
       setDeletingTeacher(null)
       fetchTeachers()
+      // Reload the page to refresh the dashboard stats immediately
+      setTimeout(() => window.location.reload(), 800)
     } catch (err) {
       addToast('error', 'Erreur', err instanceof Error ? err.message : 'Une erreur est survenue')
     }

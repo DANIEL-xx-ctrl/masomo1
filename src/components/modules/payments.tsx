@@ -412,6 +412,8 @@ export default function PaymentsModule() {
       setAddDialogOpen(false);
       resetForm();
       fetchPayments();
+      // Reload the page to refresh the dashboard revenue stats immediately
+      setTimeout(() => window.location.reload(), 800);
     } catch (error) {
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Impossible d\'enregistrer le paiement');
     } finally {
@@ -522,6 +524,8 @@ export default function PaymentsModule() {
       setEditDialogOpen(false);
       setEditPaymentId(null);
       fetchPayments();
+      // Reload the page to refresh the dashboard revenue stats immediately
+      setTimeout(() => window.location.reload(), 800);
     } catch (error) {
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Impossible de modifier le paiement');
     } finally {
@@ -553,6 +557,8 @@ export default function PaymentsModule() {
       setDeleteDialogOpen(false);
       setDeletePaymentId(null);
       fetchPayments();
+      // Reload the page to refresh the dashboard revenue stats immediately
+      setTimeout(() => window.location.reload(), 800);
     } catch (error) {
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Impossible de supprimer le paiement');
     } finally {
