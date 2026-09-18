@@ -638,6 +638,7 @@ export default function PaymentsModule() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {isAdmin && (
         <Card>
           <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
             <div className="p-2 sm:p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 shrink-0">
@@ -649,6 +650,7 @@ export default function PaymentsModule() {
             </div>
           </CardContent>
         </Card>
+        )}
         <Card>
           <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
             <div className="p-2 sm:p-2.5 rounded-xl bg-yellow-50 dark:bg-yellow-950/50 text-yellow-600 shrink-0">
