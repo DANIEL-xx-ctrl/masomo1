@@ -113,6 +113,7 @@ export async function getProclamationData(
     period?: string | null
     trimester?: string | null
     semester?: string | null
+    studentIds?: string[] | null
   }
 ): Promise<ProclamationResult> {
   const institutionId = await getInstitutionIdWithFallback(request)
@@ -126,6 +127,10 @@ export async function getProclamationData(
   const classId = rawParams.classId || null
   const trimester = rawParams.trimester || null
   const semester = rawParams.semester || null
+  // Pre-selected student IDs (from the checkbox UI + "Passer à la proclamation").
+  // When provided, ALL these students must appear in the proclamation — even
+  // those without any grades (average = 0). NO payment filter is applied.
+  const preSelectedStudentIds = rawParams.studentIds || null
 
   // Determine which trimesters to aggregate grades from
   let targetTrimesters: string[] | null = null // null = all
@@ -225,6 +230,42 @@ export async function getProclamationData(
       passed: roundedAvg >= 10,
     })
   })
+
+  // ---- Include pre-selected students who have NO grades ----
+  // When the user selected specific students via the checkbox UI, ALL of them
+  // must appear in the proclamation — even those without any grades for the
+  // period (average = 0). We fetch their info from the Student table.
+  if (preSelectedStudentIds && preSelectedStudentIds.length > 0) {
+    const existingIds = new Set(entries.map((e) => e.studentId))
+    const missingIds = preSelectedStudentIds.filter((id) => !existingIds.has(id))
+    if (missingIds.length > 0) {
+      const missingStudents = await db.student.findMany({
+        where: { id: { in: missingIds } },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          class: { select: { name: true, level: true } },
+        },
+      })
+      for (const s of missingStudents) {
+        entries.push({
+          rank: 0,
+          studentId: s.id,
+          firstName: s.firstName,
+          lastName: s.lastName,
+          fullName: `${s.lastName} ${s.firstName}`,
+          className: s.class?.name || '—',
+          classLevel: s.class?.level || '',
+          average: 0,
+          percentage: 0,
+          appreciation: appreciationFor(0),
+          mention: mentionFor(0),
+          passed: false,
+        })
+      }
+    }
+  }
 
   // Sort DESCENDING by average (best first). Rank 1 = best.
   // The rank numbers then ascend (1, 2, 3, …) which is the universal
