@@ -583,10 +583,59 @@ export default function Dashboard() {
           </Card>
         </motion.div>
         )}
+
+        {/* Personnel — cyan (admin: in main grid; non-admin: in sub-grid below) */}
+        {isAdmin && (
+        <motion.div variants={itemVariants}>
+          <Card className="overflow-hidden border-l-4 border-l-cyan-500 hover:shadow-md transition-shadow h-full">
+            <CardContent className="p-6 flex flex-col justify-between h-full min-h-[160px]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground font-medium">Personnel</p>
+                  <p className="text-3xl font-bold mt-1">{stats.totalStaff}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-cyan-50 dark:bg-cyan-950/50 flex items-center justify-center">
+                  <Briefcase className="w-6 h-6 text-cyan-600" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1 mt-3 text-xs text-cyan-600">
+                <Briefcase className="w-3 h-3" />
+                <span>{staffFunctions} fonction{staffFunctions > 1 ? 's' : ''}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+        )}
+
+        {/* Total Parents — pink/rose (admin: in main grid; non-admin: in sub-grid below) */}
+        {isAdmin && (
+        <motion.div variants={itemVariants}>
+          <Card className="overflow-hidden border-l-4 border-l-rose-500 hover:shadow-md transition-shadow h-full">
+            <CardContent className="p-6 flex flex-col justify-between h-full min-h-[160px]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground font-medium">Total Parents</p>
+                  <p className="text-3xl font-bold mt-1">{stats.totalParents}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-rose-50 dark:bg-rose-950/50 flex items-center justify-center">
+                  <Heart className="w-6 h-6 text-rose-600" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1 mt-3 text-xs text-rose-600">
+                <Heart className="w-3 h-3" />
+                <span>{stats.totalParents} contacts enregistrés</span>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+        )}
       </div>
 
-      {/* ===== Personnel + Parents — full-width sub-grid so they occupy
-           all available space on desktop and tablet ===== */}
+      {/* ===== Personnel + Parents — full-width sub-grid (non-admin only) =====
+           For admin, these 3 cards (Revenus, Personnel, Parents) stay in the
+           main 3-col grid above. For other roles, they go in a 2-col sub-grid
+           that fills the full width. */}
+      {!isAdmin && (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         {/* Personnel — cyan */}
         <motion.div variants={itemVariants}>
@@ -630,6 +679,7 @@ export default function Dashboard() {
           </Card>
         </motion.div>
       </div>
+      )}
 
       {/* ===== Quick Actions Bar ===== */}
       <motion.div variants={itemVariants}>
