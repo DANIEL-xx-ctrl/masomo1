@@ -284,6 +284,16 @@ export default function TeachersModule() {
     fetchTeachers()
   }, [fetchTeachers])
 
+  // Fetch subjects (pre-filtered by institution type on the backend).
+  // Used to populate the datalist suggestions when adding a teacher's subjects.
+  const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([])
+  useEffect(() => {
+    fetch('/api/subjects')
+      .then((r) => r.json())
+      .then((d) => setSubjects((d.subjects || []).map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }))))
+      .catch(() => {})
+  }, [])
+
   // Re-fetch the teachers list when an avatar changes anywhere in the app
   // (e.g. a teacher updates their own avatar from the Settings page). This
   // ensures the teachers list grid shows the fresh, cache-busted avatar
@@ -1267,7 +1277,15 @@ export default function TeachersModule() {
                       }
                     }}
                     placeholder="Ajouter une matière…"
+                    list="teacher-subjects-list"
                   />
+                  {/* Datalist with pre-defined subjects based on institution type.
+                      The user can type freely OR pick from the suggestions. */}
+                  <datalist id="teacher-subjects-list">
+                    {subjects.map((sub) => (
+                      <option key={sub.id} value={sub.name} />
+                    ))}
+                  </datalist>
                   <Button
                     type="button"
                     variant="outline"
