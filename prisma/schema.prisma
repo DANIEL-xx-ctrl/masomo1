@@ -30,6 +30,7 @@ model Institution {
   logo        String?
   currentYear String   @default("2024-2025")
   active      Boolean  @default(true)
+  institutionType String @default("secondaire") // "primaire", "secondaire", "universite"
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -212,6 +213,21 @@ model Subject {
   name        String
   code        String @unique
   coefficient Int    @default(1)
+  // Maxima for the RDC primary school barème system (optional — used when
+  // the institution type is "primaire"). Each course has a max for:
+  //   maxTJ     — max per "travail journalier" (daily/period test)
+  //   maxEX     — max per examination
+  //   maxTRIM   — max per trimester (= maxTJ × 2 + maxEX)
+  //   maxAnnuel — max annual (= maxTRIM × 3)
+  maxTJ     Int?
+  maxEX     Int?
+  maxTRIM   Int?
+  maxAnnuel Int?
+  // Domain grouping (e.g. "DOMAINE DES LANGUES", "DOMAINE DES MATHÉMATIQUES")
+  // Used for the RDC primary school bulletin layout.
+  domain    String?
+  // Which institution type this subject belongs to (for filtering).
+  level     String? // "primaire", "secondaire", "universite"
 
   grades    Grade[]
   homeworks Homework[]
