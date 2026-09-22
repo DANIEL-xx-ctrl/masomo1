@@ -1,15 +1,40 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { resolveInstitutionScope } from '@/lib/institution-scope'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Determine the institution type so we can filter subjects by level.
+    // When the institution is "primaire", we show subjects with level="primaire"
+    // (the RDC pre-seeded subjects with maxima). For "secondaire"/"universite"
+    // we show all subjects that are NOT tagged as "primaire".
+    const scope = await resolveInstitutionScope(request)
+    const institutionId = scope?.institutionId
+
+    let institutionType = 'secondaire'
+    if (institutionId) {
+      const inst = await db.institution.findUnique({
+        where: { id: institutionId },
+        select: { institutionType: true },
+      })
+      institutionType = inst?.institutionType || 'secondaire'
+    }
+
+    // Build the where clause based on institution type:
+    // - primaire: show subjects with level="primaire" OR level=null (legacy subjects)
+    // - secondaire/universite: show subjects with level != "primaire" (includes null/legacy)
+    const where = institutionType === 'primaire'
+      ? { OR: [{ level: 'primaire' }, { level: null }] }
+      : { OR: [{ level: { not: 'primaire' } }, { level: null }] }
+
     const subjects = await db.subject.findMany({
+      where,
       include: {
         _count: {
           select: { grades: true },
         },
       },
-      orderBy: { name: 'asc' },
+      orderBy: [{ domain: 'asc' }, { name: 'asc' }],
     })
 
     const subjectsWithCount = subjects.map((subject) => ({
@@ -17,7 +42,7 @@ export async function GET() {
       gradeCount: subject._count.grades,
     }))
 
-    return NextResponse.json({ subjects: subjectsWithCount })
+    return NextResponse.json({ subjects: subjectsWithCount, institutionType })
   } catch (error) {
     console.error('Get subjects error:', error)
     return NextResponse.json(
