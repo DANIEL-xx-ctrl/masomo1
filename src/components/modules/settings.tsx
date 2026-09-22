@@ -42,6 +42,7 @@ import {
   UserCog,
   Hash,
   Copy,
+  School,
   type LucideIcon,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -465,6 +466,7 @@ export default function SettingsModule() {
         {/* ---------- Institution Tab ---------- */}
         <TabsContent value="institution" className="space-y-6 mt-6">
           <InstitutionSection currentUser={currentUser} />
+          <InstitutionTypeSection currentUser={currentUser} />
         </TabsContent>
 
         {/* ---------- Passwords Tab ---------- */}
@@ -3436,6 +3438,356 @@ function UsersPasswordSection({ currentUserId }: UsersPasswordSectionProps) {
                 </>
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </motion.div>
+  )
+}
+
+// ============================================================
+// Institution Type Section — type d'institution + matières & maxima
+// ============================================================
+
+interface InstitutionTypeSectionProps {
+  currentUser: ReturnType<typeof useAppStore.getState>['currentUser']
+}
+
+interface SubjectWithMaxima {
+  id: string
+  name: string
+  code: string
+  coefficient: number
+  maxTJ: number | null
+  maxEX: number | null
+  maxTRIM: number | null
+  maxAnnuel: number | null
+  domain: string | null
+  level: string | null
+}
+
+function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
+  const addToast = useAppStore((s) => s.addToast)
+  const [institutionType, setInstitutionType] = useState('secondaire')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [subjects, setSubjects] = useState<SubjectWithMaxima[]>([])
+  const [subjectsLoading, setSubjectsLoading] = useState(false)
+  const [editingSubject, setEditingSubject] = useState<SubjectWithMaxima | null>(null)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [deleteSubject, setDeleteSubject] = useState<SubjectWithMaxima | null>(null)
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin'
+
+  // Form state for editing a subject's maxima
+  const [formName, setFormName] = useState('')
+  const [formCode, setFormCode] = useState('')
+  const [formMaxTJ, setFormMaxTJ] = useState('')
+  const [formMaxEX, setFormMaxEX] = useState('')
+  const [formMaxTRIM, setFormMaxTRIM] = useState('')
+  const [formMaxAnnuel, setFormMaxAnnuel] = useState('')
+  const [formDomain, setFormDomain] = useState('')
+
+  const fetchInstitutionType = useCallback(async () => {
+    try {
+      setLoading(true)
+      const res = await fetch('/api/settings/institution-type')
+      if (res.ok) {
+        const data = await res.json()
+        setInstitutionType(data.institution?.institutionType || 'secondaire')
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const fetchSubjects = useCallback(async () => {
+    try {
+      setSubjectsLoading(true)
+      const res = await fetch('/api/settings/subjects')
+      if (res.ok) {
+        const data = await res.json()
+        setSubjects(data.subjects || [])
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setSubjectsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchInstitutionType()
+    fetchSubjects()
+  }, [fetchInstitutionType, fetchSubjects])
+
+  const handleSaveType = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/settings/institution-type', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ institutionType }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erreur')
+      addToast('success', 'Type mis à jour', data.message || `Type: ${institutionType}`)
+      if (data.seededSubjects > 0) {
+        addToast('success', 'Matières pré-remplies', `${data.seededSubjects} matière(s) du primaire ajoutée(s) automatiquement`)
+        fetchSubjects()
+      }
+    } catch (error) {
+      addToast('error', 'Erreur', error instanceof Error ? error.message : 'Erreur inconnue')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const openEditSubject = (s: SubjectWithMaxima | null) => {
+    if (s) {
+      setFormName(s.name)
+      setFormCode(s.code)
+      setFormMaxTJ(s.maxTJ?.toString() || '')
+      setFormMaxEX(s.maxEX?.toString() || '')
+      setFormMaxTRIM(s.maxTRIM?.toString() || '')
+      setFormMaxAnnuel(s.maxAnnuel?.toString() || '')
+      setFormDomain(s.domain || '')
+    } else {
+      setFormName('')
+      setFormCode('')
+      setFormMaxTJ('')
+      setFormMaxEX('')
+      setFormMaxTRIM('')
+      setFormMaxAnnuel('')
+      setFormDomain('')
+    }
+    setEditingSubject(s)
+    setShowEditDialog(true)
+  }
+
+  const handleSaveSubject = async () => {
+    if (!formName.trim() || !formCode.trim()) {
+      addToast('error', 'Champs requis', 'Nom et code sont obligatoires')
+      return
+    }
+    const body = {
+      name: formName.trim(),
+      code: formCode.trim(),
+      maxTJ: formMaxTJ ? parseInt(formMaxTJ) : null,
+      maxEX: formMaxEX ? parseInt(formMaxEX) : null,
+      maxTRIM: formMaxTRIM ? parseInt(formMaxTRIM) : null,
+      maxAnnuel: formMaxAnnuel ? parseInt(formMaxAnnuel) : null,
+      domain: formDomain.trim() || null,
+      level: institutionType,
+    }
+    try {
+      const url = editingSubject ? `/api/settings/subjects/${editingSubject.id}` : '/api/settings/subjects'
+      const method = editingSubject ? 'PUT' : 'POST'
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erreur')
+      addToast('success', editingSubject ? 'Matière modifiée' : 'Matière ajoutée', formName)
+      setShowEditDialog(false)
+      fetchSubjects()
+    } catch (error) {
+      addToast('error', 'Erreur', error instanceof Error ? error.message : 'Erreur inconnue')
+    }
+  }
+
+  const handleDeleteSubject = async () => {
+    if (!deleteSubject) return
+    try {
+      const res = await fetch(`/api/settings/subjects/${deleteSubject.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Erreur suppression')
+      addToast('success', 'Matière supprimée', deleteSubject.name)
+      setDeleteSubject(null)
+      fetchSubjects()
+    } catch {
+      addToast('error', 'Erreur', 'Impossible de supprimer')
+    }
+  }
+
+  if (!isAdmin) return null
+
+  // Group subjects by domain
+  const groupedSubjects = subjects.reduce<Record<string, SubjectWithMaxima[]>>((acc, s) => {
+    const key = s.domain || 'Autres'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(s)
+    return acc
+  }, {})
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <School className="w-5 h-5 text-primary" />
+            Type d'institution & Matières
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Définissez le type de votre établissement et gérez les matières avec leurs maxima.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Institution Type Selector */}
+          <div className="space-y-2">
+            <Label>Type d'établissement *</Label>
+            <Select value={institutionType} onValueChange={setInstitutionType}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner le type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="primaire">École Primaire</SelectItem>
+                <SelectItem value="secondaire">École Secondaire</SelectItem>
+                <SelectItem value="universite">Université</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={handleSaveType}
+            disabled={saving || loading}
+            className="bg-emerald-600 hover:bg-emerald-700"
+          >
+            {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+            Enregistrer le type
+          </Button>
+
+          {institutionType === 'primaire' && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+              <School className="w-4 h-4 inline mr-1" />
+              Les matières du primaire RDC (avec maxima) seront automatiquement ajoutées lors de la première sélection du type « École Primaire ».
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Subjects Management */}
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">
+              Matières {institutionType === 'primaire' ? '(avec maxima)' : ''}
+            </h3>
+            <Button size="sm" variant="outline" onClick={() => openEditSubject(null)}>
+              <Plus className="w-4 h-4 mr-1" /> Ajouter
+            </Button>
+          </div>
+
+          {subjectsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : subjects.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p className="text-sm">Aucune matière. {institutionType === 'primaire' ? 'Enregistrez le type « Primaire » pour pré-remplir les matières.' : 'Ajoutez-en une.'}</p>
+            </div>
+          ) : (
+            <div className="space-y-4 max-h-[400px] overflow-y-auto">
+              {Object.entries(groupedSubjects).map(([domain, subs]) => (
+                <div key={domain}>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                    {domain}
+                  </p>
+                  <div className="space-y-1.5">
+                    {subs.map((s) => (
+                      <div key={s.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border bg-card hover:shadow-sm transition-shadow">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{s.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Code: {s.code}
+                            {s.maxTJ ? ` · TJ: ${s.maxTJ}` : ''}
+                            {s.maxEX ? ` · EX: ${s.maxEX}` : ''}
+                            {s.maxTRIM ? ` · TRIM: ${s.maxTRIM}` : ''}
+                            {s.maxAnnuel ? ` · Annuel: ${s.maxAnnuel}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditSubject(s)}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500" onClick={() => setDeleteSubject(s)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Edit/Add Subject Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingSubject ? 'Modifier la matière' : 'Nouvelle matière'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Nom *</Label>
+              <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Ex: Français - Grammaire" />
+            </div>
+            <div className="space-y-2">
+              <Label>Code *</Label>
+              <Input value={formCode} onChange={(e) => setFormCode(e.target.value)} placeholder="Ex: FR_GRAMMAIRE" />
+            </div>
+            <div className="space-y-2">
+              <Label>Domaine</Label>
+              <Input value={formDomain} onChange={(e) => setFormDomain(e.target.value)} placeholder="Ex: DOMAINE DES LANGUES" />
+            </div>
+            {institutionType === 'primaire' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Max TJ</Label>
+                  <Input type="number" value={formMaxTJ} onChange={(e) => setFormMaxTJ(e.target.value)} placeholder="Ex: 20" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Max EX</Label>
+                  <Input type="number" value={formMaxEX} onChange={(e) => setFormMaxEX(e.target.value)} placeholder="Ex: 40" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Max TRIM</Label>
+                  <Input type="number" value={formMaxTRIM} onChange={(e) => setFormMaxTRIM(e.target.value)} placeholder="Ex: 80" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Max Annuel</Label>
+                  <Input type="number" value={formMaxAnnuel} onChange={(e) => setFormMaxAnnuel(e.target.value)} placeholder="Ex: 240" />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>Annuler</Button>
+            <Button onClick={handleSaveSubject} className="bg-emerald-600 hover:bg-emerald-700">
+              {editingSubject ? 'Modifier' : 'Ajouter'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation */}
+      <Dialog open={!!deleteSubject} onOpenChange={(open) => !open && setDeleteSubject(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Supprimer la matière</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Voulez-vous vraiment supprimer « {deleteSubject?.name} » ? Cette action est irréversible.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteSubject(null)}>Annuler</Button>
+            <Button variant="destructive" onClick={handleDeleteSubject}>Supprimer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
