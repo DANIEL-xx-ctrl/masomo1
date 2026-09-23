@@ -89,6 +89,7 @@ export async function PATCH(request: Request) {
                 maxTRIM: s.maxTRIM,
                 maxAnnuel: s.maxAnnuel,
                 domain: s.domain,
+                degree: s.degree || null,
                 level: 'primaire',
               },
             })
