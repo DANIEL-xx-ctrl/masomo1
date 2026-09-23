@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { name, code, coefficient, maxTJ, maxEX, maxTRIM, maxAnnuel, domain, level } = body
+    const { name, code, coefficient, maxTJ, maxEX, maxTRIM, maxAnnuel, domain, level, degree } = body
 
     if (!name || !code) {
       return NextResponse.json({ error: 'Nom et code requis' }, { status: 400 })
@@ -55,6 +55,7 @@ export async function POST(request: Request) {
         maxAnnuel: maxAnnuel || null,
         domain: domain || null,
         level: level || null,
+        degree: degree || null,
       },
     })
 
