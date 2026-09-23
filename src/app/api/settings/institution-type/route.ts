@@ -68,35 +68,37 @@ export async function PATCH(request: Request) {
       data: { institutionType },
     })
 
-    // If "primaire", pre-seed the RDC primary school subjects with maxima
-    // (only if they don't already exist — we check by code prefix).
+    // If "primaire", pre-seed the RDC primary school subjects with maxima.
+    // We ALWAYS delete old primary subjects first and re-seed fresh ones
+    // so the degree field is properly set.
     let seededCount = 0
     if (institutionType === 'primaire') {
-      const existing = await db.subject.count({
+      // Delete existing primary subjects (level='primaire') that have no degree
+      // or are old-style — we replace them with the fresh set.
+      await db.subject.deleteMany({
         where: { level: 'primaire' },
       })
-      if (existing === 0) {
-        const { PRIMARY_SUBJECTS } = await import('@/lib/primary-subjects')
-        for (const s of PRIMARY_SUBJECTS) {
-          try {
-            await db.subject.create({
-              data: {
-                name: s.name,
-                code: s.code,
-                coefficient: s.coefficient || 1,
-                maxTJ: s.maxTJ,
-                maxEX: s.maxEX,
-                maxTRIM: s.maxTRIM,
-                maxAnnuel: s.maxAnnuel,
-                domain: s.domain,
-                degree: s.degree || null,
-                level: 'primaire',
-              },
-            })
-            seededCount++
-          } catch {
-            // Subject with this code may already exist — skip
-          }
+
+      const { PRIMARY_SUBJECTS } = await import('@/lib/primary-subjects')
+      for (const s of PRIMARY_SUBJECTS) {
+        try {
+          await db.subject.create({
+            data: {
+              name: s.name,
+              code: s.code,
+              coefficient: s.coefficient || 1,
+              maxTJ: s.maxTJ,
+              maxEX: s.maxEX,
+              maxTRIM: s.maxTRIM,
+              maxAnnuel: s.maxAnnuel,
+              domain: s.domain,
+              degree: s.degree || null,
+              level: 'primaire',
+            },
+          })
+          seededCount++
+        } catch {
+          // Subject with this code may already exist (non-primary) — skip
         }
       }
     }
