@@ -12,7 +12,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, code, coefficient, maxTJ, maxEX, maxTRIM, maxAnnuel, domain, level } = body
+    const { name, code, coefficient, maxTJ, maxEX, maxTRIM, maxAnnuel, domain, level, degree } = body
 
     const existing = await db.subject.findUnique({ where: { id } })
     if (!existing) {
@@ -39,6 +39,7 @@ export async function PUT(
         ...(maxAnnuel !== undefined && { maxAnnuel }),
         ...(domain !== undefined && { domain }),
         ...(level !== undefined && { level }),
+        ...(degree !== undefined && { degree }),
       },
     })
 
