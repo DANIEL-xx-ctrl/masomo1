@@ -226,6 +226,9 @@ model Subject {
   // Domain grouping (e.g. "DOMAINE DES LANGUES", "DOMAINE DES MATHÉMATIQUES")
   // Used for the RDC primary school bulletin layout.
   domain    String?
+  // Which degree this subject belongs to (for primary school):
+  // "elementaire" (1ère & 2ème), "moyen" (3ème & 4ème), "terminal" (5ème & 6ème)
+  degree    String?
   // Which institution type this subject belongs to (for filtering).
   level     String? // "primaire", "secondaire", "universite"
 
