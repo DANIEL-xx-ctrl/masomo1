@@ -3465,6 +3465,7 @@ interface SubjectWithMaxima {
   maxAnnuel: number | null
   domain: string | null
   level: string | null
+  degree?: string | null
 }
 
 function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
@@ -3488,6 +3489,7 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
   const [formMaxTRIM, setFormMaxTRIM] = useState('')
   const [formMaxAnnuel, setFormMaxAnnuel] = useState('')
   const [formDomain, setFormDomain] = useState('')
+  const [formDegree, setFormDegree] = useState('')
 
   const fetchInstitutionType = useCallback(async () => {
     try {
@@ -3555,6 +3557,7 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
       setFormMaxTRIM(s.maxTRIM?.toString() || '')
       setFormMaxAnnuel(s.maxAnnuel?.toString() || '')
       setFormDomain(s.domain || '')
+      setFormDegree(s.degree || selectedDegree)
     } else {
       setFormName('')
       setFormCode('')
@@ -3563,6 +3566,7 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
       setFormMaxTRIM('')
       setFormMaxAnnuel('')
       setFormDomain('')
+      setFormDegree(selectedDegree)
     }
     setEditingSubject(s)
     setShowEditDialog(true)
@@ -3582,6 +3586,7 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
       maxAnnuel: formMaxAnnuel ? parseInt(formMaxAnnuel) : null,
       domain: formDomain.trim() || null,
       level: institutionType,
+      degree: institutionType === 'primaire' ? (formDegree || selectedDegree) : null,
     }
     try {
       const url = editingSubject ? `/api/settings/subjects/${editingSubject.id}` : '/api/settings/subjects'
@@ -3749,7 +3754,21 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
               <Input value={formDomain} onChange={(e) => setFormDomain(e.target.value)} placeholder="Ex: DOMAINE DES LANGUES" />
             </div>
             {institutionType === 'primaire' && (
-              <div className="grid grid-cols-2 gap-3">
+            <>
+            <div className="space-y-2">
+              <Label>Degré</Label>
+              <Select value={formDegree} onValueChange={setFormDegree}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner le degré" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="elementaire">1ère et 2ème Année (Élémentaire)</SelectItem>
+                  <SelectItem value="moyen">3ème et 4ème Année (Moyen)</SelectItem>
+                  <SelectItem value="terminal">5ème et 6ème Année (Terminal)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Max TJ</Label>
                   <Input type="number" value={formMaxTJ} onChange={(e) => setFormMaxTJ(e.target.value)} placeholder="Ex: 20" />
@@ -3767,6 +3786,7 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                   <Input type="number" value={formMaxAnnuel} onChange={(e) => setFormMaxAnnuel(e.target.value)} placeholder="Ex: 240" />
                 </div>
               </div>
+            </>
             )}
           </div>
           <DialogFooter>
@@ -3847,10 +3867,8 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
             </div>
 
             {/* Domains with courses from DB — filtered by selected degree.
-                We use the domain names from PRIMARY_DEGREES as a reference to
-                determine which domains belong to which degree. Only subjects
-                whose domain matches one of the selected degree's domains are
-                shown. */}
+                Each subject has a `degree` field ('elementaire' | 'moyen' | 'terminal')
+                so we can directly filter by it. */}
             {(() => {
               if (subjectsLoading) {
                 return (
@@ -3860,16 +3878,8 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                 )
               }
 
-              // Get the domain names for the selected degree from PRIMARY_DEGREES
-              const degreeData = PRIMARY_DEGREES.find((d) => d.id === selectedDegree)
-              const allowedDomains = new Set(degreeData?.domains.map((d) => d.name) || [])
-
-              // Filter subjects: only those whose domain matches the selected degree's domains
-              // If a subject has no domain, include it only if the selected degree has an "Autres" bucket
-              const filteredSubjects = subjects.filter((s) => {
-                if (!s.domain) return false // skip subjects without a domain (they show in the simple list above)
-                return allowedDomains.has(s.domain)
-              })
+              // Filter subjects by the selected degree
+              const filteredSubjects = subjects.filter((s) => s.degree === selectedDegree)
 
               if (filteredSubjects.length === 0) {
                 return (
