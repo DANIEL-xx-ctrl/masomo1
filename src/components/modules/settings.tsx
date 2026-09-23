@@ -81,6 +81,7 @@ import {
 import { useAppStore } from '@/lib/store'
 import { ROLE_LABELS, ROLES } from '@/lib/constants'
 import type { UserRole } from '@/lib/types'
+import { PRIMARY_DEGREES } from '@/lib/primary-degrees'
 import { useTheme } from 'next-themes'
 import { seedApi, ApiError } from '@/lib/api'
 import { toast } from 'sonner'
@@ -3791,6 +3792,113 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ===== Primary school degrees cards (visible only when type = primaire) ===== */}
+      {institutionType === 'primaire' && (
+        <PrimaryDegreesCards />
+      )}
     </motion.div>
+  )
+}
+
+// ============================================================
+// Primary Degrees Cards — shows each degree (class level) with its
+// courses and maxima, inspired by the official MINEDUC bulletin document.
+// ============================================================
+
+function PrimaryDegreesCards() {
+  const [selectedDegree, setSelectedDegree] = useState<string>('elementaire')
+  const degrees = PRIMARY_DEGREES
+  const current = degrees.find((d) => d.id === selectedDegree) || degrees[0]
+
+  return (
+    <Card className="mt-6">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <BookOpen className="w-5 h-5 text-amber-600" />
+          Bulletin du Primaire — Cours & Maxima
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Programme officiel RDC (MINEDUC 2024-2025) — sélectionnez un degré pour voir ses cours et maxima.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Degree selector tabs */}
+        <div className="flex flex-wrap gap-2">
+          {degrees.map((deg) => (
+            <Button
+              key={deg.id}
+              size="sm"
+              variant={selectedDegree === deg.id ? 'default' : 'outline'}
+              className={selectedDegree === deg.id ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+              onClick={() => setSelectedDegree(deg.id)}
+            >
+              {deg.label}
+            </Button>
+          ))}
+        </div>
+
+        {/* Reference + total */}
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50">
+          <span className="text-xs text-muted-foreground">Référence:</span>
+          <span className="text-xs font-medium text-amber-800 dark:text-amber-400">{current.reference}</span>
+          <span className="ml-auto text-xs font-bold text-amber-700 dark:text-amber-300">
+            Max Annuel Général: {current.maxGeneralAnnuel} pts
+          </span>
+        </div>
+
+        {/* Domains with courses — cards layout */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {current.domains.map((domain) => {
+            const domainTotal = domain.courses.reduce((s, c) => s + c.maxAnnuel, 0)
+            return (
+              <div
+                key={domain.name}
+                className="rounded-lg border border-border bg-card overflow-hidden hover:shadow-md transition-shadow"
+              >
+                {/* Domain header */}
+                <div className="px-3 py-2 border-b bg-muted/40">
+                  <p className="text-xs font-semibold text-foreground truncate">{domain.name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {domain.courses.length} cours · Total annuel: {domainTotal} pts
+                  </p>
+                </div>
+                {/* Courses list */}
+                <div className="divide-y divide-border max-h-[280px] overflow-y-auto">
+                  {domain.courses.map((course, idx) => (
+                    <div key={idx} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs">
+                      <span className="flex-1 truncate font-medium">{course.name}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px]" title="Max Travail Journalier">
+                          TJ {course.maxTJ}
+                        </span>
+                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 font-mono text-[10px]" title="Max Examen">
+                          EX {course.maxEX}
+                        </span>
+                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400 font-mono text-[10px]" title="Max Trimestriel">
+                          TR {course.maxTRIM}
+                        </span>
+                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-mono text-[10px] font-bold" title="Max Annuel">
+                          {course.maxAnnuel}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Legend */}
+        <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
+          <span className="font-semibold">Légende:</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-blue-100 dark:bg-blue-950/50"></span> TJ = Travail Journalier</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-purple-100 dark:bg-purple-950/50"></span> EX = Examen</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-teal-100 dark:bg-teal-950/50"></span> TR = Trimestriel (TJ×2 + EX)</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-amber-100 dark:bg-amber-950/50"></span> Annuel (TR×3)</span>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
