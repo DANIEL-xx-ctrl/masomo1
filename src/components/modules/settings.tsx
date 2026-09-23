@@ -18,6 +18,8 @@ import {
   Phone,
   Calendar,
   Download,
+  FileDown,
+  FileText,
   FileArchive,
   Package,
   Key,
@@ -3619,6 +3621,160 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
     }
   }
 
+  // Export the courses of the selected degree in CSV (Excel), PDF, or Word format.
+  const handleExportSubjects = (format: 'csv' | 'pdf' | 'word') => {
+    const degreeSubjects = subjects.filter((s) => s.degree === selectedDegree)
+    if (degreeSubjects.length === 0) {
+      addToast('error', 'Aucune matière', 'Aucune matière à exporter pour ce degré')
+      return
+    }
+
+    const deg = PRIMARY_DEGREES.find((d) => d.id === selectedDegree)
+    const degreeLabel = deg?.label || selectedDegree
+    const reference = deg?.reference || ''
+    const maxGeneral = deg?.maxGeneralAnnuel || 0
+
+    // Group by domain
+    const grouped: Record<string, typeof degreeSubjects> = {}
+    for (const s of degreeSubjects) {
+      const key = s.domain || 'Autres'
+      if (!grouped[key]) grouped[key] = []
+      grouped[key].push(s)
+    }
+
+    if (format === 'csv') {
+      // CSV (Excel-compatible with BOM)
+      const headers = ['Domaine', 'Matière', 'Code', 'Coefficient', 'Max TJ', 'Max EX', 'Max TRIM', 'Max Annuel']
+      const rows: string[][] = []
+      for (const [domain, subs] of Object.entries(grouped)) {
+        for (const s of subs) {
+          rows.push([domain, s.name, s.code, String(s.coefficient), String(s.maxTJ ?? ''), String(s.maxEX ?? ''), String(s.maxTRIM ?? ''), String(s.maxAnnuel ?? '')])
+        }
+      }
+      const csv = '\uFEFF' + [headers, ...rows]
+        .map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(';'))
+        .join('\n')
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      triggerDownload(blob, `Cours_${selectedDegree}_primaire_RDC.csv`)
+    } else if (format === 'pdf') {
+      // PDF via print window
+      const html = buildExportHtml(degreeLabel, reference, maxGeneral, grouped)
+      const win = window.open('', '_blank')
+      if (!win) {
+        addToast('error', 'Erreur', 'Veuillez autoriser les popups')
+        return
+      }
+      win.document.write(html)
+      win.document.close()
+      win.focus()
+      setTimeout(() => { win.print() }, 500)
+      return
+    } else if (format === 'word') {
+      // Word (.doc via HTML MIME type)
+      const html = buildExportHtml(degreeLabel, reference, maxGeneral, grouped)
+      const blob = new Blob(['\uFEFF', html], { type: 'application/msword' })
+      triggerDownload(blob, `Cours_${selectedDegree}_primaire_RDC.doc`)
+    }
+
+    addToast('success', 'Export réussi', `${degreeLabel} — ${degreeSubjects.length} cours exportés en ${format.toUpperCase()}`)
+  }
+
+  // Helper: trigger blob download
+  function triggerDownload(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // Helper: build styled HTML for PDF/Word export
+  function buildExportHtml(
+    degreeLabel: string,
+    reference: string,
+    maxGeneral: number,
+    grouped: Record<string, SubjectWithMaxima[]>
+  ): string {
+    let rows = ''
+    for (const [domain, subs] of Object.entries(grouped)) {
+      const domainTotal = subs.reduce((s, c) => s + (c.maxAnnuel || 0), 0)
+      rows += `<tr class="domain-row"><td colspan="6">${domain}</td></tr>`
+      for (const s of subs) {
+        rows += `<tr>
+          <td>${s.name}</td>
+          <td>${s.maxTJ ?? '—'}</td>
+          <td>${s.maxEX ?? '—'}</td>
+          <td>${s.maxTRIM ?? '—'}</td>
+          <td>${s.maxAnnuel ?? '—'}</td>
+          <td>${s.coefficient}</td>
+        </tr>`
+      }
+      rows += `<tr class="subtotal-row">
+        <td>Sous-total ${domain}</td>
+        <td colspan="4">Total annuel: ${domainTotal} pts</td>
+        <td>${subs.length} cours</td>
+      </tr>`
+    }
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Cours — ${degreeLabel}</title>
+<style>
+  @page { size: A4 landscape; margin: 1cm; }
+  body { font-family: Arial, sans-serif; font-size: 10px; color: #1a1a1a; }
+  h1 { text-align: center; font-size: 14px; margin: 0 0 4px 0; }
+  h2 { text-align: center; font-size: 11px; margin: 0 0 8px 0; color: #555; }
+  .info { text-align: center; font-size: 9px; color: #666; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #1F4E79; color: white; font-size: 9px; padding: 5px; text-align: center; border: 1px solid #333; }
+  td { padding: 4px 6px; border: 1px solid #999; font-size: 9px; text-align: center; }
+  td:first-child { text-align: left; }
+  .domain-row td { background: #D6E4F0; font-weight: bold; font-size: 9px; }
+  .subtotal-row td { background: #E8E8E8; font-weight: bold; }
+  .maxima-row td { background: #1F4E79; color: white; font-weight: bold; }
+  .footer { margin-top: 15px; font-size: 9px; color: #666; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>RÉPUBLIQUE DÉMOCRATIQUE DU CONGO</h1>
+  <h2>MINISTÈRE DE L'ENSEIGNEMENT PRIMAIRE, SECONDAIRE ET TECHNIQUE</h2>
+  <div class="info">
+    <strong>${degreeLabel}</strong><br>
+    Référence: ${reference}<br>
+    Maxima Général Annuel: ${maxGeneral} pts
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Matière</th>
+        <th>Max TJ</th>
+        <th>Max EX</th>
+        <th>Max TRIM</th>
+        <th>Max Annuel</th>
+        <th>Coef.</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+      <tr class="maxima-row">
+        <td>MAXIMA GÉNÉRAUX</td>
+        <td colspan="4">Max Annuel Général: ${maxGeneral} pts</td>
+        <td>—</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="footer">
+    Programme officiel RDC (MINEDUC 2024-2025) — Document généré par MASOMO
+  </div>
+</body>
+</html>`
+  }
+
   if (!isAdmin) return null
 
   // Group subjects by domain
@@ -3859,10 +4015,40 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
               )
             })()}
 
-            {/* Add subject button */}
-            <div className="flex justify-end">
+            {/* Add subject button + Export button */}
+            <div className="flex justify-end gap-2">
               <Button size="sm" variant="outline" onClick={() => openEditSubject(null)}>
                 <Plus className="w-4 h-4 mr-1" /> Ajouter une matière
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleExportSubjects('csv')}
+                disabled={subjects.filter((s) => s.degree === selectedDegree).length === 0}
+                className="border-emerald-300 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                title="Exporter en Excel (CSV)"
+              >
+                <Download className="w-4 h-4 mr-1" /> Excel
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleExportSubjects('pdf')}
+                disabled={subjects.filter((s) => s.degree === selectedDegree).length === 0}
+                className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                title="Exporter en PDF"
+              >
+                <FileDown className="w-4 h-4 mr-1" /> PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleExportSubjects('word')}
+                disabled={subjects.filter((s) => s.degree === selectedDegree).length === 0}
+                className="border-sky-300 text-sky-600 hover:bg-sky-50 hover:text-sky-700"
+                title="Exporter en Word"
+              >
+                <FileText className="w-4 h-4 mr-1" /> Word
               </Button>
             </div>
 
