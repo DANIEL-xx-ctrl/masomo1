@@ -131,23 +131,41 @@
   font-weight: 600 !important;
 }
 
-/* === Sidebar: gradient background + pure white text === */
+/* === Sidebar: very dark gradient + vivid bright white text === */
 :root:not(.dark) [data-slot="sidebar"],
 :root:not(.dark) [data-slot="sidebar-container"],
 :root:not(.dark) [data-slot="sidebar-inner"],
-:root:not(.dark) [data-slot="sidebar"] > div {
-  background: linear-gradient(180deg, #0B1A2E 0%, #142844 30%, #1A365D 50%, #142844 70%, #0B1A2E 100%) !important;
+:root:not(.dark) [data-slot="sidebar"] > div,
+:root:not(.dark) [data-slot="sidebar"] > div > div {
+  background: linear-gradient(180deg, #060D1A 0%, #0B1A2E 25%, #142844 50%, #0B1A2E 75%, #060D1A 100%) !important;
 }
 
+/* Force vivid bright white on ALL sidebar text — override everything */
 :root:not(.dark) [data-slot="sidebar"],
-:root:not(.dark) [data-slot="sidebar"] * {
+:root:not(.dark) [data-slot="sidebar"] *,
+:root:not(.dark) [data-slot="sidebar"] *::before,
+:root:not(.dark) [data-slot="sidebar"] *::after {
   color: #ffffff !important;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-text-stroke: 0.3px rgba(255, 255, 255, 0.3);
+  font-weight: 600 !important;
+  text-shadow:
+    0 0 1px rgba(255, 255, 255, 0.8),
+    0 0 3px rgba(255, 255, 255, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
+/* Active menu item — extra bold + brighter */
 :root:not(.dark) [data-slot="sidebar"] [data-active="true"],
-:root:not(.dark) [data-slot="sidebar"] [data-active="true"] * {
+:root:not(.dark) [data-slot="sidebar"] [data-active="true"] *,
+:root:not(.dark) [data-slot="sidebar"] .text-white {
   color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-weight: 700 !important;
+  text-shadow:
+    0 0 2px rgba(255, 255, 255, 1),
+    0 0 6px rgba(255, 255, 255, 0.6),
+    0 1px 3px rgba(0, 0, 0, 1);
 }
 
 /* === Dashboard stat cards: even darker, more differentiated colors === */
