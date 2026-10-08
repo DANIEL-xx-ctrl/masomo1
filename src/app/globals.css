@@ -72,12 +72,12 @@
   --chart-3: #3b82f6;
   --chart-4: #60a5fa;
   --chart-5: #93c5fd;
-  /* Sidebar — darker navy + pure white text */
-  --sidebar: #0f1e3d;
+  /* Sidebar — even darker navy + very bright white text */
+  --sidebar: #0a1628;
   --sidebar-foreground: #ffffff;
   --sidebar-primary: #3b82f6;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1a2f52;
+  --sidebar-accent: #122238;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #1e3a5f;
   --sidebar-ring: #3b82f6;
@@ -116,30 +116,30 @@
   font-weight: 700;
 }
 
-/* === Dashboard stat cards: darker colored backgrounds === */
+/* === Dashboard stat cards: even darker, more differentiated colors === */
 :root:not(.dark) .border-l-emerald-500 {
-  background-color: #d1fae5 !important;
-  border-left-color: #059669 !important;
+  background-color: #a7f3d0 !important;
+  border-left-color: #047857 !important;
 }
 :root:not(.dark) .border-l-purple-500 {
-  background-color: #ede9fe !important;
-  border-left-color: #7c3aed !important;
+  background-color: #ddd6fe !important;
+  border-left-color: #6d28d9 !important;
 }
 :root:not(.dark) .border-l-amber-500 {
-  background-color: #fef3c7 !important;
-  border-left-color: #d97706 !important;
+  background-color: #fde68a !important;
+  border-left-color: #b45309 !important;
 }
 :root:not(.dark) .border-l-teal-500 {
-  background-color: #ccfbf1 !important;
-  border-left-color: #0d9488 !important;
+  background-color: #99f6e4 !important;
+  border-left-color: #0f766e !important;
 }
 :root:not(.dark) .border-l-cyan-500 {
-  background-color: #cffafe !important;
-  border-left-color: #0891b2 !important;
+  background-color: #a5f3fc !important;
+  border-left-color: #0e7490 !important;
 }
 :root:not(.dark) .border-l-rose-500 {
-  background-color: #ffe4e6 !important;
-  border-left-color: #e11d48 !important;
+  background-color: #fecdd3 !important;
+  border-left-color: #be123c !important;
 }
 
 .dark {
