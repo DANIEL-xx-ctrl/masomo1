@@ -66,21 +66,21 @@
   --border: #cbd5e1;
   --input: #cbd5e1;
   --ring: #3b82f6;
-  /* Charts — same blue as sidebar for bars */
-  --chart-1: #1e3a8a;
-  --chart-2: #2563eb;
-  --chart-3: #3b82f6;
-  --chart-4: #60a5fa;
-  --chart-5: #93c5fd;
-  /* Sidebar — even darker navy + very bright white text */
-  --sidebar: #0a1628;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #3b82f6;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #122238;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #1e3a5f;
-  --sidebar-ring: #3b82f6;
+  /* Charts — blues matching the sidebar from the image */
+  --chart-1: #1E3A5F;
+  --chart-2: #2563EB;
+  --chart-3: #3B82F6;
+  --chart-4: #60A5FA;
+  --chart-5: #93C5FD;
+  /* Sidebar — exact color from the image */
+  --sidebar: #1E3A5F;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #3B82F6;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #1A365D;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #2B4A6F;
+  --sidebar-ring: #3B82F6;
   --capacite-bar: #cbd5e1;
 }
 
