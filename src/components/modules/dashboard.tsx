@@ -816,7 +816,7 @@ export default function Dashboard() {
                 <p className="text-xs mt-1">Les revenus mensuels apparaîtront ici une fois les paiements enregistrés</p>
               </div>
             ) : (
-              <div className="h-80 relative">
+              <div className="h-60 sm:h-80 relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={mountainChartData} margin={{ top: 28, right: 16, left: 4, bottom: 4 }}>
                     <defs>
