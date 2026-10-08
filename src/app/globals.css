@@ -72,14 +72,74 @@
   --chart-4: #ef4444;
   --chart-5: #06b6d4;
   --sidebar: #1e3a8a;
-  --sidebar-foreground: #e2e8f0;
+  --sidebar-foreground: #f8fafc;
   --sidebar-primary: #3b82f6;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #172554;
-  --sidebar-accent-foreground: #e2e8f0;
+  --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #334155;
   --sidebar-ring: #3b82f6;
   --capacite-bar: #cbd5e1;
+}
+
+/* === Make all text slightly bolder (less thin) in light mode === */
+:root:not(.dark) {
+  font-weight: 450;
+}
+
+:root:not(.dark) body {
+  font-weight: 450;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root:not(.dark) p,
+:root:not(.dark) span,
+:root:not(.dark) td,
+:root:not(.dark) th,
+:root:not(.dark) label,
+:root:not(.dark) div {
+  font-weight: 450;
+}
+
+/* Keep headings bold */
+:root:not(.dark) h1,
+:root:not(.dark) h2,
+:root:not(.dark) h3,
+:root:not(.dark) h4,
+:root:not(.dark) h5,
+:root:not(.dark) h6,
+:root:not(.dark) strong,
+:root:not(.dark) b {
+  font-weight: 700;
+}
+
+/* === Dashboard stat cards: colored backgrounds instead of just borders === */
+/* Override the border-l-4 stat cards to use filled colored backgrounds */
+
+:root:not(.dark) .border-l-emerald-500 {
+  background-color: #ecfdf5 !important;
+  border-left-color: #10b981 !important;
+}
+:root:not(.dark) .border-l-purple-500 {
+  background-color: #faf5ff !important;
+  border-left-color: #8b5cf6 !important;
+}
+:root:not(.dark) .border-l-amber-500 {
+  background-color: #fffbeb !important;
+  border-left-color: #f59e0b !important;
+}
+:root:not(.dark) .border-l-teal-500 {
+  background-color: #f0fdfa !important;
+  border-left-color: #14b8a6 !important;
+}
+:root:not(.dark) .border-l-cyan-500 {
+  background-color: #ecfeff !important;
+  border-left-color: #06b6d4 !important;
+}
+:root:not(.dark) .border-l-rose-500 {
+  background-color: #fff1f2 !important;
+  border-left-color: #f43f5e !important;
 }
 
 .dark {
