@@ -410,9 +410,9 @@ export default function Dashboard() {
 
   // Payment methods data
   const paymentMethodsData = [
-    { name: 'Mobile Money', value: paymentMethods.mobile_money, icon: Smartphone, color: 'text-sky-700', barColor: '#0a1628' },
-    { name: 'Espèces', value: paymentMethods.cash, icon: Banknote, color: 'text-amber-600', barColor: '#1e3a8a' },
-    { name: 'Virement', value: paymentMethods.bank_transfer, icon: Building2, color: 'text-slate-600', barColor: '#3b82f6' },
+    { name: 'Mobile Money', value: paymentMethods.mobile_money, icon: Smartphone, color: 'text-sky-700', barColor: '#1E3A5F' },
+    { name: 'Espèces', value: paymentMethods.cash, icon: Banknote, color: 'text-amber-600', barColor: '#2563EB' },
+    { name: 'Virement', value: paymentMethods.bank_transfer, icon: Building2, color: 'text-slate-600', barColor: '#3B82F6' },
   ]
   const totalPayments = paymentMethods.mobile_money + paymentMethods.cash + paymentMethods.bank_transfer
 
@@ -730,7 +730,7 @@ export default function Dashboard() {
                     />
                     <YAxis tick={{ fontSize: 12 }} className="text-muted-foreground" />
                     <Tooltip content={<CustomBarTooltip />} />
-                    <Bar dataKey="élèves" fill="#0a1628" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="élèves" fill="#1E3A5F" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="capacité" fill="var(--capacite-bar, #d1d5db)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
