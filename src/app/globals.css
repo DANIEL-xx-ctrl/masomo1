@@ -66,18 +66,20 @@
   --border: #cbd5e1;
   --input: #cbd5e1;
   --ring: #3b82f6;
-  --chart-1: #3b82f6;
-  --chart-2: #22c55e;
-  --chart-3: #facc15;
-  --chart-4: #ef4444;
-  --chart-5: #06b6d4;
-  --sidebar: #1e3a8a;
-  --sidebar-foreground: #f8fafc;
+  /* Charts — same blue as sidebar for bars */
+  --chart-1: #1e3a8a;
+  --chart-2: #2563eb;
+  --chart-3: #3b82f6;
+  --chart-4: #60a5fa;
+  --chart-5: #93c5fd;
+  /* Sidebar — darker navy + pure white text */
+  --sidebar: #0f1e3d;
+  --sidebar-foreground: #ffffff;
   --sidebar-primary: #3b82f6;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #172554;
+  --sidebar-accent: #1a2f52;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #334155;
+  --sidebar-border: #1e3a5f;
   --sidebar-ring: #3b82f6;
   --capacite-bar: #cbd5e1;
 }
@@ -114,32 +116,30 @@
   font-weight: 700;
 }
 
-/* === Dashboard stat cards: colored backgrounds instead of just borders === */
-/* Override the border-l-4 stat cards to use filled colored backgrounds */
-
+/* === Dashboard stat cards: darker colored backgrounds === */
 :root:not(.dark) .border-l-emerald-500 {
-  background-color: #ecfdf5 !important;
-  border-left-color: #10b981 !important;
+  background-color: #d1fae5 !important;
+  border-left-color: #059669 !important;
 }
 :root:not(.dark) .border-l-purple-500 {
-  background-color: #faf5ff !important;
-  border-left-color: #8b5cf6 !important;
+  background-color: #ede9fe !important;
+  border-left-color: #7c3aed !important;
 }
 :root:not(.dark) .border-l-amber-500 {
-  background-color: #fffbeb !important;
-  border-left-color: #f59e0b !important;
+  background-color: #fef3c7 !important;
+  border-left-color: #d97706 !important;
 }
 :root:not(.dark) .border-l-teal-500 {
-  background-color: #f0fdfa !important;
-  border-left-color: #14b8a6 !important;
+  background-color: #ccfbf1 !important;
+  border-left-color: #0d9488 !important;
 }
 :root:not(.dark) .border-l-cyan-500 {
-  background-color: #ecfeff !important;
-  border-left-color: #06b6d4 !important;
+  background-color: #cffafe !important;
+  border-left-color: #0891b2 !important;
 }
 :root:not(.dark) .border-l-rose-500 {
-  background-color: #fff1f2 !important;
-  border-left-color: #f43f5e !important;
+  background-color: #ffe4e6 !important;
+  border-left-color: #e11d48 !important;
 }
 
 .dark {
