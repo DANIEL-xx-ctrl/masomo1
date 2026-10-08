@@ -131,6 +131,19 @@
   font-weight: 700 !important;
 }
 
+/* === Sidebar menu text: off-white + text-shadow for maximum visibility === */
+:root:not(.dark) [data-slot="sidebar"],
+:root:not(.dark) [data-slot="sidebar"] * {
+  color: #f0f4f8 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Keep active item text pure white */
+:root:not(.dark) [data-slot="sidebar"] [data-active="true"],
+:root:not(.dark) [data-slot="sidebar"] [data-active="true"] * {
+  color: #ffffff !important;
+}
+
 /* === Dashboard stat cards: even darker, more differentiated colors === */
 :root:not(.dark) .border-l-emerald-500 {
   background-color: #a7f3d0 !important;
