@@ -50,8 +50,9 @@
   /* === Light mode — Corporate Blue (from dashboard image) === */
   --background: #f8fafc;
   --foreground: #1e293b;
-  --card: #ffffff;
-  --card-foreground: #1e293b;
+  /* Cards — darker off-white background */
+  --card: #f1f5f9;
+  --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #1e293b;
   --primary: #3b82f6;
@@ -72,25 +73,25 @@
   --chart-3: #3B82F6;
   --chart-4: #60A5FA;
   --chart-5: #93C5FD;
-  /* Sidebar — exact color from the image */
-  --sidebar: #1E3A5F;
+  /* Sidebar — very dark navy + pure white text */
+  --sidebar: #0B1A2E;
   --sidebar-foreground: #FFFFFF;
   --sidebar-primary: #3B82F6;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #1A365D;
+  --sidebar-accent: #142844;
   --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #2B4A6F;
+  --sidebar-border: #1E3A5F;
   --sidebar-ring: #3B82F6;
   --capacite-bar: #cbd5e1;
 }
 
-/* === Make all text slightly bolder (less thin) in light mode === */
+/* === Make ALL text bold in light mode === */
 :root:not(.dark) {
-  font-weight: 450;
+  font-weight: 600;
 }
 
 :root:not(.dark) body {
-  font-weight: 450;
+  font-weight: 600;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -100,20 +101,34 @@
 :root:not(.dark) td,
 :root:not(.dark) th,
 :root:not(.dark) label,
-:root:not(.dark) div {
-  font-weight: 450;
+:root:not(.dark) div,
+:root:not(.dark) a,
+:root:not(.dark) button,
+:root:not(.dark) input,
+:root:not(.dark) select,
+:root:not(.dark) textarea {
+  font-weight: 600;
 }
 
-/* Keep headings bold */
+/* Keep headings extra bold */
 :root:not(.dark) h1,
 :root:not(.dark) h2,
 :root:not(.dark) h3,
 :root:not(.dark) h4,
 :root:not(.dark) h5,
-:root:not(.dark) h6,
-:root:not(.dark) strong,
-:root:not(.dark) b {
-  font-weight: 700;
+:root:not(.dark) h6 {
+  font-weight: 800;
+}
+
+/* Stat card numbers — extra extra bold */
+:root:not(.dark) .text-3xl {
+  font-weight: 800 !important;
+}
+:root:not(.dark) .text-xl {
+  font-weight: 800 !important;
+}
+:root:not(.dark) .text-lg {
+  font-weight: 700 !important;
 }
 
 /* === Dashboard stat cards: even darker, more differentiated colors === */
