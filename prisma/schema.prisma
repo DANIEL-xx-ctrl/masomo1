@@ -38,6 +38,7 @@ model Institution {
   classes       Class[]
   schoolConfigs SchoolConfig[]
   schoolYears   SchoolYear[]
+  bulletinTemplates BulletinTemplate[]
 }
 
 model SchoolYear {
@@ -480,4 +481,22 @@ model MediaFile {
   institutionId String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// Modèles de bulletins (uploadés par l'admin dans Paramètres > Institution)
+// Représente les fichiers Excel modèles pour chaque niveau (1ère à 6ème primaire,
+// ou autres niveaux pour le secondaire). L'admin peut les uploader, les modifier,
+// les visualiser, et les exporter en Excel / PDF / Word.
+model BulletinTemplate {
+  id            String   @id @default(cuid())
+  institutionId String
+  name          String   // ex: "1ère PRIMAIRE", "6ème PRIMAIRE"
+  level         Int      // 1-6 (ou plus pour secondaire)
+  mediaFileId   String?  // référence au MediaFile stockant l'Excel original
+  fileName      String?  // nom original du fichier uploadé
+  structure     Json?    // structure parsée (header, domaines, matières, maxima)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  institution Institution? @relation(fields: [institutionId], references: [id], onDelete: Cascade)
 }
