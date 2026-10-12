@@ -89,6 +89,7 @@ import { seedApi, ApiError } from '@/lib/api'
 import { toast } from 'sonner'
 import ImageDropZone from '@/components/image-dropzone'
 import { notifyAvatarChanged } from '@/hooks/use-avatar-refresh'
+import { BulletinTemplatesSection } from '@/components/modules/bulletin-templates-section'
 
 // ============================================================
 // Types
@@ -470,6 +471,7 @@ export default function SettingsModule() {
         <TabsContent value="institution" className="space-y-6 mt-6">
           <InstitutionSection currentUser={currentUser} />
           <InstitutionTypeSection currentUser={currentUser} />
+          <BulletinTemplatesSection currentUser={currentUser} />
         </TabsContent>
 
         {/* ---------- Passwords Tab ---------- */}
