@@ -142,6 +142,7 @@ interface BulletinTemplatesSectionProps {
 // ---- Composant principal ----
 export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSectionProps) {
   const addToast = useAppStore((s) => s.addToast)
+  const activeInstitutionId = useAppStore((s) => s.activeInstitutionId)
   const [templates, setTemplates] = useState<BulletinTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -153,15 +154,24 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin'
 
+  // Effective institution: for super_admin, use activeInstitutionId from store;
+  // for admin, use their own institutionId.
+  const effectiveInstitutionId =
+    currentUser?.role === 'super_admin'
+      ? activeInstitutionId
+      : currentUser?.institutionId || ''
+
+  const buildHeaders = () => ({
+    'x-user-role': currentUser?.role || '',
+    'x-user-id': currentUser?.id || '',
+    'x-institution-id': effectiveInstitutionId || '',
+  })
+
   const fetchTemplates = useCallback(async () => {
     try {
       setLoading(true)
       const res = await fetch('/api/settings/bulletin-templates', {
-        headers: {
-          'x-user-role': currentUser?.role || '',
-          'x-user-id': currentUser?.id || '',
-          'x-institution-id': currentUser?.institutionId || '',
-        },
+        headers: buildHeaders(),
       })
       if (res.ok) {
         const data = await res.json()
@@ -172,7 +182,7 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
     } finally {
       setLoading(false)
     }
-  }, [currentUser])
+  }, [currentUser, effectiveInstitutionId])
 
   useEffect(() => {
     fetchTemplates()
@@ -191,11 +201,7 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
         const res = await fetch('/api/settings/bulletin-templates', {
           method: 'POST',
           body: formData,
-          headers: {
-            'x-user-role': currentUser?.role || '',
-            'x-user-id': currentUser?.id || '',
-            'x-institution-id': currentUser?.institutionId || '',
-          },
+          headers: buildHeaders(),
         })
         if (res.ok) {
           const data = await res.json()
@@ -223,11 +229,7 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
     try {
       const res = await fetch(`/api/settings/bulletin-templates/${t.id}`, {
         method: 'DELETE',
-        headers: {
-          'x-user-role': currentUser?.role || '',
-          'x-user-id': currentUser?.id || '',
-          'x-institution-id': currentUser?.institutionId || '',
-        },
+        headers: buildHeaders(),
       })
       if (res.ok) {
         toast.success('Modèle supprimé', { description: t.name })
@@ -248,11 +250,7 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
       const res = await fetch(
         `/api/settings/bulletin-templates/${t.id}/export?format=${format}`,
         {
-          headers: {
-            'x-user-role': currentUser?.role || '',
-            'x-user-id': currentUser?.id || '',
-            'x-institution-id': currentUser?.institutionId || '',
-          },
+          headers: buildHeaders(),
         }
       )
       if (!res.ok) {
@@ -875,6 +873,12 @@ function BulletinEditDialog({ template, currentUser, onClose, onSaved }: Bulleti
   const [level, setLevel] = useState(String(template.level))
   const [saving, setSaving] = useState(false)
 
+  const activeInstitutionId = useAppStore((s) => s.activeInstitutionId)
+  const effectiveInstitutionId =
+    currentUser?.role === 'super_admin'
+      ? activeInstitutionId
+      : currentUser?.institutionId || ''
+
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -884,7 +888,7 @@ function BulletinEditDialog({ template, currentUser, onClose, onSaved }: Bulleti
           'Content-Type': 'application/json',
           'x-user-role': currentUser?.role || '',
           'x-user-id': currentUser?.id || '',
-          'x-institution-id': currentUser?.institutionId || '',
+          'x-institution-id': effectiveInstitutionId || '',
         },
         body: JSON.stringify({
           name: name.trim(),
