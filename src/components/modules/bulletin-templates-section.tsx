@@ -590,25 +590,30 @@ interface BulletinPreviewDialogProps {
 }
 
 function BulletinPreviewDialog({ template, onClose, onExport }: BulletinPreviewDialogProps) {
-  const [structure, setStructure] = useState<BulletinStructure | null>(template.structure || null)
-  const [loading, setLoading] = useState(!template.structure)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const structure = template.structure
 
   useEffect(() => {
-    if (template.structure) {
-      setStructure(template.structure)
-      setLoading(false)
-      return
-    }
     let cancelled = false
+    let url: string | null = null
     ;(async () => {
       try {
-        const res = await fetch(`/api/settings/bulletin-templates/${template.id}`, {
-          headers: { 'x-user-role': 'super_admin' },
-        })
+        setLoading(true)
+        // Fetch the faithful HTML render of the original Excel file
+        const res = await fetch(
+          `/api/settings/bulletin-templates/${template.id}/preview?format=full`,
+          {
+            headers: { 'x-user-role': 'super_admin' },
+          }
+        )
         if (res.ok) {
-          const data = await res.json()
-          if (!cancelled && data.template?.structure) {
-            setStructure(data.template.structure)
+          const html = await res.text()
+          if (!cancelled) {
+            // Create a blob URL for the iframe
+            const blob = new Blob([html], { type: 'text/html' })
+            url = URL.createObjectURL(blob)
+            setPreviewUrl(url)
           }
         }
       } catch {
@@ -619,8 +624,9 @@ function BulletinPreviewDialog({ template, onClose, onExport }: BulletinPreviewD
     })()
     return () => {
       cancelled = true
+      if (url) URL.revokeObjectURL(url)
     }
-  }, [template])
+  }, [template.id])
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -631,17 +637,30 @@ function BulletinPreviewDialog({ template, onClose, onExport }: BulletinPreviewD
             Bulletin — {template.name}
           </DialogTitle>
           <DialogDescription>
-            Niveau {template.level} · {structure?.meta?.trimesterCount || 2} trimestres
+            Niveau {template.level} · {structure?.meta?.trimesterCount || 2} trimestres ·
+            Aperçu fidèle au fichier Excel original
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto pr-2">
-          {loading || !structure ? (
+        <div className="flex-1 overflow-auto border rounded-md bg-white">
+          {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="w-8 h-8 animate-spin text-amber-600" />
+              <span className="ml-3 text-sm text-muted-foreground">
+                Génération de l&apos;aperçu fidèle…
+              </span>
             </div>
+          ) : previewUrl ? (
+            <iframe
+              src={previewUrl}
+              className="w-full h-full min-h-[70vh]"
+              title={`Bulletin ${template.name}`}
+              style={{ border: 'none' }}
+            />
           ) : (
-            <BulletinHTMLPreview structure={structure} />
+            <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+              Aperçu non disponible
+            </div>
           )}
         </div>
 
