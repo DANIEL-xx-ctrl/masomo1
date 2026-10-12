@@ -12,7 +12,6 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
-  ExternalTabStopType,
   Packer,
   Paragraph,
   ShadingType,
@@ -57,10 +56,10 @@ export async function generateExcelBuffer(struct: BulletinStructure): Promise<Bu
   }
 
   const thinBorder: Partial<ExcelJS.Borders> = {
-    top: { style: ExcelJS.BorderStyle.thin, color: { argb: COLOR_BORDER } },
-    left: { style: ExcelJS.BorderStyle.thin, color: { argb: COLOR_BORDER } },
-    bottom: { style: ExcelJS.BorderStyle.thin, color: { argb: COLOR_BORDER } },
-    right: { style: ExcelJS.BorderStyle.thin, color: { argb: COLOR_BORDER } },
+    top: { style: 'thin', color: { argb: COLOR_BORDER } },
+    left: { style: 'thin', color: { argb: COLOR_BORDER } },
+    bottom: { style: 'thin', color: { argb: COLOR_BORDER } },
+    right: { style: 'thin', color: { argb: COLOR_BORDER } },
   }
 
   // ---- Header (lignes 1-7) ----
