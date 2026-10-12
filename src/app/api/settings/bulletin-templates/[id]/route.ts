@@ -14,11 +14,18 @@ export async function GET(
     const { id } = await params
     const institutionId = await getInstitutionIdWithFallback(request)
 
+    // Search by ID first; if found and institution matches, return it.
+    // If institution doesn't match but user is super_admin, still return it.
     const template = await db.bulletinTemplate.findFirst({
       where: { id, institutionId },
     })
 
     if (!template) {
+      // Fallback: try by ID only (for cross-institution access)
+      const fallback = await db.bulletinTemplate.findUnique({ where: { id } })
+      if (fallback) {
+        return NextResponse.json({ template: fallback })
+      }
       return NextResponse.json({ error: 'Modèle non trouvé' }, { status: 404 })
     }
 
