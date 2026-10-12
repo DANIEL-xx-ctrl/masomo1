@@ -199,15 +199,15 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
         })
         if (res.ok) {
           const data = await res.json()
-          toast.success('Modèle uploadé', data.message || `${file.name} ajouté`)
+          toast.success('Modèle uploadé', { description: data.message || `${file.name} ajouté` })
           successCount++
         } else {
           const err = await res.json()
-          toast.error('Échec upload', err.error || file.name)
+          toast.error('Échec upload', { description: err.error || file.name })
           errorCount++
         }
       } catch (e) {
-        toast.error('Échec upload', file.name)
+        toast.error('Échec upload', { description: file.name })
         errorCount++
       }
     }
@@ -230,15 +230,15 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
         },
       })
       if (res.ok) {
-        toast.success('Modèle supprimé', t.name)
+        toast.success('Modèle supprimé', { description: t.name })
         setTemplates((prev) => prev.filter((x) => x.id !== t.id))
         setDeleteTemplate(null)
       } else {
         const err = await res.json()
-        toast.error('Erreur', err.error || 'Suppression impossible')
+        toast.error('Erreur', { description: err.error || 'Suppression impossible' })
       }
     } catch {
-      toast.error('Erreur', 'Suppression impossible')
+      toast.error('Erreur', { description: 'Suppression impossible' })
     }
   }
 
@@ -257,7 +257,7 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
       )
       if (!res.ok) {
         const err = await res.json()
-        toast.error('Export échoué', err.error || 'Erreur')
+        toast.error('Export échoué', { description: err.error || 'Erreur' })
         return
       }
       const blob = await res.blob()
@@ -270,9 +270,9 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      toast.success('Export réussi', `${t.name}.${ext}`)
+      toast.success('Export réussi', { description: `${t.name}.${ext}` })
     } catch (e) {
-      toast.error('Export échoué', 'Erreur réseau')
+      toast.error('Export échoué', { description: 'Erreur réseau' })
     } finally {
       setExporting(null)
     }
@@ -892,14 +892,14 @@ function BulletinEditDialog({ template, currentUser, onClose, onSaved }: Bulleti
         }),
       })
       if (res.ok) {
-        toast.success('Modèle modifié', `${name} mis à jour`)
+        toast.success('Modèle modifié', { description: `${name} mis à jour` })
         onSaved()
       } else {
         const err = await res.json()
-        toast.error('Erreur', err.error || 'Modification impossible')
+        toast.error('Erreur', { description: err.error || 'Modification impossible' })
       }
     } catch {
-      toast.error('Erreur', 'Réseau')
+      toast.error('Erreur', { description: 'Réseau' })
     } finally {
       setSaving(false)
     }
