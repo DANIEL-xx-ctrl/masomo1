@@ -90,6 +90,62 @@ import {
 } from '@/lib/constants';
 import type { Grade, Class, Subject, Student } from '@/lib/types';
 
+/** Extended Subject type with primary school fields (degree, domain, level, maxima). */
+interface SubjectWithDegree extends Subject {
+  degree?: string | null;
+  domain?: string | null;
+  level?: string | null;
+  maxTJ?: number | null;
+  maxEX?: number | null;
+  maxTRIM?: number | null;
+  maxAnnuel?: number | null;
+}
+
+/** Map a class level string to a primary degree (elementaire/moyen/terminal).
+ *  Returns null if the level doesn't match a primary school degree. */
+function classLevelToDegree(level: string): string | null {
+  if (!level) return null;
+  const l = level.toLowerCase().trim();
+  // Élémentaire: 1ère, 2ème année
+  if (
+    l.includes('1ère') || l.includes('1ere') || l.includes('1re') ||
+    l.includes('2ème') || l.includes('2eme') ||
+    l === '1' || l === '2' ||
+    l.startsWith('1a') || l.startsWith('1b') || l.startsWith('2a') || l.startsWith('2b') ||
+    l === 'elementaire'
+  ) {
+    return 'elementaire';
+  }
+  // Moyen: 3ème, 4ème année
+  if (
+    l.includes('3ème') || l.includes('3eme') ||
+    l.includes('4ème') || l.includes('4eme') ||
+    l === '3' || l === '4' ||
+    l.startsWith('3a') || l.startsWith('3b') || l.startsWith('4a') || l.startsWith('4b') ||
+    l === 'moyen'
+  ) {
+    return 'moyen';
+  }
+  // Terminal: 5ème, 6ème année
+  if (
+    l.includes('5ème') || l.includes('5eme') ||
+    l.includes('6ème') || l.includes('6eme') ||
+    l === '5' || l === '6' ||
+    l.startsWith('5a') || l.startsWith('5b') || l.startsWith('6a') || l.startsWith('6b') ||
+    l === 'terminal'
+  ) {
+    return 'terminal';
+  }
+  return null;
+}
+
+/** Degree labels in French */
+const DEGREE_LABELS: Record<string, string> = {
+  elementaire: 'Degré Élémentaire (1ère & 2ème)',
+  moyen: 'Degré Moyen (3ème & 4ème)',
+  terminal: 'Degré Terminal (5ème & 6ème)',
+};
+
 /** Format an ISO date string (e.g. "2024-12-15") as a French date string. */
 function formatDateFR(dateStr: string): string {
   if (!dateStr) return '';
@@ -126,12 +182,14 @@ export default function GradesModule() {
 
   const [grades, setGrades] = useState<Grade[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [subjects, setSubjects] = useState<SubjectWithDegree[]>([]);
+  const [institutionType, setInstitutionType] = useState<string>('secondaire');
   const [loading, setLoading] = useState(true);
 
   // Filters
   const [filterClassId, setFilterClassId] = useState<string>('all');
   const [filterSubjectId, setFilterSubjectId] = useState<string>('all');
+  const [filterDegree, setFilterDegree] = useState<string>('all');
   const [filterTrimester, setFilterTrimester] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -221,6 +279,7 @@ export default function GradesModule() {
       const res = await fetch('/api/subjects');
       const data = await res.json();
       setSubjects(data.subjects || []);
+      setInstitutionType(data.institutionType || 'secondaire');
     } catch {
       addToast('error', 'Erreur', 'Impossible de charger les matières');
     }
@@ -321,6 +380,35 @@ export default function GradesModule() {
   useEffect(() => {
     setPage(1);
   }, [filterClassId, filterSubjectId, filterTrimester, filterType, searchQuery]);
+
+  // ── Primary school: filter classes and subjects by degree (promotion) ──
+  // For primary institutions, classes are grouped by degree (élémentaire/moyen/terminal).
+  // When the user selects a degree (promotion), only classes and subjects of that
+  // degree are shown. This makes the subject dropdown much shorter and more relevant.
+  const isPrimaire = institutionType === 'primaire';
+
+  // Classes filtered by the selected degree (for primary only)
+  const visibleClasses = isPrimaire && filterDegree !== 'all'
+    ? classes.filter((cls) => classLevelToDegree(cls.level) === filterDegree)
+    : classes;
+
+  // Subjects filtered by the selected degree (for primary only).
+  // For non-primary institutions, show all subjects.
+  const visibleSubjects = isPrimaire && filterDegree !== 'all'
+    ? subjects.filter((s) => s.degree === filterDegree || (!s.degree && filterDegree === 'elementaire'))
+    : subjects;
+
+  // When the degree changes, reset the class and subject filters so they
+  // don't reference classes/subjects that are no longer visible.
+  useEffect(() => {
+    if (!isPrimaire) return;
+    if (filterClassId !== 'all' && !visibleClasses.some((c) => c.id === filterClassId)) {
+      setFilterClassId('all');
+    }
+    if (filterSubjectId !== 'all' && !visibleSubjects.some((s) => s.id === filterSubjectId)) {
+      setFilterSubjectId('all');
+    }
+  }, [filterDegree, isPrimaire, visibleClasses, visibleSubjects, filterClassId, filterSubjectId]);
 
   // Filter grades client-side for type and search
   const filteredGrades = grades.filter((grade) => {
@@ -714,6 +802,49 @@ export default function GradesModule() {
       {/* Filter Bar */}
       <Card>
         <CardContent className="p-4">
+          {/* Primary school: promotion (degree) selector first */}
+          {isPrimaire && (
+            <div className="mb-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50">
+              <label className="text-xs font-semibold text-amber-800 dark:text-amber-400 block mb-1.5">
+                🎓 Promotion (degré) — École Primaire
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant={filterDegree === 'all' ? 'default' : 'outline'}
+                  className={filterDegree === 'all' ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+                  onClick={() => setFilterDegree('all')}
+                >
+                  Toutes les promotions
+                </Button>
+                {Object.entries(DEGREE_LABELS).map(([degId, degLabel]) => {
+                  const count = classes.filter((cls) => classLevelToDegree(cls.level) === degId).length;
+                  return (
+                    <Button
+                      key={degId}
+                      size="sm"
+                      variant={filterDegree === degId ? 'default' : 'outline'}
+                      className={filterDegree === degId ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+                      onClick={() => setFilterDegree(degId)}
+                    >
+                      {degLabel}
+                      {count > 0 && (
+                        <span className="ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
+                          {count} classe{count > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </Button>
+                  );
+                })}
+              </div>
+              {filterDegree !== 'all' && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1.5">
+                  ✓ Matières et classes filtrées pour : {DEGREE_LABELS[filterDegree]}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <Select value={filterClassId} onValueChange={setFilterClassId}>
               <SelectTrigger>
@@ -721,7 +852,7 @@ export default function GradesModule() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toutes les classes</SelectItem>
-                {classes.map((cls) => (
+                {visibleClasses.map((cls) => (
                   <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -731,9 +862,19 @@ export default function GradesModule() {
                 <SelectValue placeholder="Matière" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Toutes les matières</SelectItem>
-                {subjects.map((sub) => (
-                  <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
+                <SelectItem value="all">
+                  Toutes les matières{isPrimaire && filterDegree !== 'all' ? ` (${visibleSubjects.length})` : ''}
+                </SelectItem>
+                {isPrimaire && filterDegree !== 'all' && visibleSubjects.length === 0 && (
+                  <SelectItem value="_none" disabled>
+                    Aucune matière pour cette promotion
+                  </SelectItem>
+                )}
+                {visibleSubjects.map((sub) => (
+                  <SelectItem key={sub.id} value={sub.id}>
+                    {sub.name}
+                    {isPrimaire && sub.domain ? ` · ${sub.domain}` : ''}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1094,9 +1235,10 @@ export default function GradesModule() {
                 list="subjects-list"
               />
               {/* Datalist with existing subjects for autocomplete suggestions.
-                  The user can type freely or pick from the list. */}
+                  For primary school with a degree selected, only show subjects
+                  of that degree so the suggestions stay relevant. */}
               <datalist id="subjects-list">
-                {subjects.map((sub) => (
+                {(isPrimaire && filterDegree !== 'all' ? visibleSubjects : subjects).map((sub) => (
                   <option key={sub.id} value={sub.name} />
                 ))}
               </datalist>
