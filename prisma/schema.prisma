@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -127,7 +127,7 @@ model Teacher {
   firstName     String
   lastName      String
   subject       String
-  subjects      String  @default("[]") // JSON array of subjects (SQLite doesn't support String[])
+  subjects      String[] @default([])
   phone         String?
   qualification String?
   hireDate      String  @default("2024-01-01")
