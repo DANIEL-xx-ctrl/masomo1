@@ -1,14 +1,8 @@
 #!/bin/bash
 # ============================================================
-# Script d'upload vers GitHub — à exécuter après extraction du zip
+# Script d'upload vers GitHub
+# Exécutez ce script après avoir extrait le zip dans votre dépôt
 # ============================================================
-# Ce script :
-# 1. Installe les dépendances
-# 2. Pousse le schéma Prisma vers la base de données
-# 3. Ajoute tous les fichiers modifiés
-# 4. Commit et push vers GitHub
-# ============================================================
-
 set -e
 
 echo "📦 Installation des dépendances..."
