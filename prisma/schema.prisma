@@ -184,6 +184,11 @@ model Class {
   schoolYear    String  @default("2024-2025")
   room          String?
   institutionId String?
+  // Promotion (degré) — permet de différencier une classe "1A" du primaire
+  // (élémentaire) d'une classe "1A" du secondaire. Valeurs possibles :
+  // "primaire-elementaire", "primaire-moyen", "primaire-terminal",
+  // "secondaire-college", "secondaire-lycee". Null si non défini (legacy).
+  promotion     String?
 
   institution Institution?   @relation(fields: [institutionId], references: [id])
   students    Student[]
