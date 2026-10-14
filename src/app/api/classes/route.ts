@@ -90,7 +90,7 @@ export async function POST(request: Request) {
     const institutionId = scope.institutionId
 
     const body = await request.json()
-    const { name, level, section, capacity, schoolYear, room, teachers } = body
+    const { name, level, section, capacity, schoolYear, room, promotion, teachers } = body
 
     if (!name || !level) {
       return NextResponse.json(
@@ -128,6 +128,7 @@ export async function POST(request: Request) {
         capacity: capacity || 30,
         schoolYear: effectiveSchoolYear,
         room,
+        promotion: promotion || null,
         institutionId: institutionId!,
       },
     })
