@@ -338,6 +338,28 @@ export default function GradesModule() {
     fetchSubjects();
   }, [fetchClasses, fetchSubjects]);
 
+  // ── Auto-sélection de la promotion au chargement (institution primaire) ──
+  // Quand on détecte que l'institution est de type "primaire" et qu'aucune
+  // promotion n'est encore sélectionnée (filterDegree === 'all'), on
+  // pré-sélectionne automatiquement la première promotion qui a des classes.
+  // Cela fait que la page Notes s'ouvre directement avec les cours de la
+  // promotion correspondante, sans que l'utilisateur ait à cliquer.
+  useEffect(() => {
+    if (
+      institutionType === 'primaire' &&
+      filterDegree === 'all' &&
+      classes.length > 0
+    ) {
+      // Trouver la première promotion qui a au moins une classe
+      const firstDegreeWithClasses = ['elementaire', 'moyen', 'terminal'].find(
+        (deg) => classes.some((cls) => classLevelToDegree(cls.level) === deg)
+      );
+      if (firstDegreeWithClasses) {
+        setFilterDegree(firstDegreeWithClasses);
+      }
+    }
+  }, [institutionType, filterDegree, classes]);
+
   // ── Teacher auto-select ───────────────────────────────────────
   // When a teacher has exactly one class, pre-select it in the filter
   // bar so they land directly on their class's grades. Teachers with
