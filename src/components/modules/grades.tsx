@@ -89,6 +89,7 @@ import {
   MAX_GRADE_VALUE,
 } from '@/lib/constants';
 import type { Grade, Class, Subject, Student } from '@/lib/types';
+import { promotionToDegree } from '@/lib/constants';
 
 /** Extended Subject type with primary school fields (degree, domain, level, maxima). */
 interface SubjectWithDegree extends Subject {
@@ -101,9 +102,18 @@ interface SubjectWithDegree extends Subject {
   maxAnnuel?: number | null;
 }
 
-/** Map a class level string to a primary degree (elementaire/moyen/terminal).
- *  Returns null if the level doesn't match a primary school degree. */
-function classLevelToDegree(level: string): string | null {
+/** Map a class to a primary degree (elementaire/moyen/terminal).
+ *  Priority:
+ *    1. The class's `promotion` field (e.g., "primaire-elementaire")
+ *    2. Fallback: heuristic detection from the `level` string (legacy classes)
+ *  Returns null if neither matches a primary school degree. */
+function classLevelToDegree(level: string, promotion?: string | null): string | null {
+  // 1. Prefer the explicit `promotion` field set on the class
+  if (promotion) {
+    const degree = promotionToDegree(promotion);
+    if (degree) return degree;
+  }
+  // 2. Fallback: heuristic detection from the level string
   if (!level) return null;
   const l = level.toLowerCase().trim();
   // Élémentaire: 1ère, 2ème année
@@ -352,7 +362,7 @@ export default function GradesModule() {
     ) {
       // Trouver la première promotion qui a au moins une classe
       const firstDegreeWithClasses = ['elementaire', 'moyen', 'terminal'].find(
-        (deg) => classes.some((cls) => classLevelToDegree(cls.level) === deg)
+        (deg) => classes.some((cls) => classLevelToDegree(cls.level, cls.promotion) === deg)
       );
       if (firstDegreeWithClasses) {
         setFilterDegree(firstDegreeWithClasses);
@@ -417,7 +427,7 @@ export default function GradesModule() {
 
   // Classes filtered by the selected degree (for primary only)
   const visibleClasses = isPrimaire && filterDegree !== 'all'
-    ? classes.filter((cls) => classLevelToDegree(cls.level) === filterDegree)
+    ? classes.filter((cls) => classLevelToDegree(cls.level, cls.promotion) === filterDegree)
     : classes;
 
   // Subjects filtered by the selected degree (for primary only).
@@ -642,7 +652,7 @@ export default function GradesModule() {
 
   // Classes shown in the Add dialog, also filtered by formDegree for primary.
   const formVisibleClasses = isPrimaire && formDegree !== 'all'
-    ? classes.filter((cls) => classLevelToDegree(cls.level) === formDegree)
+    ? classes.filter((cls) => classLevelToDegree(cls.level, cls.promotion) === formDegree)
     : classes;
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin';
@@ -861,7 +871,7 @@ export default function GradesModule() {
                   Toutes les promotions
                 </Button>
                 {Object.entries(DEGREE_LABELS).map(([degId, degLabel]) => {
-                  const count = classes.filter((cls) => classLevelToDegree(cls.level) === degId).length;
+                  const count = classes.filter((cls) => classLevelToDegree(cls.level, cls.promotion) === degId).length;
                   return (
                     <Button
                       key={degId}
@@ -1179,7 +1189,7 @@ export default function GradesModule() {
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(DEGREE_LABELS).map(([degId, degLabel]) => {
-                    const count = classes.filter((cls) => classLevelToDegree(cls.level) === degId).length;
+                    const count = classes.filter((cls) => classLevelToDegree(cls.level, cls.promotion) === degId).length;
                     const subCount = subjects.filter((s) => s.degree === degId).length;
                     return (
                       <Button

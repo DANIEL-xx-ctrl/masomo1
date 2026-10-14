@@ -21,7 +21,7 @@ import { useAppStore } from '@/lib/store'
 import { withSchoolYear, getImageUrl } from '@/lib/utils'
 import { useAvatarChangedListener } from '@/hooks/use-avatar-refresh'
 import type { Class, Student, ClassTeacher, Schedule, Teacher } from '@/lib/types'
-import { CLASS_LEVELS, DAY_LABELS, CURRENT_SCHOOL_YEAR } from '@/lib/constants'
+import { CLASS_LEVELS, CLASS_PROMOTIONS, CLASS_PROMOTION_LABELS, DAY_LABELS, CURRENT_SCHOOL_YEAR } from '@/lib/constants'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -79,6 +79,7 @@ interface ClassFormData {
   capacity: string
   room: string
   schoolYear: string
+  promotion: string
 }
 
 interface AssignedTeacher {
@@ -93,6 +94,7 @@ const emptyForm: ClassFormData = {
   capacity: '30',
   room: '',
   schoolYear: CURRENT_SCHOOL_YEAR,
+  promotion: '',
 }
 
 // ---------- Component ----------
@@ -175,6 +177,7 @@ export default function ClassesModule() {
       capacity: String(cls.capacity),
       room: cls.room || '',
       schoolYear: cls.schoolYear,
+      promotion: cls.promotion || '',
     })
     // Load existing teacher assignments
     try {
@@ -228,6 +231,7 @@ export default function ClassesModule() {
             capacity: form.capacity ? parseInt(form.capacity) : undefined,
             room: form.room || undefined,
             schoolYear: form.schoolYear || CURRENT_SCHOOL_YEAR,
+            promotion: form.promotion || undefined,
             teachers: assignedTeachers,
           }),
         })
@@ -247,6 +251,7 @@ export default function ClassesModule() {
             capacity: form.capacity ? parseInt(form.capacity) : 30,
             schoolYear: form.schoolYear || CURRENT_SCHOOL_YEAR,
             room: form.room || undefined,
+            promotion: form.promotion || undefined,
             teachers: assignedTeachers,
           }),
         })
@@ -545,7 +550,7 @@ export default function ClassesModule() {
                   id="c-level"
                   value={form.level}
                   onChange={(e) => updateForm('level', e.target.value)}
-                  placeholder="Ex: 6ème, 5ème, Terminale..."
+                  placeholder="Ex: 6ème, 5ème, Terminale, 1A..."
                 />
               </div>
               <div className="space-y-2">
@@ -557,6 +562,34 @@ export default function ClassesModule() {
                   placeholder="Ex: A, B, Scientifique..."
                 />
               </div>
+            </div>
+
+            {/* Promotion (degré) — permet de différencier une classe "1A" du
+                primaire (élémentaire) d'une classe "1A" du secondaire. */}
+            <div className="space-y-2">
+              <Label htmlFor="c-promotion">
+                Promotion (degré)
+                <span className="text-xs text-muted-foreground ml-1 font-normal">(recommandé)</span>
+              </Label>
+              <Select
+                value={form.promotion || '_none'}
+                onValueChange={(v) => updateForm('promotion', v === '_none' ? '' : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner une promotion..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">— Non définie (legacy) —</SelectItem>
+                  {CLASS_PROMOTIONS.map((promo) => (
+                    <SelectItem key={promo.value} value={promo.value}>
+                      {promo.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Permet à la page Notes de filtrer les matières correspondantes (ex: "1A Primaire" vs "1A Secondaire").
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
