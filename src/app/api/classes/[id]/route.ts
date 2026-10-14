@@ -86,7 +86,7 @@ export async function PUT(
 
     const { id } = await params
     const body = await request.json()
-    const { name, level, section, capacity, room, schoolYear, teachers } = body
+    const { name, level, section, capacity, room, schoolYear, promotion, teachers } = body
 
     const existing = await db.class.findUnique({ where: { id } })
     if (!existing) {
@@ -113,6 +113,7 @@ export async function PUT(
         capacity,
         room,
         schoolYear,
+        promotion: promotion === undefined ? undefined : (promotion || null),
       },
     })
 
