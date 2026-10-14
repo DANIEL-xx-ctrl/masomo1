@@ -318,6 +318,49 @@ export default function ClassesModule() {
     return levelDef?.cycle || ''
   }
 
+  /** Retourne une couleur (classes Tailwind) selon la promotion de la classe. */
+  const getPromotionColor = (promotion?: string | null) => {
+    if (!promotion) return ''
+    const promoDef = CLASS_PROMOTIONS.find((p) => p.value === promotion)
+    if (!promoDef) return ''
+    switch (promoDef.institutionType) {
+      case 'primaire':
+        switch (promoDef.degree) {
+          case 'elementaire':
+            return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+          case 'moyen':
+            return 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
+          case 'terminal':
+            return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400'
+          default:
+            return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+        }
+      case 'secondaire':
+        return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+      default:
+        return ''
+    }
+  }
+
+  /** Retourne le label court de la promotion (ex: "Primaire · Élémentaire"). */
+  const getPromotionShortLabel = (promotion?: string | null) => {
+    if (!promotion) return ''
+    const promoDef = CLASS_PROMOTIONS.find((p) => p.value === promotion)
+    if (!promoDef) return ''
+    if (promoDef.institutionType === 'primaire' && promoDef.degree) {
+      const degreeLabels: Record<string, string> = {
+        elementaire: 'Élémentaire',
+        moyen: 'Moyen',
+        terminal: 'Terminal',
+      }
+      return `Primaire · ${degreeLabels[promoDef.degree]}`
+    }
+    if (promoDef.institutionType === 'secondaire') {
+      return promotion === 'secondaire-college' ? 'Secondaire · Collège' : 'Secondaire · Lycée'
+    }
+    return promoDef.label
+  }
+
   const getOccupancyColor = (percentage: number) => {
     if (percentage >= 90) return 'text-red-600'
     if (percentage >= 70) return 'text-amber-600'
@@ -405,6 +448,15 @@ export default function ClassesModule() {
                           <Badge variant="secondary" className={`mt-1 text-xs ${getLevelColor(cls.level)}`}>
                             {cls.level} {getLevelCycle(cls.level) && `— ${getLevelCycle(cls.level)}`}
                           </Badge>
+                          {cls.promotion && (
+                            <Badge
+                              variant="secondary"
+                              className={`mt-1 ml-1 text-xs ${getPromotionColor(cls.promotion)}`}
+                              title={CLASS_PROMOTION_LABELS[cls.promotion] || cls.promotion}
+                            >
+                              🎓 {getPromotionShortLabel(cls.promotion)}
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openDetail(cls)} title="Voir">
@@ -735,6 +787,15 @@ export default function ClassesModule() {
                     {viewingClass.section && (
                       <Badge variant="outline" className="text-xs shrink-0">
                         Section {viewingClass.section}
+                      </Badge>
+                    )}
+                    {viewingClass.promotion && (
+                      <Badge
+                        variant="secondary"
+                        className={`text-xs shrink-0 ${getPromotionColor(viewingClass.promotion)}`}
+                        title={CLASS_PROMOTION_LABELS[viewingClass.promotion] || viewingClass.promotion}
+                      >
+                        🎓 {getPromotionShortLabel(viewingClass.promotion)}
                       </Badge>
                     )}
                     {viewingClass.room && (
