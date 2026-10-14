@@ -1,4 +1,4 @@
-# Modifications — Bulletins + Dashboard + Notes par promotion + Rechargement auto
+# Modifications — Bulletins + Dashboard + Notes par promotion + Auto-chargement
 
 ## Nouveautés
 
@@ -21,7 +21,7 @@
 
 ### 4. Page Notes — Filtrage par promotion (degré)
 - Si l'institution est de type **primaire**, un sélecteur de promotion apparaît
-- L'utilisateur sélectionne d'abord une promotion :
+- L'utilisateur sélectionne une promotion :
   - **Degré Élémentaire** (1ère & 2ème)
   - **Degré Moyen** (3ème & 4ème)
   - **Degré Terminal** (5ème & 6ème)
@@ -31,20 +31,26 @@
   - La datalist d'autocomplétion est aussi filtrée
   - Les compteurs de classes par promotion s'affichent
 
-### 5. Rechargement automatique après changement de type d'institution (NOUVEAU)
+### 5. Rechargement automatique après changement de type d'institution
 - Quand l'admin change le type d'institution dans Paramètres → Institution
 - La page se recharge automatiquement après 1.2 secondes
 - Tous les modules (Notes, Bulletins, etc.) sont re-synchronisés avec le nouveau type
 
-### 6. Dialogue "Ajouter note" — Matières selon la promotion (NOUVEAU)
-- Pour les institutions primaires, le dialogue "Ajouter note" a maintenant 3 étapes :
+### 6. Auto-sélection de la promotion au chargement de la page Notes (NOUVEAU)
+- Quand la page Notes s'ouvre, elle vérifie le type d'institution défini dans les paramètres
+- Si l'institution est **primaire** :
+  - La promotion est **automatiquement sélectionnée** (la première qui a des classes)
+  - Les cours correspondants s'affichent immédiatement
+  - L'utilisateur n'a pas besoin de cliquer manuellement
+- Si l'institution est **secondaire/université** :
+  - Pas de sélecteur de promotion (comportement existant)
+  - Toutes les matières s'affichent directement
+
+### 7. Dialogue "Ajouter note" — Matières selon la promotion
+- Pour les institutions primaires, le dialogue a 3 étapes :
   1. **Sélection de la promotion** (3 boutons ambre avec compteur de matières)
   2. **Sélection de la classe** (filtrée par la promotion)
   3. **Sélection de la matière** (liste cliquable des matières de la promotion)
-- Tant qu'aucune promotion n'est sélectionnée :
-  - Le sélecteur de classe est désactivé
-  - La zone matière affiche un message d'avertissement
-  - Le bouton "Ajouter" affiche "Sélectionnez une promotion"
 - La liste des matières affiche : nom + domaine + maxTJ
 - La matière sélectionnée est mise en surbrillance (ambre)
 - Pour le secondaire/université : champ texte libre (comportement existant)
@@ -62,7 +68,7 @@
 - `src/components/modules/bulletin-templates-section.tsx` — Upload/visualisation/export
 - `src/components/modules/settings.tsx` — Cours & Maxima adapté + rechargement auto
 - `src/components/modules/dashboard.tsx` — Bordures gauches, fonds supprimés
-- `src/components/modules/grades.tsx` — **NOUVEAU** Sélecteur de promotion + liste matières cliquable
+- `src/components/modules/grades.tsx` — **NOUVEAU** Auto-sélection promotion + liste matières cliquable
 
 ### Style
 - `src/app/globals.css` — Suppression des couleurs de remplissage
@@ -86,11 +92,13 @@
 3. Section « Cours & Maxima » — s'adapte aux bulletins uploadés
 
 ### Page Notes (si institution primaire)
-1. Cliquez sur "Ajouter une note"
-2. Sélectionnez une promotion (degré) — étape 1
-3. Sélectionnez une classe (filtrée par promotion) — étape 2
-4. Sélectionnez une matière dans la liste cliquable — étape 3
-5. Saisissez la note et validez
+1. La page s'ouvre → la promotion est auto-sélectionnée
+2. Les classes et matières correspondantes s'affichent immédiatement
+3. Cliquez sur "Ajouter une note"
+4. La promotion est déjà sélectionnée dans le dialogue
+5. Sélectionnez une classe (filtrée par promotion)
+6. Sélectionnez une matière dans la liste cliquable
+7. Saisissez la note et validez
 
 ### Tableau de bord
 - 6 cartes d'en haut avec bordures gauches colorées (sans fond)
