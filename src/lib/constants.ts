@@ -266,6 +266,43 @@ export const CLASS_LEVEL_LABELS: Record<string, string> = Object.fromEntries(
   CLASS_LEVELS.map((l) => [l.value, l.label])
 );
 
+// ---------- Class Promotions (degrés) ----------
+// Permet de différencier une classe "1A" du primaire (élémentaire)
+// d'une classe "1A" du secondaire. La promotion est stockée sur la classe
+// et utilisée pour filtrer les matières dans la page Notes.
+
+export interface ClassPromotionDefinition {
+  value: string;
+  label: string;
+  institutionType: 'primaire' | 'secondaire';
+  // Pour le primaire, mapping vers le degree utilisé par les matières
+  degree?: 'elementaire' | 'moyen' | 'terminal';
+}
+
+export const CLASS_PROMOTIONS: ClassPromotionDefinition[] = [
+  // Primaire — degré élémentaire (1ère & 2ème)
+  { value: 'primaire-elementaire', label: 'Primaire — Degré Élémentaire (1ère & 2ème)', institutionType: 'primaire', degree: 'elementaire' },
+  // Primaire — degré moyen (3ème & 4ème)
+  { value: 'primaire-moyen', label: 'Primaire — Degré Moyen (3ème & 4ème)', institutionType: 'primaire', degree: 'moyen' },
+  // Primaire — degré terminal (5ème & 6ème)
+  { value: 'primaire-terminal', label: 'Primaire — Degré Terminal (5ème & 6ème)', institutionType: 'primaire', degree: 'terminal' },
+  // Secondaire — collège
+  { value: 'secondaire-college', label: 'Secondaire — Collège (1er cycle)', institutionType: 'secondaire' },
+  // Secondaire — lycée
+  { value: 'secondaire-lycee', label: 'Secondaire — Lycée (2nd cycle)', institutionType: 'secondaire' },
+];
+
+export const CLASS_PROMOTION_LABELS: Record<string, string> = Object.fromEntries(
+  CLASS_PROMOTIONS.map((p) => [p.value, p.label])
+);
+
+/** Récupère le degree (elementaire/moyen/terminal) à partir d'une promotion. */
+export function promotionToDegree(promotion: string | null | undefined): string | null {
+  if (!promotion) return null;
+  const def = CLASS_PROMOTIONS.find((p) => p.value === promotion);
+  return def?.degree || null;
+}
+
 // ---------- Announcement Types ----------
 
 export interface AnnouncementTypeDefinition {

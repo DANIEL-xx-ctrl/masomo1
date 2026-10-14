@@ -183,6 +183,7 @@ export interface Class {
   capacity: number;
   schoolYear: string;
   room: string | null;
+  promotion: string | null;
   createdAt: string;
   updatedAt: string;
   // Relations
