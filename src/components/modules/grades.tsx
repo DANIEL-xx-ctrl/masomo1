@@ -251,6 +251,12 @@ export default function GradesModule() {
   const [formClassStudents, setFormClassStudents] = useState<Student[]>([]);
   const [formClassStudentsLoading, setFormClassStudentsLoading] = useState(false);
 
+  // Promotion (degré) sélectionnée dans le dialogue "Ajouter note".
+  // Pour les institutions primaires, l'utilisateur doit d'abord sélectionner
+  // une promotion pour voir les matières correspondantes. Par défaut, on
+  // reprend la promotion déjà filtrée dans la barre de filtre principale.
+  const [formDegree, setFormDegree] = useState<string>('all');
+
   const fetchClasses = useCallback(async () => {
     try {
       const res = await fetch(withSchoolYear('/api/classes', schoolYear));
@@ -592,6 +598,8 @@ export default function GradesModule() {
     setFormComment('');
     setStudentSearch('');
     setFormClassStudents([]);
+    // Pour le primaire : reprendre la promotion filtrée dans la barre de filtre
+    setFormDegree(filterDegree);
   };
 
   // Students shown in the Add-dialog dropdown: scoped to the selected class,
@@ -601,6 +609,19 @@ export default function GradesModule() {
     const name = `${s.firstName} ${s.lastName}`.toLowerCase();
     return name.includes(studentSearch.toLowerCase());
   });
+
+  // ── Add dialog: subjects filtered by the dialog-local promotion (formDegree) ──
+  // For primary institutions, the user must select a promotion in the dialog to
+  // see the relevant subjects (those matching the degree). For non-primary, all
+  // subjects are shown.
+  const formVisibleSubjects = isPrimaire && formDegree !== 'all'
+    ? subjects.filter((s) => s.degree === formDegree || (!s.degree && formDegree === 'elementaire'))
+    : subjects;
+
+  // Classes shown in the Add dialog, also filtered by formDegree for primary.
+  const formVisibleClasses = isPrimaire && formDegree !== 'all'
+    ? classes.filter((cls) => classLevelToDegree(cls.level) === formDegree)
+    : classes;
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin';
   const isTeacher = currentUser?.role === 'teacher';
@@ -1126,31 +1147,84 @@ export default function GradesModule() {
             <DialogTitle>Ajouter une note</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
-            {/* Classe — filtrée par l'année scolaire courante. Le choix de la
-                classe recharge la liste des élèves ci-dessous. */}
+            {/* Promotion (degré) — visible seulement pour les institutions primaires.
+                L'utilisateur doit d'abord sélectionner une promotion pour voir
+                les classes et matières correspondantes. */}
+            {isPrimaire && (
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50">
+                <label className="text-xs font-semibold text-amber-800 dark:text-amber-400 block mb-1.5">
+                  🎓 Promotion (degré) — Étape 1
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(DEGREE_LABELS).map(([degId, degLabel]) => {
+                    const count = classes.filter((cls) => classLevelToDegree(cls.level) === degId).length;
+                    const subCount = subjects.filter((s) => s.degree === degId).length;
+                    return (
+                      <Button
+                        key={degId}
+                        size="sm"
+                        type="button"
+                        variant={formDegree === degId ? 'default' : 'outline'}
+                        className={formDegree === degId ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+                        onClick={() => {
+                          setFormDegree(degId);
+                          // Reset la classe et matière si elles ne correspondent plus
+                          setFormClassId('');
+                          setFormStudentId('');
+                          setFormSubjectId('');
+                          setFormSubjectName('');
+                        }}
+                      >
+                        {degLabel}
+                        {(count > 0 || subCount > 0) && (
+                          <span className="ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
+                            {subCount} matière{subCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </Button>
+                    );
+                  })}
+                </div>
+                {formDegree === 'all' && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1.5">
+                    ⚠ Sélectionnez d'abord une promotion pour voir les classes et matières correspondantes
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Classe — filtrée par la promotion sélectionnée (primaire) ou par l'année scolaire. */}
             <div className="grid gap-2">
-              <Label>Classe *</Label>
+              <Label>
+                Classe *
+                {isPrimaire && formDegree !== 'all' && (
+                  <span className="text-xs text-amber-600 ml-1">({formVisibleClasses.length} classe{formVisibleClasses.length > 1 ? 's' : ''} pour cette promotion)</span>
+                )}
+              </Label>
               <Select
                 value={formClassId}
+                disabled={isPrimaire && formDegree === 'all'}
                 onValueChange={(v) => {
                   setFormClassId(v);
-                  // La liste des élèves est rechargée automatiquement par le
-                  // useEffect quand formClassId change. On reset aussi l'élève
-                  // sélectionné car il n'appartient peut-être plus à la nouvelle
-                  // classe.
                   setFormStudentId('');
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une classe" />
+                  <SelectValue placeholder={
+                    isPrimaire && formDegree === 'all'
+                      ? "Sélectionnez une promotion d'abord"
+                      : "Sélectionner une classe"
+                  } />
                 </SelectTrigger>
                 <SelectContent>
-                  {classes.length === 0 ? (
+                  {formVisibleClasses.length === 0 ? (
                     <SelectItem value="_none" disabled>
-                      Aucune classe pour {schoolYear}
+                      {isPrimaire && formDegree !== 'all'
+                        ? 'Aucune classe pour cette promotion'
+                        : `Aucune classe pour ${schoolYear}`}
                     </SelectItem>
                   ) : (
-                    classes.map((cls) => (
+                    formVisibleClasses.map((cls) => (
                       <SelectItem key={cls.id} value={cls.id}>
                         {cls.name}
                         {cls.level ? ` — ${cls.level}` : ''}
@@ -1159,9 +1233,9 @@ export default function GradesModule() {
                   )}
                 </SelectContent>
               </Select>
-              {classes.length > 0 && (
+              {formVisibleClasses.length > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  {classes.length} classe{classes.length > 1 ? 's' : ''} disponible{classes.length > 1 ? 's' : ''} pour l'année {schoolYear}
+                  {formVisibleClasses.length} classe{formVisibleClasses.length > 1 ? 's' : ''} disponible{formVisibleClasses.length > 1 ? 's' : ''} pour l'année {schoolYear}
                 </p>
               )}
             </div>
@@ -1219,29 +1293,100 @@ export default function GradesModule() {
                 </p>
               )}
             </div>
+            {/* Matière — pour le primaire, affiche les matières de la promotion
+                sélectionnée sous forme de liste cliquable (boutons). Pour le
+                secondaire/université, affiche un champ texte libre avec
+                autocomplétion (datalist). */}
             <div className="grid gap-2">
-              <Label htmlFor="form-subject">Matière *</Label>
-              <Input
-                id="form-subject"
-                value={formSubjectName}
-                onChange={(e) => {
-                  setFormSubjectName(e.target.value);
-                  // Clear the subjectId when the user types a new name —
-                  // the backend will resolve it (find-or-create) from the
-                  // typed name.
-                  setFormSubjectId('');
-                }}
-                placeholder="Ex: Mathématiques"
-                list="subjects-list"
-              />
-              {/* Datalist with existing subjects for autocomplete suggestions.
-                  For primary school with a degree selected, only show subjects
-                  of that degree so the suggestions stay relevant. */}
-              <datalist id="subjects-list">
-                {(isPrimaire && filterDegree !== 'all' ? visibleSubjects : subjects).map((sub) => (
-                  <option key={sub.id} value={sub.name} />
-                ))}
-              </datalist>
+              <Label htmlFor="form-subject">
+                Matière *
+                {isPrimaire && formDegree !== 'all' && (
+                  <span className="text-xs text-amber-600 ml-1">({formVisibleSubjects.length} matière{formVisibleSubjects.length > 1 ? 's' : ''} pour cette promotion)</span>
+                )}
+              </Label>
+
+              {isPrimaire ? (
+                <>
+                  {formDegree === 'all' ? (
+                    <div className="p-3 rounded-md bg-muted/40 text-xs text-muted-foreground text-center">
+                      ⚠ Sélectionnez d'abord une promotion ci-dessus pour voir les matières correspondantes
+                    </div>
+                  ) : formVisibleSubjects.length === 0 ? (
+                    <div className="p-3 rounded-md bg-muted/40 text-xs text-muted-foreground text-center">
+                      Aucune matière trouvée pour cette promotion. Ajoutez des matières dans Paramètres → Institution.
+                    </div>
+                  ) : (
+                    <>
+                      {/* Champ texte + datalist pour autocomplétion */}
+                      <Input
+                        id="form-subject"
+                        value={formSubjectName}
+                        onChange={(e) => {
+                          setFormSubjectName(e.target.value);
+                          setFormSubjectId('');
+                        }}
+                        placeholder="Rechercher ou taper une matière..."
+                        list="subjects-list-dialog"
+                      />
+                      <datalist id="subjects-list-dialog">
+                        {formVisibleSubjects.map((sub) => (
+                          <option key={sub.id} value={sub.name} />
+                        ))}
+                      </datalist>
+                      {/* Liste cliquable des matières filtrées par promotion */}
+                      <div className="border rounded-md max-h-[180px] overflow-y-auto divide-y">
+                        {formVisibleSubjects.map((sub) => {
+                          const isSelected = formSubjectName === sub.name;
+                          return (
+                            <button
+                              key={sub.id}
+                              type="button"
+                              onClick={() => {
+                                setFormSubjectName(sub.name);
+                                setFormSubjectId(sub.id);
+                              }}
+                              className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between gap-2 ${
+                                isSelected
+                                  ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 font-semibold'
+                                  : 'hover:bg-muted/60'
+                              }`}
+                            >
+                              <span className="flex-1 truncate">{sub.name}</span>
+                              {sub.domain && (
+                                <span className="text-[10px] text-muted-foreground shrink-0">{sub.domain}</span>
+                              )}
+                              {sub.maxTJ != null && (
+                                <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px] shrink-0" title="Max Travail Journalier">
+                                  TJ {sub.maxTJ}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Secondaire/université : champ texte libre avec datalist */}
+                  <Input
+                    id="form-subject"
+                    value={formSubjectName}
+                    onChange={(e) => {
+                      setFormSubjectName(e.target.value);
+                      setFormSubjectId('');
+                    }}
+                    placeholder="Ex: Mathématiques"
+                    list="subjects-list-dialog"
+                  />
+                  <datalist id="subjects-list-dialog">
+                    {subjects.map((sub) => (
+                      <option key={sub.id} value={sub.name} />
+                    ))}
+                  </datalist>
+                </>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
@@ -1314,9 +1459,13 @@ export default function GradesModule() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleAddGrade} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button
+              onClick={handleAddGrade}
+              disabled={saving || (isPrimaire && formDegree === 'all')}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Ajouter
+              {isPrimaire && formDegree === 'all' ? 'Sélectionnez une promotion' : 'Ajouter'}
             </Button>
           </DialogFooter>
         </DialogContent>

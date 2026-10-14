@@ -3584,6 +3584,13 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
         addToast('success', 'Matières pré-remplies', `${data.seededSubjects} matière(s) du primaire ajoutée(s) automatiquement`)
         fetchSubjects()
       }
+      // Rechargement automatique de la page après changement de type d'institution
+      // pour que tous les modules (Notes, Bulletins, etc.) soient re-synchronisés
+      // avec le nouveau type (primaire/secondaire/université) et rechargent leurs
+      // données filtrées (matières, classes, etc.).
+      setTimeout(() => {
+        window.location.reload()
+      }, 1200)
     } catch (error) {
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Erreur inconnue')
     } finally {
