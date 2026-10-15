@@ -224,6 +224,11 @@ export default function GradesModule() {
   const [formValue, setFormValue] = useState('');
   const [formType, setFormType] = useState<'devoir' | 'examen' | 'controle'>('devoir');
   const [formTrimester, setFormTrimester] = useState<'1er' | '2eme' | '3eme'>('1er');
+  // Sous-type d'évaluation : chaque trimestre comporte 3 points à saisir :
+  //   - "periode1" : 1ère période (max = maxTJ du sujet)
+  //   - "periode2" : 2ème période (max = maxTJ du sujet)
+  //   - "examen"   : Examen (max = maxEX du sujet)
+  const [formSubType, setFormSubType] = useState<'periode1' | 'periode2' | 'examen'>('periode1');
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
   // French date display (dd/mm/yyyy) — the native date input shows in the
   // browser locale which may be mm/dd/yyyy on some systems. We use a text
@@ -654,6 +659,45 @@ export default function GradesModule() {
   const formVisibleClasses = isPrimaire && formDegree !== 'all'
     ? classes.filter((cls) => classLevelToDegree(cls.level, cls.promotion) === formDegree)
     : classes;
+
+  // ── Sujet actuellement sélectionné dans le dialogue Add ──
+  // On le cherche par formSubjectId (si sélection via liste cliquable) ou
+  // par formSubjectName (si l'utilisateur a tapé le nom manuellement).
+  const selectedFormSubject = formSubjectId
+    ? subjects.find((s) => s.id === formSubjectId)
+    : subjects.find((s) => s.name === formSubjectName);
+
+  // ── Max automatique selon le sous-type d'évaluation ──
+  // - periode1 / periode2 → max = maxTJ du sujet (max par période/travail journalier)
+  // - examen              → max = maxEX du sujet (max par examen)
+  // Si le sujet n'a pas de maxima défini, on retombe sur 20 par défaut.
+  const computedMax = (() => {
+    if (!selectedFormSubject) return 20;
+    if (formSubType === 'examen') {
+      return selectedFormSubject.maxEX ?? 20;
+    }
+    // periode1 ou periode2
+    return selectedFormSubject.maxTJ ?? 20;
+  })();
+
+  // ── Effet : quand le sous-type change, on met à jour formType et formMaxValue ──
+  // - periode1 / periode2 → formType = 'devoir' (travail journalier)
+  // - examen              → formType = 'examen'
+  useEffect(() => {
+    if (formSubType === 'examen') {
+      setFormType('examen');
+    } else {
+      setFormType('devoir');
+    }
+    setFormMaxValue(String(computedMax));
+    // Reset la note saisie car le max a changé
+    setFormValue('');
+  }, [formSubType, computedMax]);
+
+  // ── Effet : quand le sujet change, on recalcule le max selon le sous-type actuel ──
+  useEffect(() => {
+    setFormMaxValue(String(computedMax));
+  }, [selectedFormSubject?.id, computedMax]);
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin';
   const isTeacher = currentUser?.role === 'teacher';
@@ -1420,9 +1464,78 @@ export default function GradesModule() {
                 </>
               )}
             </div>
+            {/* ── Trimestre (1er, 2ème, 3ème) — étape avant la saisie ── */}
+            <div className="grid gap-2">
+              <Label>Trimestre *</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {TRIMESTERS.map((t) => (
+                  <Button
+                    key={t.value}
+                    type="button"
+                    size="sm"
+                    variant={formTrimester === t.value ? 'default' : 'outline'}
+                    className={formTrimester === t.value ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
+                    onClick={() => setFormTrimester(t.value as typeof formTrimester)}
+                  >
+                    {t.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Type d'évaluation (Période 1 / Période 2 / Examen) ──
+                Chaque trimestre comporte 3 points à saisir.
+                Quand on sélectionne "Période", le max par période s'affiche.
+                Quand on sélectionne "Examen", le max par examen s'affiche. */}
+            <div className="grid gap-2">
+              <Label>
+                Type d&apos;évaluation *
+                {selectedFormSubject && (
+                  <span className="text-xs text-muted-foreground ml-1 font-normal">
+                    (max période: {selectedFormSubject.maxTJ ?? '—'} · max examen: {selectedFormSubject.maxEX ?? '—'})
+                  </span>
+                )}
+              </Label>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={formSubType === 'periode1' ? 'default' : 'outline'}
+                  className={formSubType === 'periode1' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+                  onClick={() => setFormSubType('periode1')}
+                >
+                  1ère Période
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={formSubType === 'periode2' ? 'default' : 'outline'}
+                  className={formSubType === 'periode2' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+                  onClick={() => setFormSubType('periode2')}
+                >
+                  2ème Période
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={formSubType === 'examen' ? 'default' : 'outline'}
+                  className={formSubType === 'examen' ? 'bg-purple-600 hover:bg-purple-700 text-white' : ''}
+                  onClick={() => setFormSubType('examen')}
+                >
+                  Examen
+                </Button>
+              </div>
+            </div>
+
+            {/* ── Zone de saisie de la note — s'affiche après sélection du type ──
+                Le max est automatiquement calculé selon le sous-type :
+                - Période 1 / Période 2 → max = maxTJ du sujet
+                - Examen                → max = maxEX du sujet */}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label>Note *</Label>
+                <Label>
+                  {formSubType === 'examen' ? 'Note d\'examen *' : `Note ${formSubType === 'periode1' ? '1ère période' : '2ème période'} *`}
+                </Label>
                 <Input
                   type="number"
                   min="0"
@@ -1430,45 +1543,23 @@ export default function GradesModule() {
                   step="0.5"
                   value={formValue}
                   onChange={(e) => setFormValue(e.target.value)}
-                  placeholder="0"
+                  placeholder={`0 à ${formMaxValue}`}
                 />
               </div>
               <div className="grid gap-2">
-                <Label>/ Maximum</Label>
+                <Label>
+                  / Maximum
+                  <span className="text-xs text-muted-foreground ml-1 font-normal">
+                    ({formSubType === 'examen' ? 'examen' : 'période'})
+                  </span>
+                </Label>
                 <Input
                   type="number"
                   min="1"
                   value={formMaxValue}
                   onChange={(e) => setFormMaxValue(e.target.value)}
+                  className="bg-muted/40"
                 />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Type *</Label>
-                <Select value={formType} onValueChange={(v) => setFormType(v as typeof formType)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GRADE_TYPES.map((gt) => (
-                      <SelectItem key={gt.value} value={gt.value}>{gt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Trimestre *</Label>
-                <Select value={formTrimester} onValueChange={(v) => setFormTrimester(v as typeof formTrimester)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TRIMESTERS.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             </div>
             <div className="grid gap-2">
