@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
@@ -231,6 +231,10 @@ export default function GradesModule() {
   // Quand l'utilisateur sélectionne une période dans le dropdown d'un trimestre,
   // on met à jour formGradeType ET formTrimester ET formType en conséquence.
   const [formGradeType, setFormGradeType] = useState<GradeType>('p1');
+  // Flag pour éviter de reset la note quand on charge une note existante dans
+  // le dialogue d'édition. Sans ça, l'effet qui surveille formGradeType efface
+  // la note dès qu'on appelle setFormGradeType(grade.type) dans openEditDialog.
+  const skipValueResetRef = useRef(false);
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
   // French date display (dd/mm/yyyy) — the native date input shows in the
   // browser locale which may be mm/dd/yyyy on some systems. We use a text
@@ -621,6 +625,10 @@ export default function GradesModule() {
   };
 
   const openEditDialog = (grade: Grade) => {
+    // Activer le flag pour empêcher l'effet de reset la note quand on charge
+    // une note existante. Sans ça, setFormGradeType déclenche l'effet qui
+    // efface formValue avant qu'on ait pu la setter.
+    skipValueResetRef.current = true;
     setEditingGrade(grade);
     setFormStudentId(grade.studentId);
     setFormSubjectId(grade.subjectId);
@@ -693,6 +701,8 @@ export default function GradesModule() {
 
   // ── Effet : quand formGradeType change, on synchronise formType, formTrimester
   //    et formMaxValue. On reset aussi la note saisie car le max peut changer. ──
+  //    SAUF si on est en train de charger une note existante (skipValueResetRef)
+  //    ou si l'utilisateur a juste changé la matière (dans ce cas on garde la note).
   useEffect(() => {
     setFormType(formGradeType);
     const trimester = gradeTypeToTrimester(formGradeType);
@@ -700,8 +710,20 @@ export default function GradesModule() {
       setFormTrimester(trimester);
     }
     setFormMaxValue(String(computedMax));
-    // Reset la note saisie car le max a changé
-    setFormValue('');
+    // Reset la note saisie car le max a changé — mais seulement si ce n'est pas
+    // un chargement de note existante et que la note actuelle dépasse le nouveau max.
+    if (!skipValueResetRef.current) {
+      const currentVal = parseFloat(formValue);
+      const newMax = computedMax;
+      // Ne reset que si la note actuelle est invalide par rapport au nouveau max
+      if (formValue && (!isNaN(currentVal)) && currentVal > newMax) {
+        setFormValue('');
+      }
+    } else {
+      // On était en train de charger une note existante — désactiver le flag
+      // pour les prochains changements manuels.
+      skipValueResetRef.current = false;
+    }
   }, [formGradeType, computedMax]);
 
   // ── Effet : quand le sujet change, on recalcule le max selon le type actuel ──
