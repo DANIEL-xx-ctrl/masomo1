@@ -562,6 +562,15 @@ export default function GradesModule() {
     const val = parseFloat(formValue);
     const maxVal = parseFloat(formMaxValue) || 20;
     if (isNaN(val) || val < 0 || val > maxVal) return;
+
+    // Résoudre la matière modifiée (comme pour l'ajout)
+    const trimmedSubjectName = formSubjectName.trim();
+    const matchedSubject = trimmedSubjectName
+      ? subjects.find((s) => s.name.toLowerCase() === trimmedSubjectName.toLowerCase())
+      : undefined;
+    const resolvedSubjectId = matchedSubject?.id || formSubjectId || '';
+    const resolvedSubjectName = !matchedSubject && !formSubjectId && trimmedSubjectName ? trimmedSubjectName : null;
+
     setSaving(true);
     try {
       const res = await fetch(`/api/grades/${editingGrade.id}`, {
@@ -571,6 +580,9 @@ export default function GradesModule() {
           value: val,
           maxValue: maxVal,
           type: formType,
+          trimester: formTrimester,
+          subjectId: resolvedSubjectId || undefined,
+          subjectName: resolvedSubjectName || undefined,
           comment: formComment || undefined,
           date: formDate,
         }),
@@ -1638,6 +1650,74 @@ export default function GradesModule() {
             <DialogTitle>Modifier la note</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+            {/* ── Matière (modifiable) ── */}
+            <div className="grid gap-2">
+              <Label htmlFor="edit-subject">Matière *</Label>
+              {isPrimaire ? (
+                <>
+                  <Input
+                    id="edit-subject"
+                    value={formSubjectName}
+                    onChange={(e) => {
+                      setFormSubjectName(e.target.value);
+                      setFormSubjectId('');
+                    }}
+                    placeholder="Rechercher ou taper une matière..."
+                    list="subjects-list-edit"
+                  />
+                  <datalist id="subjects-list-edit">
+                    {(isPrimaire && formDegree !== 'all' ? formVisibleSubjects : subjects).map((sub) => (
+                      <option key={sub.id} value={sub.name} />
+                    ))}
+                  </datalist>
+                  {/* Liste cliquable des matières filtrées par promotion */}
+                  {isPrimaire && formDegree !== 'all' && formVisibleSubjects.length > 0 && (
+                    <div className="border rounded-md max-h-[120px] overflow-y-auto divide-y">
+                      {formVisibleSubjects.map((sub) => {
+                        const isSelected = formSubjectName === sub.name;
+                        return (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            onClick={() => {
+                              setFormSubjectName(sub.name);
+                              setFormSubjectId(sub.id);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between gap-2 ${
+                              isSelected
+                                ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 font-semibold'
+                                : 'hover:bg-muted/60'
+                            }`}
+                          >
+                            <span className="flex-1 truncate">{sub.name}</span>
+                            {sub.domain && (
+                              <span className="text-[10px] text-muted-foreground shrink-0">{sub.domain}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Input
+                  id="edit-subject"
+                  value={formSubjectName}
+                  onChange={(e) => {
+                    setFormSubjectName(e.target.value);
+                    setFormSubjectId('');
+                  }}
+                  placeholder="Ex: Mathématiques"
+                  list="subjects-list-edit"
+                />
+              )}
+              <datalist id="subjects-list-edit">
+                {subjects.map((sub) => (
+                  <option key={sub.id} value={sub.name} />
+                ))}
+              </datalist>
+            </div>
+
             {/* ── Trimestres avec dropdowns de périodes (édition) ── */}
             <div className="grid gap-2">
               <Label>
