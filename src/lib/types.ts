@@ -12,7 +12,16 @@ export type Gender = 'M' | 'F' | string;
 // Status for students and teachers (active = currently enrolled/employed)
 export type PersonStatus = 'active' | 'abandoned' | 'migrated' | 'deceased';
 
-export type GradeType = 'devoir' | 'examen' | 'controle';
+// Type d'évaluation étendu pour supporter les 6 périodes (P1-P6) + 3 examens
+// (un par trimestre) + les types legacy (devoir/controle).
+// - p1, p2, p3, p4, p5, p6 : périodes 1 à 6 (deux par trimestre)
+// - examen_t1, examen_t2, examen_t3 : examens des trimestres 1, 2, 3
+// - devoir, controle : types legacy (compatibilité ascendante)
+// - examen : type legacy (équivalent à examen_t1 si non spécifié)
+export type GradeType =
+  | 'p1' | 'p2' | 'p3' | 'p4' | 'p5' | 'p6'
+  | 'examen_t1' | 'examen_t2' | 'examen_t3'
+  | 'devoir' | 'examen' | 'controle';
 
 export type Trimester = '1er' | '2eme' | '3eme';
 

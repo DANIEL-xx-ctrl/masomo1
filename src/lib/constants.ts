@@ -75,19 +75,97 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 export interface GradeTypeDefinition {
   value: GradeType;
   label: string;
+  trimester?: Trimester;
+  isExamen?: boolean;
 }
 
+// Liste complète des types d'évaluation pour le filtre de la page Notes.
+// Inclut les 6 périodes (P1-P6) + 3 examens (un par trimestre) + les types legacy.
 export const GRADE_TYPES: GradeTypeDefinition[] = [
-  { value: 'devoir', label: 'Devoir' },
-  { value: 'examen', label: 'Examen' },
+  // Trimestre 1
+  { value: 'p1', label: '1ère Période (T1)', trimester: '1er' },
+  { value: 'p2', label: '2ème Période (T1)', trimester: '1er' },
+  { value: 'examen_t1', label: 'Examen T1', trimester: '1er', isExamen: true },
+  // Trimestre 2
+  { value: 'p3', label: '3ème Période (T2)', trimester: '2eme' },
+  { value: 'p4', label: '4ème Période (T2)', trimester: '2eme' },
+  { value: 'examen_t2', label: 'Examen T2', trimester: '2eme', isExamen: true },
+  // Trimestre 3
+  { value: 'p5', label: '5ème Période (T3)', trimester: '3eme' },
+  { value: 'p6', label: '6ème Période (T3)', trimester: '3eme' },
+  { value: 'examen_t3', label: 'Examen T3', trimester: '3eme', isExamen: true },
+  // Legacy
+  { value: 'devoir', label: 'Devoir (legacy)' },
+  { value: 'examen', label: 'Examen (legacy)' },
   { value: 'controle', label: 'Contrôle' },
 ];
 
 export const GRADE_TYPE_LABELS: Record<GradeType, string> = {
+  p1: '1ère Période',
+  p2: '2ème Période',
+  p3: '3ème Période',
+  p4: '4ème Période',
+  p5: '5ème Période',
+  p6: '6ème Période',
+  examen_t1: 'Examen T1',
+  examen_t2: 'Examen T2',
+  examen_t3: 'Examen T3',
   devoir: 'Devoir',
   examen: 'Examen',
   controle: 'Contrôle',
 };
+
+// ---------- Trimester Periods ----------
+// Mapping trimestre → périodes qu'il contient.
+// T1 : P1, P2, Examen T1
+// T2 : P3, P4, Examen T2
+// T3 : P5, P6, Examen T3
+export interface TrimesterPeriod {
+  value: GradeType;
+  label: string;
+  isExamen: boolean;
+}
+
+export const TRIMESTER_PERIODS: Record<Trimester, TrimesterPeriod[]> = {
+  '1er': [
+    { value: 'p1', label: '1ère Période', isExamen: false },
+    { value: 'p2', label: '2ème Période', isExamen: false },
+    { value: 'examen_t1', label: 'Examen du 1er Trimestre', isExamen: true },
+  ],
+  '2eme': [
+    { value: 'p3', label: '3ème Période', isExamen: false },
+    { value: 'p4', label: '4ème Période', isExamen: false },
+    { value: 'examen_t2', label: 'Examen du 2ème Trimestre', isExamen: true },
+  ],
+  '3eme': [
+    { value: 'p5', label: '5ème Période', isExamen: false },
+    { value: 'p6', label: '6ème Période', isExamen: false },
+    { value: 'examen_t3', label: 'Examen du 3ème Trimestre', isExamen: true },
+  ],
+};
+
+/** Récupère le trimestre associé à un type d'évaluation. */
+export function gradeTypeToTrimester(type: GradeType): Trimester | null {
+  const def = GRADE_TYPES.find((g) => g.value === type);
+  return def?.trimester || null;
+}
+
+/** Récupère le max selon le type d'évaluation et le sujet. */
+export function getGradeMaxForType(
+  type: GradeType,
+  subject: { maxTJ?: number | null; maxEX?: number | null } | null | undefined
+): number {
+  if (!subject) return 20;
+  // Types examen → maxEX
+  if (type.startsWith('examen')) {
+    return subject.maxEX ?? 20;
+  }
+  // Types période (p1-p6) et devoir → maxTJ
+  if (type.startsWith('p') || type === 'devoir') {
+    return subject.maxTJ ?? 20;
+  }
+  return 20;
+}
 
 // ---------- Payment Types ----------
 
