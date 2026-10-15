@@ -543,9 +543,11 @@ export default function GradesModule() {
       addToast('success', 'Note ajoutée', 'La note a été enregistrée avec succès');
       setAddDialogOpen(false);
       resetForm();
-      fetchGrades();
-      // Reload the page to refresh the dashboard stats immediately
-      setTimeout(() => window.location.reload(), 800);
+      // Recharger la liste des notes pour afficher immédiatement la note ajoutée
+      await fetchGrades();
+      // Force un rechargement complet de la page pour rafraîchir aussi les
+      // statistiques du dashboard et les filtres.
+      setTimeout(() => window.location.reload(), 500);
     } catch (error) {
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Impossible d\'ajouter la note');
     } finally {
@@ -613,6 +615,8 @@ export default function GradesModule() {
     setFormMaxValue(String(grade.maxValue));
     setFormType(grade.type);
     setFormTrimester(grade.trimester);
+    // Dériver le sous-type du type : examen → 'examen', sinon 'periode1' par défaut
+    setFormSubType(grade.type === 'examen' ? 'examen' : 'periode1');
     setFormDate(grade.date);
     // Update the French date display when editing an existing grade
     setFormDateDisplay(new Date(grade.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }));
@@ -1079,9 +1083,33 @@ export default function GradesModule() {
                           </TableCell>
                           <TableCell className="text-center text-muted-foreground">{grade.maxValue}</TableCell>
                           <TableCell>
-                            <Badge variant="outline">{GRADE_TYPE_LABELS[grade.type] || grade.type}</Badge>
+                            <Badge
+                              variant="outline"
+                              className={
+                                grade.type === 'examen'
+                                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/50 dark:text-purple-400 border-purple-200 dark:border-purple-900'
+                                  : grade.type === 'devoir'
+                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400 border-blue-200 dark:border-blue-900'
+                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-900/50 dark:text-gray-400'
+                              }
+                            >
+                              {GRADE_TYPE_LABELS[grade.type] || grade.type}
+                            </Badge>
                           </TableCell>
-                          <TableCell>{TRIMESTER_LABELS[grade.trimester] || grade.trimester}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={
+                                grade.trimester === '1er'
+                                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
+                                  : grade.trimester === '2eme'
+                                  ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
+                                  : 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400'
+                              }
+                            >
+                              {TRIMESTER_LABELS[grade.trimester] || grade.trimester}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-muted-foreground text-sm">{formatDateFR(grade.date)}</TableCell>
                           {isAdmin && (
                             <TableCell className="text-right">
@@ -1600,10 +1628,73 @@ export default function GradesModule() {
           <DialogHeader>
             <DialogTitle>Modifier la note</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+            {/* Trimestre */}
+            <div className="grid gap-2">
+              <Label>Trimestre</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {TRIMESTERS.map((t) => (
+                  <Button
+                    key={t.value}
+                    type="button"
+                    size="sm"
+                    variant={formTrimester === t.value ? 'default' : 'outline'}
+                    className={formTrimester === t.value ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
+                    onClick={() => setFormTrimester(t.value as typeof formTrimester)}
+                  >
+                    {t.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Type d'évaluation (Période 1 / Période 2 / Examen) */}
+            <div className="grid gap-2">
+              <Label>
+                Type d&apos;évaluation
+                {selectedFormSubject && (
+                  <span className="text-xs text-muted-foreground ml-1 font-normal">
+                    (max période: {selectedFormSubject.maxTJ ?? '—'} · max examen: {selectedFormSubject.maxEX ?? '—'})
+                  </span>
+                )}
+              </Label>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={formSubType === 'periode1' ? 'default' : 'outline'}
+                  className={formSubType === 'periode1' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+                  onClick={() => setFormSubType('periode1')}
+                >
+                  1ère Période
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={formSubType === 'periode2' ? 'default' : 'outline'}
+                  className={formSubType === 'periode2' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+                  onClick={() => setFormSubType('periode2')}
+                >
+                  2ème Période
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={formSubType === 'examen' ? 'default' : 'outline'}
+                  className={formSubType === 'examen' ? 'bg-purple-600 hover:bg-purple-700 text-white' : ''}
+                  onClick={() => setFormSubType('examen')}
+                >
+                  Examen
+                </Button>
+              </div>
+            </div>
+
+            {/* Note + Max */}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label>Note *</Label>
+                <Label>
+                  {formSubType === 'examen' ? 'Note d\'examen *' : `Note ${formSubType === 'periode1' ? '1ère période' : '2ème période'} *`}
+                </Label>
                 <Input
                   type="number"
                   min="0"
@@ -1611,41 +1702,34 @@ export default function GradesModule() {
                   step="0.5"
                   value={formValue}
                   onChange={(e) => setFormValue(e.target.value)}
+                  placeholder={`0 à ${formMaxValue}`}
                 />
               </div>
               <div className="grid gap-2">
-                <Label>/ Maximum</Label>
+                <Label>
+                  / Maximum
+                  <span className="text-xs text-muted-foreground ml-1 font-normal">
+                    ({formSubType === 'examen' ? 'examen' : 'période'})
+                  </span>
+                </Label>
                 <Input
                   type="number"
                   min="1"
                   value={formMaxValue}
                   onChange={(e) => setFormMaxValue(e.target.value)}
+                  className="bg-muted/40"
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Type</Label>
-                <Select value={formType} onValueChange={(v) => setFormType(v as typeof formType)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GRADE_TYPES.map((gt) => (
-                      <SelectItem key={gt.value} value={gt.value}>{gt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Date</Label>
-                <Input
-                  type="text"
-                  value={formDateDisplay}
-                  onChange={(e) => handleDateChange(e.target.value)}
-                  placeholder="jj/mm/aaaa (ex: 25/08/2025)"
-                />
-              </div>
+
+            <div className="grid gap-2">
+              <Label>Date</Label>
+              <Input
+                type="text"
+                value={formDateDisplay}
+                onChange={(e) => handleDateChange(e.target.value)}
+                placeholder="jj/mm/aaaa (ex: 25/08/2025)"
+              />
             </div>
             <div className="grid gap-2">
               <Label>Commentaire</Label>
