@@ -8,7 +8,7 @@ echo "📝 Ajout des fichiers modifiés..."
 git add .
 git status --short
 echo "💾 Commit..."
-git commit -m "Ajout saisie notes par trimestre (periode1/periode2/examen) + bulletins + promotion classes"
+git commit -m "Rechargement auto après ajout note + affichage type/trimestre + modification type note"
 echo "🚀 Push vers GitHub..."
 git push origin main
 echo "✅ Terminé ! Vercel va redéployer automatiquement."

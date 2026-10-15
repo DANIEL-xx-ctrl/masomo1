@@ -1,41 +1,37 @@
-# Modifications — Saisie des notes par trimestre + Bulletins + Promotion des classes
+# Modifications — Rechargement auto + Affichage type/trimestre + Modification type note
 
 ## Nouveautés
 
-### 1. Saisie des notes structurée par trimestre (NOUVEAU)
-Dans le dialogue "Ajouter une note" de la page Notes :
-- **Étape 1 — Trimestre** : 3 boutons (1er, 2ème, 3ème)
-- **Étape 2 — Type d'évaluation** : 3 boutons (1ère Période, 2ème Période, Examen)
-  - Le max par période et par examen s'affiche automatiquement selon la matière
-- **Étape 3 — Saisie de la note** :
-  - Le max est pré-rempli automatiquement :
-    - Période 1 / Période 2 → `maxTJ` du sujet
-    - Examen → `maxEX` du sujet
-  - La zone de saisie s'adapte au sous-type sélectionné
+### 1. Rechargement automatique après ajout de note (NOUVEAU)
+- Après chaque ajout de note, la page se recharge automatiquement (500ms)
+- La note ajoutée s'affiche immédiatement dans la liste
+- Les statistiques du dashboard sont aussi rafraîchies
 
-### 2. Gestion des bulletins (Paramètres > Institution)
-- Upload multiple de fichiers Excel (.xlsx)
-- Visualisation fidèle du bulletin tel qu'il apparaît dans Excel
-- Export Excel/PDF/Word avec mise en forme préservée
+### 2. Affichage du type et trimestre dans la liste des notes (NOUVEAU)
+- **Type** : Badge coloré selon le type
+  - Devoir (période) → bleu
+  - Examen → violet
+  - Contrôle → gris
+- **Trimestre** : Badge coloré selon le trimestre
+  - 1er Trimestre → vert
+  - 2ème Trimestre → ambre
+  - 3ème Trimestre → rose
 
-### 3. Section "Cours & Maxima" adaptée aux bulletins uploadés
-- Si des bulletins sont uploadés : affiche les cours et maxima extraits
-- MAXIMA GENERAUX affichés en bas de chaque bulletin
+### 3. Modification du type de note (NOUVEAU)
+Le dialogue "Modifier la note" permet maintenant de changer :
+- **Le trimestre** (3 boutons : 1er, 2ème, 3ème)
+- **Le type d'évaluation** (3 boutons : 1ère Période, 2ème Période, Examen)
+- La note et le max (qui s'adaptent au type sélectionné)
+- La date et le commentaire
 
-### 4. Tableau de bord — Cartes d'en haut
-- Bordures gauches colorées (vert, violet, ambre, sarcelle, cyan, rose)
-- Couleurs de remplissage supprimées (fond blanc)
+### 4. Saisie structurée par trimestre (déjà existant)
+- Trimestre → Type (Période 1/2/Examen) → Note
+- Max automatique selon le type et la matière
 
-### 5. Page Notes — Filtrage par promotion (degré)
-- Si l'institution est primaire : sélecteur de promotion (élémentaire/moyen/terminal)
-- Les classes et matières sont filtrées par la promotion
-- Auto-sélection de la promotion au chargement de la page
-
-### 6. Promotion des classes
-- Nouveau champ `promotion` sur le modèle `Class`
-- Permet de différencier "1A Primaire" de "1A Secondaire"
-- Sélecteur de promotion dans le formulaire de création/édition de classe
-- Badge 🎓 coloré sur les cartes et détails de classe
+### 5. Gestion des bulletins + Promotion des classes + Dashboard
+- Upload/visualisation/export de bulletins Excel
+- Champ promotion sur les classes (primaire/secondaire)
+- Cartes du dashboard avec bordures gauches colorées
 
 ## Installation
 
@@ -47,6 +43,6 @@ Ou manuellement :
 bun install
 bun run db:push
 git add .
-git commit -m "Ajout saisie notes par trimestre + bulletins + promotion classes"
+git commit -m "Rechargement auto + affichage type/trimestre + modification type note"
 git push origin main
 ```
