@@ -46,7 +46,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { value, maxValue, type, comment, date } = body
+    const { value, maxValue, type, comment, date, trimester, subjectId, subjectName } = body
 
     const existing = await db.grade.findUnique({ where: { id } })
     if (!existing) {
@@ -57,12 +57,38 @@ export async function PUT(
     const forbidden = await guardTeacherOwnership(request, existing, schoolYear)
     if (forbidden) return forbidden
 
+    // Résoudre la matière modifiée (find-or-create par nom)
+    let resolvedSubjectId: string | undefined = subjectId
+    if (!resolvedSubjectId && subjectName) {
+      const trimmed = String(subjectName).trim()
+      if (trimmed) {
+        const existingSubject = await db.subject.findFirst({
+          where: { name: { equals: trimmed, mode: 'insensitive' } },
+        })
+        if (existingSubject) {
+          resolvedSubjectId = existingSubject.id
+        } else {
+          // Créer la nouvelle matière
+          const newSubject = await db.subject.create({
+            data: {
+              name: trimmed,
+              code: trimmed.toUpperCase().replace(/\s+/g, '_').substring(0, 20) + '_' + Date.now().toString(36),
+              coefficient: 1,
+            },
+          })
+          resolvedSubjectId = newSubject.id
+        }
+      }
+    }
+
     const updated = await db.grade.update({
       where: { id },
       data: {
         ...(value !== undefined ? { value: parseFloat(String(value)) } : {}),
         ...(maxValue !== undefined ? { maxValue: parseFloat(String(maxValue)) } : {}),
         ...(type ? { type } : {}),
+        ...(trimester ? { trimester } : {}),
+        ...(resolvedSubjectId ? { subjectId: resolvedSubjectId } : {}),
         ...(comment !== undefined ? { comment } : {}),
         ...(date ? { date } : {}),
       },
