@@ -86,9 +86,12 @@ import {
   GRADE_TYPE_LABELS,
   TRIMESTERS,
   TRIMESTER_LABELS,
+  TRIMESTER_PERIODS,
+  gradeTypeToTrimester,
+  getGradeMaxForType,
   MAX_GRADE_VALUE,
 } from '@/lib/constants';
-import type { Grade, Class, Subject, Student } from '@/lib/types';
+import type { Grade, Class, Subject, Student, GradeType, Trimester } from '@/lib/types';
 import { promotionToDegree } from '@/lib/constants';
 
 /** Extended Subject type with primary school fields (degree, domain, level, maxima). */
@@ -222,13 +225,12 @@ export default function GradesModule() {
   const [formSubjectId, setFormSubjectId] = useState('');
   const [formSubjectName, setFormSubjectName] = useState('');
   const [formValue, setFormValue] = useState('');
-  const [formType, setFormType] = useState<'devoir' | 'examen' | 'controle'>('devoir');
-  const [formTrimester, setFormTrimester] = useState<'1er' | '2eme' | '3eme'>('1er');
-  // Sous-type d'évaluation : chaque trimestre comporte 3 points à saisir :
-  //   - "periode1" : 1ère période (max = maxTJ du sujet)
-  //   - "periode2" : 2ème période (max = maxTJ du sujet)
-  //   - "examen"   : Examen (max = maxEX du sujet)
-  const [formSubType, setFormSubType] = useState<'periode1' | 'periode2' | 'examen'>('periode1');
+  const [formType, setFormType] = useState<GradeType>('p1');
+  const [formTrimester, setFormTrimester] = useState<Trimester>('1er');
+  // Type d'évaluation précis (p1, p2, p3, p4, p5, p6, examen_t1, examen_t2, examen_t3).
+  // Quand l'utilisateur sélectionne une période dans le dropdown d'un trimestre,
+  // on met à jour formGradeType ET formTrimester ET formType en conséquence.
+  const [formGradeType, setFormGradeType] = useState<GradeType>('p1');
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
   // French date display (dd/mm/yyyy) — the native date input shows in the
   // browser locale which may be mm/dd/yyyy on some systems. We use a text
@@ -614,9 +616,8 @@ export default function GradesModule() {
     setFormValue(String(grade.value));
     setFormMaxValue(String(grade.maxValue));
     setFormType(grade.type);
+    setFormGradeType(grade.type);
     setFormTrimester(grade.trimester);
-    // Dériver le sous-type du type : examen → 'examen', sinon 'periode1' par défaut
-    setFormSubType(grade.type === 'examen' ? 'examen' : 'periode1');
     setFormDate(grade.date);
     // Update the French date display when editing an existing grade
     setFormDateDisplay(new Date(grade.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }));
@@ -631,7 +632,8 @@ export default function GradesModule() {
     setFormSubjectName('');
     setFormValue('');
     setFormMaxValue('20');
-    setFormType('devoir');
+    setFormType('p1');
+    setFormGradeType('p1');
     setFormTrimester('1er');
     const todayISO = new Date().toISOString().split('T')[0];
     setFormDate(todayISO);
@@ -671,34 +673,26 @@ export default function GradesModule() {
     ? subjects.find((s) => s.id === formSubjectId)
     : subjects.find((s) => s.name === formSubjectName);
 
-  // ── Max automatique selon le sous-type d'évaluation ──
-  // - periode1 / periode2 → max = maxTJ du sujet (max par période/travail journalier)
-  // - examen              → max = maxEX du sujet (max par examen)
+  // ── Max automatique selon le type d'évaluation (formGradeType) ──
+  // - p1-p6 / devoir   → max = maxTJ du sujet
+  // - examen_t1-t3     → max = maxEX du sujet
   // Si le sujet n'a pas de maxima défini, on retombe sur 20 par défaut.
-  const computedMax = (() => {
-    if (!selectedFormSubject) return 20;
-    if (formSubType === 'examen') {
-      return selectedFormSubject.maxEX ?? 20;
-    }
-    // periode1 ou periode2
-    return selectedFormSubject.maxTJ ?? 20;
-  })();
+  const computedMax = getGradeMaxForType(formGradeType, selectedFormSubject);
 
-  // ── Effet : quand le sous-type change, on met à jour formType et formMaxValue ──
-  // - periode1 / periode2 → formType = 'devoir' (travail journalier)
-  // - examen              → formType = 'examen'
+  // ── Effet : quand formGradeType change, on synchronise formType, formTrimester
+  //    et formMaxValue. On reset aussi la note saisie car le max peut changer. ──
   useEffect(() => {
-    if (formSubType === 'examen') {
-      setFormType('examen');
-    } else {
-      setFormType('devoir');
+    setFormType(formGradeType);
+    const trimester = gradeTypeToTrimester(formGradeType);
+    if (trimester) {
+      setFormTrimester(trimester);
     }
     setFormMaxValue(String(computedMax));
     // Reset la note saisie car le max a changé
     setFormValue('');
-  }, [formSubType, computedMax]);
+  }, [formGradeType, computedMax]);
 
-  // ── Effet : quand le sujet change, on recalcule le max selon le sous-type actuel ──
+  // ── Effet : quand le sujet change, on recalcule le max selon le type actuel ──
   useEffect(() => {
     setFormMaxValue(String(computedMax));
   }, [selectedFormSubject?.id, computedMax]);
@@ -996,9 +990,27 @@ export default function GradesModule() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les types</SelectItem>
-                {GRADE_TYPES.map((gt) => (
-                  <SelectItem key={gt.value} value={gt.value}>{gt.label}</SelectItem>
+                {/* Périodes et examens groupés par trimestre */}
+                {TRIMESTERS.map((t) => (
+                  <div key={t.value}>
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground bg-muted/40 sticky top-0">
+                      {t.label}
+                    </div>
+                    {TRIMESTER_PERIODS[t.value].map((p) => (
+                      <SelectItem key={p.value} value={p.value}>
+                        {p.label}{p.isExamen ? ' 📝' : ' ✓'}
+                      </SelectItem>
+                    ))}
+                  </div>
                 ))}
+                {/* Types legacy */}
+                <div>
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground bg-muted/40 sticky top-0">
+                    Autres
+                  </div>
+                  <SelectItem value="devoir">Devoir (legacy)</SelectItem>
+                  <SelectItem value="controle">Contrôle</SelectItem>
+                </div>
               </SelectContent>
             </Select>
             <div className="relative">
@@ -1086,8 +1098,10 @@ export default function GradesModule() {
                             <Badge
                               variant="outline"
                               className={
-                                grade.type === 'examen'
+                                grade.type.startsWith('examen')
                                   ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/50 dark:text-purple-400 border-purple-200 dark:border-purple-900'
+                                  : grade.type.startsWith('p')
+                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400 border-blue-200 dark:border-blue-900'
                                   : grade.type === 'devoir'
                                   ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400 border-blue-200 dark:border-blue-900'
                                   : 'bg-gray-100 text-gray-700 dark:bg-gray-900/50 dark:text-gray-400'
@@ -1492,77 +1506,72 @@ export default function GradesModule() {
                 </>
               )}
             </div>
-            {/* ── Trimestre (1er, 2ème, 3ème) — étape avant la saisie ── */}
-            <div className="grid gap-2">
-              <Label>Trimestre *</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {TRIMESTERS.map((t) => (
-                  <Button
-                    key={t.value}
-                    type="button"
-                    size="sm"
-                    variant={formTrimester === t.value ? 'default' : 'outline'}
-                    className={formTrimester === t.value ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
-                    onClick={() => setFormTrimester(t.value as typeof formTrimester)}
-                  >
-                    {t.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {/* ── Type d'évaluation (Période 1 / Période 2 / Examen) ──
-                Chaque trimestre comporte 3 points à saisir.
-                Quand on sélectionne "Période", le max par période s'affiche.
-                Quand on sélectionne "Examen", le max par examen s'affiche. */}
+            {/* ── Trimestres avec dropdowns de périodes ──
+                Chaque trimestre est un dropdown contenant ses périodes :
+                - 1er Trimestre : 1ère Période, 2ème Période, Examen T1
+                - 2ème Trimestre : 3ème Période, 4ème Période, Examen T2
+                - 3ème Trimestre : 5ème Période, 6ème Période, Examen T3
+                Quand on sélectionne une période dans un dropdown, le max
+                correspondant s'affiche et la zone de saisie devient active. */}
             <div className="grid gap-2">
               <Label>
-                Type d&apos;évaluation *
+                Trimestre &amp; Période *
                 {selectedFormSubject && (
                   <span className="text-xs text-muted-foreground ml-1 font-normal">
                     (max période: {selectedFormSubject.maxTJ ?? '—'} · max examen: {selectedFormSubject.maxEX ?? '—'})
                   </span>
                 )}
               </Label>
-              <div className="grid grid-cols-3 gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={formSubType === 'periode1' ? 'default' : 'outline'}
-                  className={formSubType === 'periode1' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
-                  onClick={() => setFormSubType('periode1')}
-                >
-                  1ère Période
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={formSubType === 'periode2' ? 'default' : 'outline'}
-                  className={formSubType === 'periode2' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
-                  onClick={() => setFormSubType('periode2')}
-                >
-                  2ème Période
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={formSubType === 'examen' ? 'default' : 'outline'}
-                  className={formSubType === 'examen' ? 'bg-purple-600 hover:bg-purple-700 text-white' : ''}
-                  onClick={() => setFormSubType('examen')}
-                >
-                  Examen
-                </Button>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {TRIMESTERS.map((t) => {
+                  const periods = TRIMESTER_PERIODS[t.value];
+                  const isActiveTrimester = formTrimester === t.value;
+                  return (
+                    <div key={t.value} className="flex flex-col gap-1">
+                      <span className={`text-xs font-medium ${isActiveTrimester ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+                        {t.label}
+                      </span>
+                      <Select
+                        value={isActiveTrimester ? formGradeType : '_none'}
+                        onValueChange={(v) => {
+                          if (v !== '_none') {
+                            setFormGradeType(v as GradeType);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className={isActiveTrimester ? 'border-emerald-400 dark:border-emerald-700' : ''}>
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none" disabled>— Sélectionner —</SelectItem>
+                          {periods.map((p) => (
+                            <SelectItem key={p.value} value={p.value}>
+                              {p.label}
+                              {p.isExamen ? ' 📝' : ' ✓'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                })}
               </div>
+              {formGradeType && (
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  ✓ Sélectionné : <strong>{GRADE_TYPE_LABELS[formGradeType]}</strong>
+                  {gradeTypeToTrimester(formGradeType) && ` · ${TRIMESTER_LABELS[gradeTypeToTrimester(formGradeType)!]}`}
+                </p>
+              )}
             </div>
 
-            {/* ── Zone de saisie de la note — s'affiche après sélection du type ──
-                Le max est automatiquement calculé selon le sous-type :
-                - Période 1 / Période 2 → max = maxTJ du sujet
-                - Examen                → max = maxEX du sujet */}
+            {/* ── Zone de saisie de la note ──
+                Le max est automatiquement calculé selon le type d'évaluation :
+                - Périodes (p1-p6) → max = maxTJ du sujet
+                - Examens         → max = maxEX du sujet */}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>
-                  {formSubType === 'examen' ? 'Note d\'examen *' : `Note ${formSubType === 'periode1' ? '1ère période' : '2ème période'} *`}
+                  {formGradeType.startsWith('examen') ? 'Note d\'examen *' : `Note ${GRADE_TYPE_LABELS[formGradeType] || ''} *`}
                 </Label>
                 <Input
                   type="number"
@@ -1578,7 +1587,7 @@ export default function GradesModule() {
                 <Label>
                   / Maximum
                   <span className="text-xs text-muted-foreground ml-1 font-normal">
-                    ({formSubType === 'examen' ? 'examen' : 'période'})
+                    ({formGradeType.startsWith('examen') ? 'examen' : 'période'})
                   </span>
                 </Label>
                 <Input
@@ -1629,71 +1638,63 @@ export default function GradesModule() {
             <DialogTitle>Modifier la note</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
-            {/* Trimestre */}
-            <div className="grid gap-2">
-              <Label>Trimestre</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {TRIMESTERS.map((t) => (
-                  <Button
-                    key={t.value}
-                    type="button"
-                    size="sm"
-                    variant={formTrimester === t.value ? 'default' : 'outline'}
-                    className={formTrimester === t.value ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
-                    onClick={() => setFormTrimester(t.value as typeof formTrimester)}
-                  >
-                    {t.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {/* Type d'évaluation (Période 1 / Période 2 / Examen) */}
+            {/* ── Trimestres avec dropdowns de périodes (édition) ── */}
             <div className="grid gap-2">
               <Label>
-                Type d&apos;évaluation
+                Trimestre &amp; Période
                 {selectedFormSubject && (
                   <span className="text-xs text-muted-foreground ml-1 font-normal">
                     (max période: {selectedFormSubject.maxTJ ?? '—'} · max examen: {selectedFormSubject.maxEX ?? '—'})
                   </span>
                 )}
               </Label>
-              <div className="grid grid-cols-3 gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={formSubType === 'periode1' ? 'default' : 'outline'}
-                  className={formSubType === 'periode1' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
-                  onClick={() => setFormSubType('periode1')}
-                >
-                  1ère Période
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={formSubType === 'periode2' ? 'default' : 'outline'}
-                  className={formSubType === 'periode2' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
-                  onClick={() => setFormSubType('periode2')}
-                >
-                  2ème Période
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={formSubType === 'examen' ? 'default' : 'outline'}
-                  className={formSubType === 'examen' ? 'bg-purple-600 hover:bg-purple-700 text-white' : ''}
-                  onClick={() => setFormSubType('examen')}
-                >
-                  Examen
-                </Button>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {TRIMESTERS.map((t) => {
+                  const periods = TRIMESTER_PERIODS[t.value];
+                  const isActiveTrimester = formTrimester === t.value;
+                  return (
+                    <div key={t.value} className="flex flex-col gap-1">
+                      <span className={`text-xs font-medium ${isActiveTrimester ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+                        {t.label}
+                      </span>
+                      <Select
+                        value={isActiveTrimester ? formGradeType : '_none'}
+                        onValueChange={(v) => {
+                          if (v !== '_none') {
+                            setFormGradeType(v as GradeType);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className={isActiveTrimester ? 'border-emerald-400 dark:border-emerald-700' : ''}>
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none" disabled>— Sélectionner —</SelectItem>
+                          {periods.map((p) => (
+                            <SelectItem key={p.value} value={p.value}>
+                              {p.label}
+                              {p.isExamen ? ' 📝' : ' ✓'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                })}
               </div>
+              {formGradeType && (
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  ✓ Sélectionné : <strong>{GRADE_TYPE_LABELS[formGradeType]}</strong>
+                  {gradeTypeToTrimester(formGradeType) && ` · ${TRIMESTER_LABELS[gradeTypeToTrimester(formGradeType)!]}`}
+                </p>
+              )}
             </div>
 
             {/* Note + Max */}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>
-                  {formSubType === 'examen' ? 'Note d\'examen *' : `Note ${formSubType === 'periode1' ? '1ère période' : '2ème période'} *`}
+                  {formGradeType.startsWith('examen') ? 'Note d\'examen *' : `Note ${GRADE_TYPE_LABELS[formGradeType] || ''} *`}
                 </Label>
                 <Input
                   type="number"
@@ -1709,7 +1710,7 @@ export default function GradesModule() {
                 <Label>
                   / Maximum
                   <span className="text-xs text-muted-foreground ml-1 font-normal">
-                    ({formSubType === 'examen' ? 'examen' : 'période'})
+                    ({formGradeType.startsWith('examen') ? 'examen' : 'période'})
                   </span>
                 </Label>
                 <Input
