@@ -3612,17 +3612,17 @@ export default function SuperAdminModule() {
 
               {/* Classe cible */}
               <div className="space-y-1.5">
-                <Label>Classe cible (optionnel)</Label>
+                <Label>Classe cible</Label>
                 <Select
-                  value={seedTargetClassName}
+                  value={seedTargetClassName || '__auto__'}
                   onValueChange={(v) => setSeedTargetClassName(v === '__auto__' ? '' : v)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Auto — détectée depuis l'Excel (colonne CLASSE)" />
+                    <SelectValue placeholder="Auto — détectée depuis le nom du fichier" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__auto__">
-                      🔄 Auto — détectée depuis l'Excel (colonne CLASSE)
+                      🔄 Auto — détectée depuis le nom du fichier (défaut)
                     </SelectItem>
                     <SelectItem value="1ère ANNEE">1ère ANNEE (primaire)</SelectItem>
                     <SelectItem value="2ème ANNEE">2ème ANNEE (primaire)</SelectItem>
@@ -3632,11 +3632,24 @@ export default function SuperAdminModule() {
                     <SelectItem value="6ème ANNEE">6ème ANNEE (primaire)</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Si vous sélectionnez une classe, <strong>tous</strong> les élèves des fichiers Excel
-                  seront insérés dans cette classe (ignore la colonne CLASSE de l'Excel).
-                  Si "Auto", chaque fichier utilise sa propre colonne CLASSE.
-                </p>
+                <div className="rounded-md bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 p-2.5 text-xs text-blue-800 dark:text-blue-200">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    💡 Comment ça marche
+                  </p>
+                  <p className="mt-1">
+                    <strong>Mode Auto</strong> (recommandé) : chaque fichier Excel cible
+                    automatiquement sa classe. Exemples :
+                  </p>
+                  <ul className="mt-1 ml-3 list-disc space-y-0.5">
+                    <li><code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">2_me PRIMAIRE.xlsx</code> → classe <strong>2ème ANNEE</strong></li>
+                    <li><code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">3_me PRIMAIRE.xlsx</code> → classe <strong>3ème ANNEE</strong></li>
+                    <li><code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded">6ème PRIMAIRE.xlsx</code> → classe <strong>6ème ANNEE</strong></li>
+                  </ul>
+                  <p className="mt-1.5">
+                    Si vous choisissez une classe explicite, <strong>tous</strong> les fichiers
+                    Excel iront dans cette classe (override).
+                  </p>
+                </div>
               </div>
 
               {/* Fichiers Excel */}
@@ -3650,8 +3663,8 @@ export default function SuperAdminModule() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Sélectionnez un ou plusieurs fichiers Excel (feuille "LISTE" requise).
-                  Pour importer les 5 niveaux (2è à 6è primaire), sélectionnez les 5 fichiers
-                  <code className="px-1 py-0.5 bg-muted rounded"> 2_me, 3_me, 4_me, 5_me, 6ème PRIMAIRE</code>.
+                  Vous pouvez ré-importer un fichier individuel à tout moment — les données
+                  existantes seront mises à jour (pas dupliquées).
                 </p>
               </div>
 
@@ -3668,28 +3681,30 @@ export default function SuperAdminModule() {
                 </p>
               </div>
 
-              {/* Force */}
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="seed-force"
-                  checked={seedForce}
-                  onCheckedChange={(v) => setSeedForce(v === true)}
-                />
-                <Label htmlFor="seed-force" className="text-sm cursor-pointer">
-                  Forcer la ré-exécution (le seed a déjà été exécuté pour 2024-2025)
-                </Label>
+              {/* Note : le seed est idempotent — plus besoin de checkbox "force" */}
+
+              {/* Info : idempotent */}
+              <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900 p-3 text-xs text-emerald-800 dark:text-emerald-200">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5" />
+                  ♻️ Seed idempotent
+                </p>
+                <p className="mt-1">
+                  Le seed peut être ré-exécuté sans risque. Les élèves et notes existants sont
+                  <strong> mis à jour</strong> (pas dupliqués). Vous pouvez ré-importer un fichier
+                  individuel à tout moment.
+                </p>
               </div>
 
-              {/* Warning */}
+              {/* Warning durée */}
               <div className="rounded-md bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900 p-3 text-xs text-amber-800 dark:text-amber-200">
                 <p className="font-semibold flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  ⚠️ Attention
+                  ⏱️ Durée d'exécution
                 </p>
                 <p className="mt-1">
-                  Le seed peut prendre plusieurs minutes (10-15 min pour 6 fichiers).
-                  Les élèves existants (par email ou N° ID) seront mis à jour, pas dupliqués.
-                  Les notes existantes seront également mises à jour.
+                  Le seed peut prendre plusieurs minutes (2-3 min par fichier Excel).
+                  Ne fermez pas la fenêtre pendant l'exécution.
                 </p>
               </div>
 
