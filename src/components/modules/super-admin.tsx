@@ -9,6 +9,7 @@ import {
   ArrowLeft, CreditCard, CalendarDays, UserCircle, Activity, LayoutDashboard,
   Table2, UsersRound, UserCog, ClipboardList, Receipt, Wand2, Sparkles, RefreshCw,
   Hash, Copy,
+  FileSpreadsheet, Upload, FileArchive, AlertCircle, Database,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -189,6 +190,18 @@ export default function SuperAdminModule() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordSaving, setPasswordSaving] = useState(false)
   const [passwordError, setPasswordError] = useState('')
+
+  // ─── Seed Bulletins state ───
+  // Le seed importe massivement des élèves + notes depuis un fichier Excel
+  // dans l'institution de l'admin ADM-006 (Institut Technique de Bamenda).
+  const [seedFiles, setSeedFiles] = useState<FileList | null>(null)
+  const [seedAvatars, setSeedAvatars] = useState<File | null>(null)
+  const [seedAdminCode, setSeedAdminCode] = useState('ADM-006')
+  const [seedForce, setSeedForce] = useState(false)
+  const [seedLoading, setSeedLoading] = useState(false)
+  const [seedResult, setSeedResult] = useState<any>(null)
+  const [seedError, setSeedError] = useState('')
+  const [seedDialogOpen, setSeedDialogOpen] = useState(false)
 
   // Institutions state
   const [institutions, setInstitutions] = useState<Institution[]>([])
@@ -767,6 +780,64 @@ export default function SuperAdminModule() {
         updateSuperAdmin({ avatar: null })
       }
     } catch { /* silent */ }
+  }
+
+  // ─── Seed Bulletins handler ───
+  // Import massif d'élèves + notes depuis fichiers Excel MASOMO RDC primaire.
+  // Cible l'institution de l'admin dont le code est `seedAdminCode` (défaut: ADM-006).
+  const handleSeed = async () => {
+    if (!seedFiles || seedFiles.length === 0) {
+      addToast('warning', 'Fichiers manquants', 'Sélectionnez au moins un fichier Excel (.xlsx)')
+      return
+    }
+    if (!seedAdminCode.trim()) {
+      addToast('warning', 'Code admin requis', 'Indiquez le code admin (ex: ADM-006)')
+      return
+    }
+
+    setSeedLoading(true)
+    setSeedError('')
+    setSeedResult(null)
+
+    try {
+      const formData = new FormData()
+      // Ajouter tous les fichiers Excel
+      for (let i = 0; i < seedFiles.length; i++) {
+        formData.append('files', seedFiles[i])
+      }
+      // Zip d'avatars optionnel
+      if (seedAvatars) {
+        formData.append('avatars', seedAvatars)
+      }
+      // Code admin dont on veut cibler l'institution
+      formData.append('adminUserCode', seedAdminCode.trim())
+      // Force la ré-exécution
+      formData.append('force', String(seedForce))
+
+      const res = await fetch('/api/super-admin/seed-bulletins', {
+        method: 'POST',
+        headers: { 'x-user-role': 'super_admin' },
+        body: formData,
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors du seed')
+      }
+
+      setSeedResult(data)
+      addToast(
+        'success',
+        'Seed terminé',
+        `${data.targetInstitution?.name || 'Institution'} — ${data.stats.studentsCreated + data.stats.studentsUpdated} élèves, ${data.stats.gradesCreated + data.stats.gradesUpdated} notes`
+      )
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setSeedError(msg)
+      addToast('error', 'Échec du seed', msg)
+    } finally {
+      setSeedLoading(false)
+    }
   }
 
   // Institution CRUD
@@ -3340,6 +3411,93 @@ export default function SuperAdminModule() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* ─── Seed Bulletins (import massif) ─── */}
+            <Card className="border-2 border-emerald-200 dark:border-emerald-900/40 bg-gradient-to-br from-emerald-50/60 to-teal-50/40 dark:from-emerald-950/20 dark:to-teal-950/10">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                    <Database className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  Seed Bulletins (import massif)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Importe massivement des élèves et leurs notes depuis un ou plusieurs fichiers Excel MASOMO RDC primaire
+                  (.xlsx). Les données seront ajoutées dans l'institution de l'admin ciblé.
+                </p>
+
+                <div className="rounded-md bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 p-3 text-xs text-blue-800 dark:text-blue-200">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Institution cible par défaut
+                  </p>
+                  <p className="mt-1">
+                    Le seed ciblera l'institution de l'admin <code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded font-mono">ADM-006</code>{' '}
+                    (Institut Technique de Bamenda). Modifiez le code ci-dessous pour cibler une autre institution.
+                  </p>
+                </div>
+
+                {/* Code admin cible */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="seed-admin-code">Code admin cible</Label>
+                  <Input
+                    id="seed-admin-code"
+                    value={seedAdminCode}
+                    onChange={(e) => setSeedAdminCode(e.target.value)}
+                    placeholder="ADM-006"
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Le seed ajoutera les données dans l'institution de cet admin.
+                  </p>
+                </div>
+
+                {/* Bouton pour ouvrir le dialog de seed */}
+                <Button
+                  onClick={() => setSeedDialogOpen(true)}
+                  className="w-full bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800"
+                >
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Lancer le seed des bulletins
+                </Button>
+
+                {/* Résultat du seed (si exécuté) */}
+                {seedResult && (
+                  <div className="rounded-md bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-900 p-4">
+                    <p className="font-semibold text-emerald-900 dark:text-emerald-100 mb-2 flex items-center gap-2">
+                      <Check className="w-4 h-4" />
+                      Seed terminé — {seedResult.targetInstitution?.name}
+                    </p>
+                    <ul className="text-xs text-emerald-800 dark:text-emerald-200 space-y-1">
+                      <li>📁 Fichiers traités : <strong>{seedResult.stats.filesProcessed}</strong></li>
+                      <li>👥 Élèves créés : <strong>{seedResult.stats.studentsCreated}</strong></li>
+                      <li>🔄 Élèves mis à jour : <strong>{seedResult.stats.studentsUpdated}</strong></li>
+                      <li>📊 Notes créées : <strong>{seedResult.stats.gradesCreated}</strong></li>
+                      <li>🔄 Notes mises à jour : <strong>{seedResult.stats.gradesUpdated}</strong></li>
+                      <li>🖼️ Avatars uploadés : <strong>{seedResult.stats.avatarsUploaded}</strong></li>
+                      <li>🏫 Classes créées : <strong>{seedResult.stats.classesCreated}</strong></li>
+                      <li>📚 Matières créées : <strong>{seedResult.stats.subjectsCreated}</strong></li>
+                      {seedResult.stats.errors?.length > 0 && (
+                        <li className="text-red-600 dark:text-red-400">
+                          ⚠️ Erreurs : <strong>{seedResult.stats.errors.length}</strong>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+
+                {seedError && (
+                  <div className="rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 p-3">
+                    <p className="text-sm text-red-800 dark:text-red-200 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <span className="break-words">{seedError}</span>
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </motion.div>
         )}
 
@@ -3378,6 +3536,129 @@ export default function SuperAdminModule() {
               <Button onClick={handleChangePassword} disabled={passwordSaving} className="bg-emerald-600 hover:bg-emerald-700">
                 {passwordSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Lock className="w-4 h-4 mr-2" />}
                 Changer le mot de passe
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Seed Bulletins Dialog ─── */}
+        <Dialog open={seedDialogOpen} onOpenChange={setSeedDialogOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                  <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                Seed des Bulletins — Import massif
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              {/* Infos */}
+              <div className="rounded-md bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 p-3 text-sm text-blue-800 dark:text-blue-200">
+                <p className="font-semibold">🎯 Institution cible</p>
+                <p className="mt-1 text-xs">
+                  Les données seront ajoutées dans l'institution de l'admin{' '}
+                  <code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded font-mono">{seedAdminCode}</code>.
+                  Année scolaire : <strong>2024-2025</strong>. Tous les trimestres seront traités.
+                </p>
+              </div>
+
+              {/* Fichiers Excel */}
+              <div className="space-y-1.5">
+                <Label>Fichiers Excel (.xlsx) *</Label>
+                <Input
+                  type="file"
+                  accept=".xlsx"
+                  multiple
+                  onChange={(e) => setSeedFiles(e.target.files)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Sélectionnez un ou plusieurs fichiers Excel (feuille "LISTE" requise).
+                </p>
+              </div>
+
+              {/* Zip d'avatars */}
+              <div className="space-y-1.5">
+                <Label>Zip d'avatars (optionnel)</Label>
+                <Input
+                  type="file"
+                  accept=".zip"
+                  onChange={(e) => setSeedAvatars(e.target.files?.[0] || null)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Fichier .zip contenant les images nommées par N° ID (ex: CO1111.jpg).
+                </p>
+              </div>
+
+              {/* Force */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="seed-force"
+                  checked={seedForce}
+                  onCheckedChange={(v) => setSeedForce(v === true)}
+                />
+                <Label htmlFor="seed-force" className="text-sm cursor-pointer">
+                  Forcer la ré-exécution (le seed a déjà été exécuté pour 2024-2025)
+                </Label>
+              </div>
+
+              {/* Warning */}
+              <div className="rounded-md bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900 p-3 text-xs text-amber-800 dark:text-amber-200">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  ⚠️ Attention
+                </p>
+                <p className="mt-1">
+                  Le seed peut prendre plusieurs minutes (10-15 min pour 6 fichiers).
+                  Les élèves existants (par email ou N° ID) seront mis à jour, pas dupliqués.
+                  Les notes existantes seront également mises à jour.
+                </p>
+              </div>
+
+              {/* Progress */}
+              {seedLoading && (
+                <div className="flex items-center gap-2 p-3 rounded-md bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-900">
+                  <Loader2 className="w-5 h-5 animate-spin text-emerald-600 dark:text-emerald-400" />
+                  <p className="text-sm text-emerald-800 dark:text-emerald-200">
+                    Seed en cours... (peut prendre plusieurs minutes)
+                  </p>
+                </div>
+              )}
+
+              {/* Erreur */}
+              {seedError && (
+                <div className="rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 p-3">
+                  <p className="text-sm text-red-800 dark:text-red-200 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span className="break-words">{seedError}</span>
+                  </p>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setSeedDialogOpen(false)}
+                disabled={seedLoading}
+              >
+                Annuler
+              </Button>
+              <Button
+                onClick={handleSeed}
+                disabled={seedLoading || !seedFiles || seedFiles.length === 0}
+                className="bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800"
+              >
+                {seedLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Seed en cours…
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-4 h-4 mr-2" />
+                    Lancer le seed
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
