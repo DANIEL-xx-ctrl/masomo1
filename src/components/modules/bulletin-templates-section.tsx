@@ -34,6 +34,7 @@ import {
   Hash,
   School,
   BookOpen,
+  ShieldCheck,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -60,6 +61,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useAppStore } from '@/lib/store'
+import { canManageBulletinTemplates } from '@/lib/bulletin-permissions'
 import { toast } from 'sonner'
 
 // ---- Types (mirroir du parser backend) ----
@@ -153,6 +155,13 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin'
+
+  // ──────────────────────────────────────────────────────────
+  // PERMISSION : seul le Super Administrateur peut uploader, modifier
+  // ou supprimer un modèle de bulletin. Les administrateurs
+  // d'établissement (admin) peuvent uniquement visualiser et exporter.
+  // ──────────────────────────────────────────────────────────
+  const canManage = canManageBulletinTemplates(currentUser?.role)
 
   // Effective institution: for super_admin, use activeInstitutionId from store;
   // for admin, use their own institutionId.
@@ -298,54 +307,70 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
             Modèles de Bulletins
           </CardTitle>
           <CardDescription>
-            Uploadez, modifiez et exportez les modèles de bulletins (Excel, PDF, Word) pour chaque niveau.
-            Les fichiers <code className="text-xs">.xlsx</code> sont parsés automatiquement pour la visualisation.
+            {canManage
+              ? 'Uploadez, modifiez et exportez les modèles de bulletins (Excel, PDF, Word) pour chaque niveau. Les fichiers .xlsx sont parsés automatiquement pour la visualisation.'
+              : 'Visualisez et exportez les modèles de bulletins (Excel, PDF, Word). L\'upload, la modification et la suppression sont réservés au Super Administrateur.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          {/* Upload zone */}
-          <div
-            className="border-2 border-dashed border-amber-300 dark:border-amber-700 rounded-lg p-6 text-center hover:bg-amber-50 dark:hover:bg-amber-900/10 transition cursor-pointer"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-            }}
-            onDrop={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              handleUpload(e.dataTransfer.files)
-            }}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx"
-              multiple
-              className="hidden"
-              onChange={(e) => handleUpload(e.target.files)}
-            />
-            {uploading ? (
-              <div className="flex flex-col items-center gap-2">
-                <Loader2 className="w-8 h-8 animate-spin text-amber-600" />
-                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                  Upload en cours…
+          {/* Bandeau d'information pour les admins (lecture seule) */}
+          {!canManage && (
+            <div className="rounded-md bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 p-3 text-sm text-blue-800 dark:text-blue-200 flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold">Mode visualisation</p>
+                <p className="text-xs mt-0.5">
+                  Vous pouvez consulter et exporter les modèles de bulletins. L'upload, la modification et la suppression sont réservés au Super Administrateur.
                 </p>
               </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2">
-                <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/40">
-                  <Upload className="w-6 h-6 text-amber-700 dark:text-amber-300" />
+            </div>
+          )}
+
+          {/* Upload zone — super_admin uniquement */}
+          {canManage && (
+            <div
+              className="border-2 border-dashed border-amber-300 dark:border-amber-700 rounded-lg p-6 text-center hover:bg-amber-50 dark:hover:bg-amber-900/10 transition cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleUpload(e.dataTransfer.files)
+              }}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx"
+                multiple
+                className="hidden"
+                onChange={(e) => handleUpload(e.target.files)}
+              />
+              {uploading ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-8 h-8 animate-spin text-amber-600" />
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                    Upload en cours…
+                  </p>
                 </div>
-                <p className="text-sm font-medium">
-                  Glissez-déposez vos fichiers Excel ici, ou cliquez pour parcourir
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Formats acceptés: <code>.xlsx</code> · Multiple files autorisé · Max 4 Mo/fichier
-                </p>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/40">
+                    <Upload className="w-6 h-6 text-amber-700 dark:text-amber-300" />
+                  </div>
+                  <p className="text-sm font-medium">
+                    Glissez-déposez vos fichiers Excel ici, ou cliquez pour parcourir
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Formats acceptés: <code>.xlsx</code> · Multiple files autorisé · Max 4 Mo/fichier
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Templates list */}
           {loading ? (
@@ -365,6 +390,7 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
                 <BulletinTemplateCard
                   key={t.id}
                   template={t}
+                  canManage={canManage}
                   onView={() => setPreviewTemplate(t)}
                   onEdit={() => setEditTemplate(t)}
                   onDelete={() => setDeleteTemplate(t)}
@@ -430,6 +456,7 @@ export function BulletinTemplatesSection({ currentUser }: BulletinTemplatesSecti
 
 interface BulletinTemplateCardProps {
   template: BulletinTemplate
+  canManage: boolean
   onView: () => void
   onEdit: () => void
   onDelete: () => void
@@ -439,6 +466,7 @@ interface BulletinTemplateCardProps {
 
 function BulletinTemplateCard({
   template,
+  canManage,
   onView,
   onEdit,
   onDelete,
@@ -509,7 +537,7 @@ function BulletinTemplateCard({
 
         {/* Actions */}
         <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-2 gap-2">
+          <div className={`grid gap-2 ${canManage ? 'grid-cols-2' : 'grid-cols-1'}`}>
             <Button
               size="sm"
               variant="outline"
@@ -519,15 +547,17 @@ function BulletinTemplateCard({
               <Eye className="w-3.5 h-3.5 mr-1" />
               Voir
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onEdit}
-              className="text-xs h-8"
-            >
-              <Pencil className="w-3.5 h-3.5 mr-1" />
-              Modifier
-            </Button>
+            {canManage && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onEdit}
+                className="text-xs h-8"
+              >
+                <Pencil className="w-3.5 h-3.5 mr-1" />
+                Modifier
+              </Button>
+            )}
           </div>
           <div className="grid grid-cols-3 gap-2">
             <Button
@@ -564,15 +594,17 @@ function BulletinTemplateCard({
               <span className="ml-1">DOCX</span>
             </Button>
           </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onDelete}
-            className="text-xs h-8 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-          >
-            <Trash2 className="w-3.5 h-3.5 mr-1" />
-            Supprimer
-          </Button>
+          {canManage && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onDelete}
+              className="text-xs h-8 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1" />
+              Supprimer
+            </Button>
+          )}
         </div>
       </div>
     </div>
