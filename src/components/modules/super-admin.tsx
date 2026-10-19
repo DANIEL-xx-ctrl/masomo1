@@ -202,6 +202,11 @@ export default function SuperAdminModule() {
   const [seedResult, setSeedResult] = useState<any>(null)
   const [seedError, setSeedError] = useState('')
   const [seedDialogOpen, setSeedDialogOpen] = useState(false)
+  // Classe cible : si vide → auto-détection depuis Excel, sinon → force cette classe
+  const [seedTargetClassName, setSeedTargetClassName] = useState('')
+  // Liste des classes existantes de l'institution (pour le dropdown)
+  const [seedInstitutionClasses, setSeedInstitutionClasses] = useState<Array<{ id: string; name: string }>>([])
+  const [seedClassesLoading, setSeedClassesLoading] = useState(false)
 
   // Institutions state
   const [institutions, setInstitutions] = useState<Institution[]>([])
@@ -811,6 +816,10 @@ export default function SuperAdminModule() {
       }
       // Code admin dont on veut cibler l'institution
       formData.append('adminUserCode', seedAdminCode.trim())
+      // Classe cible optionnelle (si vide → auto-détection depuis Excel)
+      if (seedTargetClassName.trim()) {
+        formData.append('targetClassName', seedTargetClassName.trim())
+      }
       // Force la ré-exécution
       formData.append('force', String(seedForce))
 
@@ -829,7 +838,7 @@ export default function SuperAdminModule() {
       addToast(
         'success',
         'Seed terminé',
-        `${data.targetInstitution?.name || 'Institution'} — ${data.stats.studentsCreated + data.stats.studentsUpdated} élèves, ${data.stats.gradesCreated + data.stats.gradesUpdated} notes`
+        `${data.targetInstitution?.name || 'Institution'}${data.targetClassName ? ` — ${data.targetClassName}` : ''} : ${data.stats.studentsCreated + data.stats.studentsUpdated} élèves, ${data.stats.gradesCreated + data.stats.gradesUpdated} notes`
       )
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -839,6 +848,44 @@ export default function SuperAdminModule() {
       setSeedLoading(false)
     }
   }
+
+  // ─── Charger les classes d'une institution (pour le dropdown classe cible) ───
+  const fetchInstitutionClasses = useCallback(async (adminCode: string) => {
+    if (!adminCode.trim()) {
+      setSeedInstitutionClasses([])
+      return
+    }
+    setSeedClassesLoading(true)
+    try {
+      // Récupérer les institutions puis les classes via l'API existante
+      // On utilise l'API /api/classes avec le header x-institution-id si on connaît l'institution
+      // Pour simplifier, on récupère toutes les institutions et on trouve celle de l'admin
+      const res = await fetch('/api/super-admin/institutions', {
+        headers: { 'x-user-role': 'super_admin' },
+      })
+      if (!res.ok) {
+        setSeedInstitutionClasses([])
+        return
+      }
+      const data = await res.json()
+      const insts = data.institutions || []
+      // Pour chaque institution, on ne charge pas les classes ici (trop lourd)
+      // On va juste afficher un input texte avec suggestions basées sur les classes
+      // connues du primaire RDC
+      setSeedInstitutionClasses([])
+    } catch {
+      setSeedInstitutionClasses([])
+    } finally {
+      setSeedClassesLoading(false)
+    }
+  }, [])
+
+  // Charger les classes quand le dialog s'ouvre ou quand le code admin change
+  useEffect(() => {
+    if (seedDialogOpen) {
+      fetchInstitutionClasses(seedAdminCode)
+    }
+  }, [seedDialogOpen, seedAdminCode, fetchInstitutionClasses])
 
   // Institution CRUD
   const handleCreateInstitution = async () => {
@@ -3563,6 +3610,35 @@ export default function SuperAdminModule() {
                 </p>
               </div>
 
+              {/* Classe cible */}
+              <div className="space-y-1.5">
+                <Label>Classe cible (optionnel)</Label>
+                <Select
+                  value={seedTargetClassName}
+                  onValueChange={(v) => setSeedTargetClassName(v === '__auto__' ? '' : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Auto — détectée depuis l'Excel (colonne CLASSE)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__auto__">
+                      🔄 Auto — détectée depuis l'Excel (colonne CLASSE)
+                    </SelectItem>
+                    <SelectItem value="1ère ANNEE">1ère ANNEE (primaire)</SelectItem>
+                    <SelectItem value="2ème ANNEE">2ème ANNEE (primaire)</SelectItem>
+                    <SelectItem value="3ème ANNEE">3ème ANNEE (primaire)</SelectItem>
+                    <SelectItem value="4ème ANNEE">4ème ANNEE (primaire)</SelectItem>
+                    <SelectItem value="5ème ANNEE">5ème ANNEE (primaire)</SelectItem>
+                    <SelectItem value="6ème ANNEE">6ème ANNEE (primaire)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Si vous sélectionnez une classe, <strong>tous</strong> les élèves des fichiers Excel
+                  seront insérés dans cette classe (ignore la colonne CLASSE de l'Excel).
+                  Si "Auto", chaque fichier utilise sa propre colonne CLASSE.
+                </p>
+              </div>
+
               {/* Fichiers Excel */}
               <div className="space-y-1.5">
                 <Label>Fichiers Excel (.xlsx) *</Label>
@@ -3574,6 +3650,8 @@ export default function SuperAdminModule() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Sélectionnez un ou plusieurs fichiers Excel (feuille "LISTE" requise).
+                  Pour importer les 5 niveaux (2è à 6è primaire), sélectionnez les 5 fichiers
+                  <code className="px-1 py-0.5 bg-muted rounded"> 2_me, 3_me, 4_me, 5_me, 6ème PRIMAIRE</code>.
                 </p>
               </div>
 
