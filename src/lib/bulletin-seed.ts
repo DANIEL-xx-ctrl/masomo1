@@ -39,6 +39,14 @@ export interface SeedOptions {
   institutionId: string
   schoolYear?: string // défaut: '2024-2025'
   force?: boolean // force la ré-exécution même si déjà fait
+  /**
+   * Classe cible optionnelle. Si fournie, TOUS les élèves des fichiers Excel
+   * seront insérés dans cette classe (ignore la colonne CLASSE de l'Excel).
+   * Si non fournie (ou vide), la classe est auto-détectée depuis la colonne
+   * CLASSE de chaque fichier Excel.
+   * Exemple : "2ème ANNEE" pour forcer tous les élèves en 2ème ANNEE.
+   */
+  targetClassName?: string
 }
 
 // ---------- Parsing Excel ----------
@@ -316,22 +324,12 @@ export async function runBulletinSeed(
 
   const schoolYear = options.schoolYear || '2024-2025'
 
-  // Vérification : le seed a-t-il déjà été exécuté ?
-  if (!options.force) {
-    const existingSeed = await db.notification.findFirst({
-      where: {
-        institutionId: options.institutionId,
-        category: 'bulletin_seed',
-        message: { contains: `SEED_${schoolYear}` },
-      },
-    })
-    if (existingSeed) {
-      throw new Error(
-        `Le seed des bulletins a déjà été exécuté pour l'année ${schoolYear}. ` +
-          `Passez force=true pour forcer la ré-exécution.`
-      )
-    }
-  }
+  // ──────────────────────────────────────────────────────────────
+  // NOTE : Le seed est totalement idempotent — il peut être ré-exécuté
+  // sans risque. Les élèves et notes existants sont mis à jour (upsert),
+  // pas dupliqués. Plus de blocage "une seule fois" : on peut ré-importer
+  // un fichier individuel à tout moment.
+  // ──────────────────────────────────────────────────────────────
 
   // 1. Extraire les avatars du zip (si fourni)
   const avatarsMap = new Map<string, Buffer>()
@@ -382,11 +380,29 @@ export async function runBulletinSeed(
   const studentIdToUserId = new Map<string, string>()
 
   for (const parsedFile of allParsedFiles) {
+    // Auto-détection de la classe depuis le nom du fichier (si pas de targetClassName explicite)
+    // Exemple : "2_me PRIMAIRE _ jour.xlsx" → "2ème ANNEE"
+    //           "3_me PRIMAIRE _ jour.xlsx" → "3ème ANNEE"
+    //           "5_me PRIMAIRE (1).xlsx"    → "5ème ANNEE"
+    //           "6ème PRIMAIRE (1).xlsx"    → "6ème ANNEE"
+    //           "1_re PRIMAIRE _ jour.xlsx" → "1ère ANNEE"
+    const detectedClassName = detectClassNameFromFileName(parsedFile.fileName)
+    if (detectedClassName) {
+      console.log(`[bulletin-seed] Fichier "${parsedFile.fileName}" → classe détectée : "${detectedClassName}"`)
+    }
+
     for (const student of parsedFile.students) {
       try {
-        // Trouver ou créer la classe
+        // Résolution de la classe cible (par ordre de priorité) :
+        //   1. targetClassName explicite (override manuel) → utilise cette classe
+        //   2. detectClassNameFromFileName (nom du fichier) → utilise la classe détectée
+        //   3. student.className (colonne CLASSE de l'Excel) → fallback
+        const effectiveClassName = options.targetClassName?.trim()
+          ? options.targetClassName.trim()
+          : (detectedClassName || student.className)
+
         const classId = await findOrCreateClass(
-          student.className,
+          effectiveClassName,
           options.institutionId,
           schoolYear,
           result
@@ -717,3 +733,46 @@ function generateSubjectCode(name: string): string {
     .substring(0, 8)
   return normalized || 'SUBJ'
 }
+
+/**
+ * Détecte automatiquement le nom de la classe MASOMO depuis le nom d'un
+ * fichier Excel.
+ *
+ * Formats reconnus (insensible à la casse) :
+ *   - "1_re PRIMAIRE..."  → "1ère ANNEE"
+ *   - "1ere PRIMAIRE..."  → "1ère ANNEE"
+ *   - "2_me PRIMAIRE..."  → "2ème ANNEE"
+ *   - "2eme PRIMAIRE..."  → "2ème ANNEE"
+ *   - "3_me PRIMAIRE..."  → "3ème ANNEE"
+ *   - "4_me PRIMAIRE..."  → "4ème ANNEE"
+ *   - "5_me PRIMAIRE..."  → "5ème ANNEE"
+ *   - "6_me PRIMAIRE..."  → "6ème ANNEE"
+ *   - "6ème PRIMAIRE..."  → "6ème ANNEE"
+ *
+ * Retourne null si aucun niveau n'a pu être détecté.
+ */
+export function detectClassNameFromFileName(fileName: string): string | null {
+  if (!fileName) return null
+
+  const lower = fileName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+  // Patterns pour les 6 niveaux de primaire (format MASOMO RDC)
+  // On accepte plusieurs variantes d'écriture du numéro
+  const patterns: Array<{ regex: RegExp; className: string }> = [
+    { regex: /\b1[_\s-]*re\b|\b1[_\s-]*ere\b|\bpremiere\b/, className: '1ère ANNEE' },
+    { regex: /\b2[_\s-]*me\b|\b2[_\s-]*eme\b|\bdeuxieme\b/, className: '2ème ANNEE' },
+    { regex: /\b3[_\s-]*me\b|\b3[_\s-]*eme\b|\btroisieme\b/, className: '3ème ANNEE' },
+    { regex: /\b4[_\s-]*me\b|\b4[_\s-]*eme\b|\bquatrieme\b/, className: '4ème ANNEE' },
+    { regex: /\b5[_\s-]*me\b|\b5[_\s-]*eme\b|\bcinquieme\b/, className: '5ème ANNEE' },
+    { regex: /\b6[_\s-]*me\b|\b6[_\s-]*eme\b|\bsixieme\b/, className: '6ème ANNEE' },
+  ]
+
+  for (const { regex, className } of patterns) {
+    if (regex.test(lower)) {
+      return className
+    }
+  }
+
+  return null
+}
+
