@@ -2,13 +2,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getInstitutionId, getInstitutionIdWithFallback } from '@/lib/api-auth'
 import { parseBulletinExcel, detectLevel, levelLabel } from '@/lib/bulletin-parser'
+import { canManageBulletinTemplates, canViewBulletinTemplates } from '@/lib/bulletin-permissions'
 
 /**
  * GET /api/settings/bulletin-templates
  * Liste tous les modèles de bulletins d'une institution.
+ *
+ * PERMISSION : super_admin + admin (lecture seule pour admin)
  */
 export async function GET(request: NextRequest) {
   try {
+    // ──────────────────────────────────────────────────────────────
+    // PERMISSION : super_admin + admin peuvent lister les modèles
+    // ──────────────────────────────────────────────────────────────
+    const userRole = request.headers.get('x-user-role')
+    if (!canViewBulletinTemplates(userRole)) {
+      return NextResponse.json(
+        { error: 'Accès refusé. Authentification requise.' },
+        { status: 403 }
+      )
+    }
+
     const institutionId = await getInstitutionIdWithFallback(request)
     const templates = await db.bulletinTemplate.findMany({
       where: { institutionId },
@@ -34,9 +48,30 @@ export async function GET(request: NextRequest) {
  * POST /api/settings/bulletin-templates
  * Upload d'un nouveau modèle de bulletin (multipart/form-data).
  * Champs: file (xlsx), name (optionnel), level (optionnel — auto-détecté).
+ *
+ * PERMISSION : RÉSERVÉ au Super Administrateur (super_admin).
+ * Les administrateurs d'établissement (admin) peuvent uniquement
+ * visualiser et exporter les modèles existants.
  */
 export async function POST(request: NextRequest) {
   try {
+    // ──────────────────────────────────────────────────────────────
+    // PERMISSION : seul super_admin peut uploader / créer un modèle
+    // Les administrateurs d'établissement peuvent uniquement visualiser
+    // et exporter les modèles existants.
+    // ──────────────────────────────────────────────────────────────
+    const userRole = request.headers.get('x-user-role')
+    if (!canManageBulletinTemplates(userRole)) {
+      return NextResponse.json(
+        {
+          error:
+            'Accès refusé. Seul le Super Administrateur peut uploader ou créer des modèles de bulletins. ' +
+            "Les administrateurs d'établissement peuvent uniquement les visualiser et les exporter.",
+        },
+        { status: 403 }
+      )
+    }
+
     console.log('[bulletin-templates] POST: starting upload...')
     // Use fallback so super_admin without active institution still works
     // (defaults to first active institution)
