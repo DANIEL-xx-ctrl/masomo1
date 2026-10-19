@@ -17,6 +17,10 @@ import { runBulletinSeed } from '@/lib/bulletin-seed'
  *   - institutionId:    ID de l'institution cible (optionnel si adminUserCode fourni)
  *   - adminUserCode:    Code utilisateur de l'admin dont on veut cibler l'institution
  *                       (ex: "ADM-006" → Institut Technique de Bamenda)
+ *   - targetClassName:  Classe cible optionnelle. Si fournie, TOUS les élèves des
+ *                       fichiers Excel seront insérés dans cette classe (ignore la
+ *                       colonne CLASSE de l'Excel). Ex: "2ème ANNEE".
+ *                       Si vide, la classe est auto-détectée depuis l'Excel.
  *   - force:            'true' pour forcer la ré-exécution (optionnel)
  *
  * Si ni institutionId ni adminUserCode n'est fourni, la route cherche
@@ -71,6 +75,7 @@ export async function POST(request: NextRequest) {
     const avatars = formData.get('avatars') as File | null
     const institutionId = formData.get('institutionId') as string | null
     const adminUserCode = formData.get('adminUserCode') as string | null
+    const targetClassName = formData.get('targetClassName') as string | null
     const force = formData.get('force') === 'true'
 
     if (files.length === 0) {
@@ -157,18 +162,20 @@ export async function POST(request: NextRequest) {
       institutionId: targetInstitutionId,
       schoolYear: '2024-2025',
       force,
+      targetClassName: targetClassName || undefined,
     })
 
     return NextResponse.json({
       success: true,
       message: `Seed terminé pour ${institution.name}${
         resolvedAdminCode ? ` (institution de l'admin ${resolvedAdminCode})` : ''
-      }`,
+      }${targetClassName ? ` — classe cible: ${targetClassName}` : ''}`,
       stats: result,
       targetInstitution: {
         id: institution.id,
         name: institution.name,
       },
+      targetClassName: targetClassName || null,
     })
   } catch (error) {
     console.error('[super-admin/seed-bulletins] error:', error)
