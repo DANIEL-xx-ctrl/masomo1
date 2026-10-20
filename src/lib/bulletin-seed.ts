@@ -70,7 +70,7 @@ interface ParsedGrade {
   studentIdNumber: string
   subjectName: string
   trimester: '1er' | '2eme' | '3eme'
-  type: 'devoir' | 'examen' | 'controle'
+  type: 'période' | 'examen'
   value: number
   maxValue: number
 }
@@ -313,7 +313,7 @@ export async function parseBulletinExcel(
 
 interface SubjectMapping {
   name: string
-  columns: Array<{ index: number; trimester: '1er' | '2eme' | '3eme'; type: 'devoir' | 'examen' | 'controle' }>
+  columns: Array<{ index: number; trimester: '1er' | '2eme' | '3eme'; type: 'période' | 'examen' }>
 }
 
 function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[] {
@@ -367,7 +367,7 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
       // Position 8 = EX  (T3 examen)
       const pos = columnPositionInSubject % 9
       const trimesterMap: Array<'1er' | '2eme' | '3eme'> = ['1er', '1er', '1er', '2eme', '2eme', '2eme', '3eme', '3eme', '3eme']
-      const typeMap: Array<'devoir' | 'controle' | 'examen'> = ['devoir', 'controle', 'examen', 'devoir', 'controle', 'examen', 'devoir', 'controle', 'examen']
+      const typeMap: Array<'période' | 'examen'> = ['période', 'examen', 'examen', 'période', 'examen', 'examen', 'période', 'examen', 'examen']
 
       currentSubject.columns.push({
         index: col,
@@ -384,7 +384,7 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
 
 function mapNoteType(typeLabel: string): {
   trimester: '1er' | '2eme' | '3eme'
-  type: 'devoir' | 'examen' | 'controle'
+  type: 'période' | 'examen'
 } | null {
   const t = typeLabel.toLowerCase().trim()
 
