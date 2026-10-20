@@ -144,6 +144,16 @@ export async function parseBulletinExcel(
         const value = getNumber(row[col.index])
         if (value === null || isNaN(value)) continue
 
+        // IMPORTANT : Filtrer les valeurs aberrantes
+        // Les notes RDC primaire sont sur 20 maximum.
+        // Les valeurs > 20 sont des résultats de formules (totaux, moyennes, etc.)
+        // qui ne doivent pas être importés comme notes.
+        const maxValue = 20
+        if (value < 0 || value > maxValue) {
+          // Ignorer cette valeur — c'est probablement un total ou une formule
+          continue
+        }
+
         const type = col.type
         const trimester = col.trimester
 
@@ -153,7 +163,7 @@ export async function parseBulletinExcel(
           trimester,
           type,
           value,
-          maxValue: type === 'examen' ? 20 : 20,
+          maxValue,
         })
       }
     }
@@ -174,15 +184,33 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
   const startCol = 12 // colonne 12 = première matière (après colonnes identité 1-11)
 
   // Groupement par matière (nom identique sur 9 colonnes consécutives)
+  // IMPORTANT : on normalise la casse pour éviter les doublons
+  // (ex: "Expression orale" et "Expression Orale" → même matière)
   let currentSubject: SubjectMapping | null = null
+  let currentSubjectNormalized = ''
 
   for (let col = startCol; col < headerRow1.length; col++) {
-    const matiere = headerRow1[col]
+    const matiereRaw = headerRow1[col]
+    if (!matiereRaw) continue
+
+    const matiere = String(matiereRaw).trim()
+    const matiereNormalized = matiere.toLowerCase().replace(/\s+/g, ' ').trim()
+
+    // Ignorer les colonnes "classement ou proclammation" et "T.G" (totaux)
+    if (matiereNormalized.includes('classement') || matiereNormalized.includes('proclam')) {
+      if (currentSubject) subjects.push(currentSubject)
+      currentSubject = null
+      currentSubjectNormalized = ''
+      continue
+    }
+
     const type = headerRow2[col] ? String(headerRow2[col]).trim() : ''
 
-    if (matiere && (!currentSubject || currentSubject.name !== matiere)) {
+    // Nouvelle matière si le nom normalisé change
+    if (matiereNormalized && matiereNormalized !== currentSubjectNormalized) {
       if (currentSubject) subjects.push(currentSubject)
-      currentSubject = { name: String(matiere).trim(), columns: [] }
+      currentSubject = { name: matiere, columns: [] }
+      currentSubjectNormalized = matiereNormalized
     }
 
     if (currentSubject && type) {
@@ -257,22 +285,83 @@ function getString(row: any[], index: number): string {
   if (index < 0 || index >= row.length) return ''
   const v = row[index]
   if (v === null || v === undefined) return ''
-  if (typeof v === 'object' && v.text) return String(v.text).trim()
-  if (typeof v === 'object' && v.result) return String(v.result).trim()
+
+  // Gestion des objets ExcelJS (cellules avec formules, texte enrichi, liens)
+  if (typeof v === 'object') {
+    // Cellule avec formule : { formula: "...", result: "..." } ou { sharedFormula: "...", result: "..." }
+    if (v.result !== undefined && v.result !== null) {
+      return String(v.result).trim()
+    }
+    // Cellule avec texte simple : { text: "..." }
+    if (v.text !== undefined && v.text !== null) {
+      return String(v.text).trim()
+    }
+    // Cellule avec texte enrichi : { richText: [{ text: "..." }, ...] }
+    if (Array.isArray(v.richText)) {
+      return v.richText.map((rt: any) => rt.text || '').join('').trim()
+    }
+    // Cellule avec lien hypertexte : { text: "...", hyperlink: "..." }
+    if (v.hyperlink !== undefined && v.text !== undefined) {
+      return String(v.text).trim()
+    }
+    // Cellule avec erreur : { error: "..." }
+    if (v.error !== undefined) {
+      return ''
+    }
+    // Si l'objet a une propriété toString personnalisée, l'utiliser
+    // Sinon retourner chaîne vide (évite "[object Object]")
+    return ''
+  }
+
   return String(v).trim()
 }
 
+/**
+ * Extrait un nombre d'une valeur de cellule Excel.
+ * Retourne null si la valeur n'est pas un nombre valide.
+ * IMPORTANT : ignore les valeurs qui sont des résultats de formules aberrantes
+ * (ex: totaux > 20 qui ne sont pas des notes valides sur 20).
+ */
 function getNumber(value: any): number | null {
   if (value === null || value === undefined) return null
-  if (typeof value === 'number') return value
-  if (typeof value === 'object') {
-    if (typeof value.result === 'number') return value.result
-    if (typeof value.text === 'string') return parseFloat(value.text.replace(',', '.'))
+
+  // Nombre direct
+  if (typeof value === 'number') {
+    return isNaN(value) ? null : value
   }
+
+  // Objet ExcelJS (cellule avec formule)
+  if (typeof value === 'object') {
+    // Résultat de formule
+    if (typeof value.result === 'number') {
+      return isNaN(value.result) ? null : value.result
+    }
+    if (typeof value.result === 'string') {
+      const n = parseFloat(value.result.replace(',', '.').replace(/[^\d.-]/g, ''))
+      return isNaN(n) ? null : n
+    }
+    // Texte dans objet
+    if (typeof value.text === 'string') {
+      const n = parseFloat(value.text.replace(',', '.').replace(/[^\d.-]/g, ''))
+      return isNaN(n) ? null : n
+    }
+    // Texte enrichi
+    if (Array.isArray(value.richText)) {
+      const text = value.richText.map((rt: any) => rt.text || '').join('')
+      const n = parseFloat(text.replace(',', '.').replace(/[^\d.-]/g, ''))
+      return isNaN(n) ? null : n
+    }
+    return null
+  }
+
+  // Chaîne
   if (typeof value === 'string') {
-    const n = parseFloat(value.replace(',', '.').replace(/[^\d.-]/g, ''))
+    const cleaned = value.replace(',', '.').replace(/[^\d.-]/g, '')
+    if (!cleaned) return null
+    const n = parseFloat(cleaned)
     return isNaN(n) ? null : n
   }
+
   return null
 }
 
@@ -519,7 +608,23 @@ export async function runBulletinSeed(
       }
     }
 
-    // 4. Pour chaque note : upsert
+    // 4. Nettoyage des anciennes notes pour ces élèves (année scolaire cible)
+    // IMPORTANT : on supprime TOUTES les notes existantes des élèves importés
+    // pour l'année scolaire, puis on les recrée proprement depuis l'Excel.
+    // Cela évite d'avoir des notes aberrantes résiduelles (> 20) d'anciens seeds.
+    const studentIdsToClean = Array.from(studentIdToUserId.values())
+    if (studentIdsToClean.length > 0) {
+      console.log(`[bulletin-seed] Nettoyage des anciennes notes pour ${studentIdsToClean.length} élève(s)...`)
+      const deleteResult = await db.grade.deleteMany({
+        where: {
+          studentId: { in: studentIdsToClean },
+          schoolYear,
+        },
+      })
+      console.log(`[bulletin-seed] ${deleteResult.count} ancienne(s) note(s) supprimée(s)`)
+    }
+
+    // 5. Pour chaque note : créer (plus d'upsert nécessaire, on a tout supprimé)
     for (const grade of parsedFile.grades) {
       try {
         const studentId = studentIdToUserId.get(grade.studentIdNumber)
