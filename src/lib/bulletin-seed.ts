@@ -755,8 +755,29 @@ async function findOrCreateClass(
 async function findOrCreateSubject(subjectName: string, result: SeedResult) {
   const code = generateSubjectCode(subjectName)
 
+  // 1. Chercher par code exact
   let subject = await db.subject.findUnique({ where: { code } })
 
+  // 2. Si pas trouvé par code, chercher par nom normalisé (insensible à la casse)
+  //    pour éviter les doublons comme "Expression orale" vs "Expression Orale"
+  if (!subject) {
+    const normalizedName = subjectName.toLowerCase().replace(/\s+/g, ' ').trim()
+    // Recherche par contains insensible à la casse
+    const candidates = await db.subject.findMany({
+      where: {
+        name: {
+          equals: subjectName,
+          mode: 'insensitive',
+        },
+      },
+      take: 1,
+    })
+    if (candidates.length > 0) {
+      subject = candidates[0]
+    }
+  }
+
+  // 3. Si toujours pas trouvé, créer
   if (!subject) {
     subject = await db.subject.create({
       data: {
