@@ -81,6 +81,125 @@ interface ParsedFile {
   grades: ParsedGrade[]
 }
 
+// Map des maxValues par matière : { "Mesures des grandeurs" => { maxPer: 10, maxEx: 20 }, ... }
+type MaxValuesMap = Map<string, { maxPer: number; maxEx: number }>
+
+/**
+ * Extrait une chaîne d'une valeur Excel (gère les objets avec formules, richText, etc.)
+ */
+function getStringFromValue(v: any): string {
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'string') return v.trim()
+  if (typeof v === 'number') return String(v)
+  if (typeof v === 'object') {
+    if (v.result !== undefined && v.result !== null) return String(v.result).trim()
+    if (v.text !== undefined && v.text !== null) return String(v.text).trim()
+    if (Array.isArray(v.richText)) return v.richText.map((rt: any) => rt.text || '').join('').trim()
+    if (v.error !== undefined) return ''
+    return ''
+  }
+  return String(v).trim()
+}
+
+/**
+ * Extrait un nombre d'une valeur Excel (gère les objets avec formules, richText, etc.)
+ */
+function getNumberFromValue(value: any): number | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number') return isNaN(value) ? null : value
+  if (typeof value === 'object') {
+    if (typeof value.result === 'number') return isNaN(value.result) ? null : value.result
+    if (typeof value.result === 'string') {
+      const n = parseFloat(value.result.replace(',', '.').replace(/[^\d.-]/g, ''))
+      return isNaN(n) ? null : n
+    }
+    if (typeof value.text === 'string') {
+      const n = parseFloat(value.text.replace(',', '.').replace(/[^\d.-]/g, ''))
+      return isNaN(n) ? null : n
+    }
+    if (Array.isArray(value.richText)) {
+      const text = value.richText.map((rt: any) => rt.text || '').join('')
+      const n = parseFloat(text.replace(',', '.').replace(/[^\d.-]/g, ''))
+      return isNaN(n) ? null : n
+    }
+    return null
+  }
+  if (typeof value === 'string') {
+    const cleaned = value.replace(',', '.').replace(/[^\d.-]/g, '')
+    if (!cleaned) return null
+    const n = parseFloat(cleaned)
+    return isNaN(n) ? null : n
+  }
+  return null
+}
+
+/**
+ * Parse la feuille BULLETIN pour extraire les maxValues (MAX per, MAX EX.) par matière.
+ * Ces valeurs sont utilisées pour déterminer le maxValue correct de chaque note.
+ *
+ * Structure de la feuille BULLETIN :
+ *   Col A = nom matière
+ *   Col B = MAX per (max pour chaque période/devoir)
+ *   Col C = 1è P (note élève)
+ *   Col D = 2è P (note élève)
+ *   Col E = MAX EX. (max pour l'examen)
+ *   ...
+ */
+async function extractMaxValuesFromBulletin(workbook: any): Promise<MaxValuesMap> {
+  const maxValuesMap: MaxValuesMap = new Map()
+
+  const sheet =
+    workbook.getWorksheet('BULLETIN') ||
+    workbook.getWorksheet('Bulletin') ||
+    workbook.getWorksheet('bulletin') ||
+    workbook.worksheets.find((w: any) => w.name.toLowerCase() === 'bulletin')
+
+  if (!sheet) return maxValuesMap
+
+  // Parcourir les lignes à partir de la ligne 9 (après les en-têtes)
+  for (let r = 9; r <= sheet.rowCount; r++) {
+    const row = sheet.getRow(r).values
+    const subjectRaw = row[1]
+    if (!subjectRaw) continue
+
+    const subjectName = getStringFromValue(subjectRaw).trim()
+    if (!subjectName) continue
+
+    // Ignorer les lignes de domaine, sous-total, totaux, etc.
+    const upper = subjectName.toUpperCase()
+    if (
+      upper.includes('DOMAINE') ||
+      subjectName.includes('Sous-Total') ||
+      subjectName.includes('Sous Total') ||
+      upper.includes('MAXIMA') ||
+      upper.includes('TOTAUX') ||
+      upper.includes('POURCETAGE') ||
+      upper.includes('PLACE') ||
+      upper.includes('LANGUES CONGOLAISES') ||
+      upper.includes('FRANCAIS') ||
+      upper.includes('MATHEMATIQUES') ||
+      upper.includes('SCIENCES') ||
+      upper.includes('TECHNOLOGIE') ||
+      upper.includes('ARTS') ||
+      upper.includes('DEVELOPPEMENT') ||
+      upper.includes('UNIVERS SOCIAL') ||
+      upper.includes('DEVELOPPEMENT PERSONNEL')
+    ) {
+      continue
+    }
+
+    // Extraire MAX per (Col B = index 2) et MAX EX. (Col E = index 5)
+    const maxPer = getNumberFromValue(row[2])
+    const maxEx = getNumberFromValue(row[5])
+
+    if (maxPer !== null && maxEx !== null) {
+      maxValuesMap.set(subjectName, { maxPer, maxEx })
+    }
+  }
+
+  return maxValuesMap
+}
+
 /**
  * Parse un fichier Excel (.xlsx) au format MASOMO RDC.
  * Voir la doc en haut du fichier pour la structure exacte.
@@ -93,7 +212,14 @@ export async function parseBulletinExcel(
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(fileBuffer)
 
-  // Trouver la feuille LISTE (insensible à la casse)
+  // 1. Extraire les maxValues depuis la feuille BULLETIN
+  const maxValuesMap = await extractMaxValuesFromBulletin(workbook)
+  console.log(`[bulletin-seed] ${maxValuesMap.size} maxValues extraites depuis BULLETIN`)
+  for (const [name, mv] of maxValuesMap) {
+    console.log(`  • ${name}: maxPer=${mv.maxPer}, maxEx=${mv.maxEx}`)
+  }
+
+  // 2. Trouver la feuille LISTE
   const sheet =
     workbook.getWorksheet('LISTE') ||
     workbook.getWorksheet('Liste') ||
@@ -140,15 +266,26 @@ export async function parseBulletinExcel(
 
     // Extraire les notes pour cet élève
     for (const subject of subjects) {
+      // Récupérer les maxValues pour cette matière
+      // Chercher par nom exact, puis par nom normalisé
+      let maxPer = 20 // défaut
+      let maxEx = 20 // défaut
+      for (const [mapName, mv] of maxValuesMap) {
+        if (mapName.toLowerCase().replace(/\s+/g, ' ').trim() === subject.name.toLowerCase().replace(/\s+/g, ' ').trim()) {
+          maxPer = mv.maxPer
+          maxEx = mv.maxEx
+          break
+        }
+      }
+
       for (const col of subject.columns) {
         const value = getNumber(row[col.index])
         if (value === null || isNaN(value)) continue
 
-        // IMPORTANT : Filtrer les valeurs aberrantes
-        // Les notes RDC primaire sont sur 20 maximum.
-        // Les valeurs > 20 sont des résultats de formules (totaux, moyennes, etc.)
-        // qui ne doivent pas être importés comme notes.
-        const maxValue = 20
+        // Déterminer le maxValue selon le type de note
+        const maxValue = col.type === 'examen' ? maxEx : maxPer
+
+        // Filtrer les valeurs aberrantes : la note ne doit pas dépasser le maxValue
         if (value < 0 || value > maxValue) {
           // Ignorer cette valeur — c'est probablement un total ou une formule
           continue
@@ -188,6 +325,7 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
   // (ex: "Expression orale" et "Expression Orale" → même matière)
   let currentSubject: SubjectMapping | null = null
   let currentSubjectNormalized = ''
+  let columnPositionInSubject = 0 // 0-8 : position dans le groupe de 9 colonnes
 
   for (let col = startCol; col < headerRow1.length; col++) {
     const matiereRaw = headerRow1[col]
@@ -201,6 +339,7 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
       if (currentSubject) subjects.push(currentSubject)
       currentSubject = null
       currentSubjectNormalized = ''
+      columnPositionInSubject = 0
       continue
     }
 
@@ -211,17 +350,31 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
       if (currentSubject) subjects.push(currentSubject)
       currentSubject = { name: matiere, columns: [] }
       currentSubjectNormalized = matiereNormalized
+      columnPositionInSubject = 0
     }
 
     if (currentSubject && type) {
-      const mapped = mapNoteType(type)
-      if (mapped) {
-        currentSubject.columns.push({
-          index: col,
-          trimester: mapped.trimester,
-          type: mapped.type,
-        })
-      }
+      // Utiliser la position dans le groupe de 9 colonnes pour déterminer
+      // le trimestre et le type de note.
+      // Position 0 = 1er (T1 devoir)
+      // Position 1 = 2èP (T1 controle)
+      // Position 2 = EX  (T1 examen)
+      // Position 3 = 3èP (T2 devoir)
+      // Position 4 = 4èP (T2 controle)
+      // Position 5 = EX  (T2 examen)
+      // Position 6 = 5èP (T3 devoir)
+      // Position 7 = 6èP (T3 controle)
+      // Position 8 = EX  (T3 examen)
+      const pos = columnPositionInSubject % 9
+      const trimesterMap: Array<'1er' | '2eme' | '3eme'> = ['1er', '1er', '1er', '2eme', '2eme', '2eme', '3eme', '3eme', '3eme']
+      const typeMap: Array<'devoir' | 'controle' | 'examen'> = ['devoir', 'controle', 'examen', 'devoir', 'controle', 'examen', 'devoir', 'controle', 'examen']
+
+      currentSubject.columns.push({
+        index: col,
+        trimester: trimesterMap[pos],
+        type: typeMap[pos],
+      })
+      columnPositionInSubject++
     }
   }
   if (currentSubject) subjects.push(currentSubject)
