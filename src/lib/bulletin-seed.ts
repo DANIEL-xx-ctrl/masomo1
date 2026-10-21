@@ -907,6 +907,7 @@ async function findOrCreateClass(
 
 async function findOrCreateSubject(subjectName: string, result: SeedResult) {
   const code = generateSubjectCode(subjectName)
+  const domain = getSubjectDomain(subjectName)
 
   // 1. Chercher par code exact
   let subject = await db.subject.findUnique({ where: { code } })
@@ -927,6 +928,13 @@ async function findOrCreateSubject(subjectName: string, result: SeedResult) {
     })
     if (candidates.length > 0) {
       subject = candidates[0]
+      // Mettre à jour le domaine si manquant
+      if (!subject.domain && domain) {
+        subject = await db.subject.update({
+          where: { id: subject.id },
+          data: { domain }
+        })
+      }
     }
   }
 
@@ -938,11 +946,43 @@ async function findOrCreateSubject(subjectName: string, result: SeedResult) {
         code,
         coefficient: 1,
         level: 'primaire',
+        ...(domain ? { domain } : {}),
       },
     })
     result.subjectsCreated++
   }
   return subject
+}
+
+/**
+ * Retourne le sous-domaine (en-tête) d'une matière basé sur la structure
+ * du bulletin RDC primaire.
+ * Ex: "Expression orale" → "Langues congolaises"
+ *     "Mesures des grandeurs" → "Mathématiques"
+ */
+function getSubjectDomain(subjectName: string): string | null {
+  const map: Record<string, string> = {
+    'Expression orale': 'Langues congolaises',
+    'Expression Ecrite': 'Langues congolaises',
+    'Vocabulaire': 'Français',
+    'Expression Orale': 'Français',
+    'LECT. - ECRITURE EN LANGUES CONGOLAISES': 'Langues congolaises',
+    'Mesures des grandeurs': 'Mathématiques',
+    'Formes géométriques': 'Mathématiques',
+    'Numération': 'Mathématiques',
+    'Opérations': 'Mathématiques',
+    'Problèmes': 'Mathématiques',
+    "Sciences d'éveil": 'Sciences',
+    'Technologie': 'Technologie',
+    'Ed. Civ. & Morale': 'Univers social',
+    'Ed. Santé & Env.': 'Univers social',
+    'Art plastique': 'Arts',
+    'Art dramatique': 'Arts',
+    'Ed. phys. & sportive': 'Développement personnel',
+    'Init. Trav. Prod.': 'Développement personnel',
+    'Religion': 'Développement personnel',
+  }
+  return map[subjectName] || null
 }
 
 async function extractAvatarsFromZip(
