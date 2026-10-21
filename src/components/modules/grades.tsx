@@ -1001,8 +1001,7 @@ export default function GradesModule() {
                 )}
                 {visibleSubjects.map((sub) => (
                   <SelectItem key={sub.id} value={sub.id}>
-                    {sub.name}
-                    {isPrimaire && sub.domain ? ` · ${sub.domain}` : ''}
+                    {sub.domain ? `${sub.domain}-${sub.name}` : sub.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1503,10 +1502,7 @@ export default function GradesModule() {
                                   : 'hover:bg-muted/60'
                               }`}
                             >
-                              <span className="flex-1 truncate">{sub.name}</span>
-                              {sub.domain && (
-                                <span className="text-[10px] text-muted-foreground shrink-0">{sub.domain}</span>
-                              )}
+                              <span className="flex-1 truncate">{sub.domain ? `${sub.domain}-${sub.name}` : sub.name}</span>
                               {sub.maxTJ != null && (
                                 <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px] shrink-0" title="Max Travail Journalier">
                                   TJ {sub.maxTJ}

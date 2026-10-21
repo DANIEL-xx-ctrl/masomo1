@@ -3911,7 +3911,7 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                     {subs.map((s) => (
                       <div key={s.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border bg-card hover:shadow-sm transition-shadow">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{s.name}</p>
+                          <p className="text-sm font-medium truncate">{s.domain ? `${s.domain}-${s.name}` : s.name}</p>
                           <p className="text-xs text-muted-foreground">
                             Code: {s.code}
                             {s.maxTJ ? ` · TJ: ${s.maxTJ}` : ''}
