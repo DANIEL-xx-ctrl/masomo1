@@ -4396,7 +4396,7 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
               }
 
               // ── Regroupement hiérarchique : gros domaine → sous-domaine → matières ──
-              const subDomainToBigDomain: Record<string, string> = {
+              const subToBig: Record<string, string> = {
                 'Langues congolaises': 'DOMAINE DES LANGUES',
                 'Français': 'DOMAINE DES LANGUES',
                 'Mathématiques': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
@@ -4405,16 +4405,7 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                 'Univers social': "DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",
                 'Arts': 'DOMAINE DES ARTS',
                 'Développement personnel': 'DOMAINE DU DÉVELOPPEMENT PERSONNEL',
-              }
-              function normBig(d: string | null | undefined): string {
-                if (!d) return 'Autres'
-                if (d.toUpperCase().startsWith('DOMAINE')) return d
-                return subDomainToBigDomain[d] || d
-              }
-              function getSub(d: string | null | undefined): string {
-                if (!d) return 'Autres'
-                if (d.toUpperCase().startsWith('DOMAINE')) return 'Autres'
-                return d
+                'Autres': 'Autres',
               }
               const bigOrder = [
                 'DOMAINE DES LANGUES',
@@ -4424,49 +4415,55 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                 'DOMAINE DU DÉVELOPPEMENT PERSONNEL',
                 'Autres',
               ]
-              const hierSubj = new Map<string, Map<string, SubjectWithMaxima[]>>()
+
+              const hierMap = new Map<string, Map<string, typeof filteredSubjects>>()
               for (const s of filteredSubjects) {
-                const bd = normBig(s.domain)
-                const sd = getSub(s.domain)
-                if (!hierSubj.has(bd)) hierSubj.set(bd, new Map())
-                const sm = hierSubj.get(bd)!
-                if (!sm.has(sd)) sm.set(sd, [])
-                sm.get(sd)!.push(s)
+                const sub = s.domain || 'Autres'
+                const big = subToBig[sub] || (sub.toUpperCase().startsWith('DOMAINE') ? sub : 'Autres')
+                if (!hierMap.has(big)) hierMap.set(big, new Map())
+                const sm = hierMap.get(big)!
+                if (!sm.has(sub)) sm.set(sub, [])
+                sm.get(sub)!.push(s)
               }
-              const sortedBD = Array.from(hierSubj.keys()).sort((a, b) => {
+
+              const sortedBig = Array.from(hierMap.keys()).sort((a, b) => {
                 const ia = bigOrder.indexOf(a), ib = bigOrder.indexOf(b)
                 return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
               })
 
               return (
                 <div className="space-y-4">
-                  {sortedBD.map((bigDomain) => {
-                    const subMap = hierSubj.get(bigDomain)!
+                  {sortedBig.map((bigDom) => {
+                    const subMap = hierMap.get(bigDom)!
                     const sortedSubs = Array.from(subMap.keys()).sort()
                     const allSubs = Array.from(subMap.values()).flat()
-                    const bigTotal = allSubs.reduce((s, c) => s + (c.maxAnnuel || 0), 0)
+                    const bigTotal = allSubs.reduce((sum, c) => sum + (c.maxAnnuel || 0), 0)
+
                     return (
-                      <div key={bigDomain}>
-                        {/* Gros titre : DOMAINE DES LANGUES */}
+                      <div key={bigDom}>
+                        {/* GROS TITRE — DOMAINE DES LANGUES, etc. */}
                         <div className="px-3 py-2 rounded-md bg-primary/10 border border-primary/20 mb-2">
-                          <p className="text-sm font-bold text-primary">{bigDomain}</p>
+                          <p className="text-sm font-bold text-primary">{bigDom}</p>
                           <p className="text-[10px] text-muted-foreground">
                             {allSubs.length} cours · Total annuel: {bigTotal} pts
                           </p>
                         </div>
+
                         <div className="space-y-3 ml-3">
-                          {sortedSubs.map((subDomain) => {
-                            const subs = subMap.get(subDomain)!
-                            const isAutres = subDomain === 'Autres'
+                          {sortedSubs.map((subDom) => {
+                            const subs = subMap.get(subDom)!
+                            const isAutres = subDom === 'Autres'
+
                             return (
-                              <div key={subDomain}>
-                                {/* Petit titre : Langues congolaises, Français, etc. */}
+                              <div key={subDom}>
+                                {/* PETIT TITRE — Langues congolaises, Français, etc. */}
                                 {!isAutres && (
                                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1 pl-2 border-l-2 border-muted-foreground/30">
-                                    {subDomain}
+                                    {subDom}
                                   </p>
                                 )}
-                                {/* Matières */}
+
+                                {/* MATIÈRES */}
                                 <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
                                   {subs.map((s) => (
                                     <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs hover:bg-muted/30 transition-colors">
@@ -4476,34 +4473,34 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                                       </span>
                                       <div className="flex items-center gap-1.5 shrink-0">
                                         {s.maxTJ != null && (
-                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px]" title="Max Travail Journalier">
+                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px]">
                                             TJ {s.maxTJ}
                                           </span>
                                         )}
                                         {s.maxEX != null && (
-                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 font-mono text-[10px]" title="Max Examen">
+                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 font-mono text-[10px]">
                                             EX {s.maxEX}
                                           </span>
                                         )}
                                         {s.maxTRIM != null && (
-                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400 font-mono text-[10px]" title="Max Trimestriel">
+                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400 font-mono text-[10px]">
                                             TR {s.maxTRIM}
                                           </span>
                                         )}
                                         {s.maxAnnuel != null && (
-                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-mono text-[10px] font-bold" title="Max Annuel">
+                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-mono text-[10px] font-bold">
                                             {s.maxAnnuel}
                                           </span>
                                         )}
                                         <button
-                                          className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                          className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10"
                                           onClick={() => openEditSubject(s)}
                                           title="Modifier"
                                         >
                                           <Pencil className="w-3 h-3" />
                                         </button>
                                         <button
-                                          className="p-0.5 rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                                          className="p-0.5 rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
                                           onClick={() => setDeleteSubject(s)}
                                           title="Supprimer"
                                         >
