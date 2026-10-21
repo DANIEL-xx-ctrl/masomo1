@@ -3825,13 +3825,88 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
 
   if (!isAdmin) return null
 
-  // Group subjects by domain
-  const groupedSubjects = subjects.reduce<Record<string, SubjectWithMaxima[]>>((acc, s) => {
-    const key = s.domain || 'Autres'
-    if (!acc[key]) acc[key] = []
-    acc[key].push(s)
-    return acc
-  }, {})
+  // ── Mapping: sous-domaine → gros domaine (titre du bulletin) ──
+  // Cette hiérarchie reflète la structure des bulletins RDC primaire :
+  //   DOMAINE DES LANGUES (gros titre)
+  //     ├── Langues congolaises (petit titre / sous-domaine)
+  //     │     ├── Expression orale
+  //     │     └── Expression Ecrite
+  //     ├── Français (petit titre / sous-domaine)
+  //     │     ├── Vocabulaire
+  //     │     └── Expression Orale
+  //     └── LECT. - ECRITURE EN LANGUES CONGOLAISES
+  //   DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE (gros titre)
+  //     ├── Mathématiques (petit titre)
+  //     │     ├── Mesures des grandeurs
+  //     │     ├── Formes géométriques
+  //     │     └── ...
+  //     ├── Sciences
+  //     └── Technologie
+  //   etc.
+  const subDomainToBigDomain: Record<string, string> = {
+    'Langues congolaises': 'DOMAINE DES LANGUES',
+    'Français': 'DOMAINE DES LANGUES',
+    'Mathématiques': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+    'Sciences': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+    'Technologie': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+    'Univers social': "DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",
+    'Arts': 'DOMAINE DES ARTS',
+    'Développement personnel': 'DOMAINE DU DÉVELOPPEMENT PERSONNEL',
+  }
+
+  // Normaliser un domaine : si c'est déjà un gros domaine (commence par "DOMAINE"),
+  // le garder tel quel. Sinon, chercher le gros domaine correspondant.
+  function normalizeToBigDomain(domain: string | null | undefined): string {
+    if (!domain) return 'Autres'
+    const upper = domain.toUpperCase()
+    if (upper.startsWith('DOMAINE')) return domain
+    return subDomainToBigDomain[domain] || domain
+  }
+
+  // Extraire le sous-domaine à partir du domain stocké.
+  // Si domain commence par "DOMAINE", c'est un gros domaine → le sous-domaine est 'Autres'.
+  // Sinon, le domain est déjà le sous-domaine.
+  function getSubDomain(domain: string | null | undefined): string {
+    if (!domain) return 'Autres'
+    const upper = domain.toUpperCase()
+    if (upper.startsWith('DOMAINE')) return 'Autres'
+    return domain
+  }
+
+  // ── Regroupement à 3 niveaux : gros domaine → sous-domaine → matières ──
+  // Ordre des gros domaines selon le bulletin RDC
+  const bigDomainOrder = [
+    'DOMAINE DES LANGUES',
+    'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+    "DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",
+    'DOMAINE DES ARTS',
+    'DOMAINE DU DÉVELOPPEMENT PERSONNEL',
+    'Autres',
+  ]
+
+  // Structure: Map<bigDomain, Map<subDomain, SubjectWithMaxima[]>>
+  const hierarchicalSubjects = new Map<string, Map<string, SubjectWithMaxima[]>>()
+
+  for (const s of subjects) {
+    const bigDomain = normalizeToBigDomain(s.domain)
+    const subDomain = getSubDomain(s.domain)
+
+    if (!hierarchicalSubjects.has(bigDomain)) {
+      hierarchicalSubjects.set(bigDomain, new Map())
+    }
+    const subMap = hierarchicalSubjects.get(bigDomain)!
+    if (!subMap.has(subDomain)) {
+      subMap.set(subDomain, [])
+    }
+    subMap.get(subDomain)!.push(s)
+  }
+
+  // Trier les gros domaines selon l'ordre défini
+  const sortedBigDomains = Array.from(hierarchicalSubjects.keys()).sort((a, b) => {
+    const ia = bigDomainOrder.indexOf(a)
+    const ib = bigDomainOrder.indexOf(b)
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+  })
 
   return (
     <motion.div
@@ -3902,37 +3977,64 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
             </div>
           ) : (
             <div className="space-y-4 max-h-[400px] overflow-y-auto">
-              {Object.entries(groupedSubjects).map(([domain, subs]) => (
-                <div key={domain}>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                    {domain}
-                  </p>
-                  <div className="space-y-1.5">
-                    {subs.map((s) => (
-                      <div key={s.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border bg-card hover:shadow-sm transition-shadow">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{s.domain ? `${s.domain}-${s.name}` : s.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Code: {s.code}
-                            {s.maxTJ ? ` · TJ: ${s.maxTJ}` : ''}
-                            {s.maxEX ? ` · EX: ${s.maxEX}` : ''}
-                            {s.maxTRIM ? ` · TRIM: ${s.maxTRIM}` : ''}
-                            {s.maxAnnuel ? ` · Annuel: ${s.maxAnnuel}` : ''}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditSubject(s)}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500" onClick={() => setDeleteSubject(s)}>
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+              {sortedBigDomains.map((bigDomain) => {
+                const subMap = hierarchicalSubjects.get(bigDomain)!
+                const sortedSubDomains = Array.from(subMap.keys()).sort()
+
+                return (
+                  <div key={bigDomain}>
+                    {/* Gros titre : DOMAINE DES LANGUES, DOMAINE DES MATHÉMATIQUES, etc. */}
+                    <p className="text-sm font-bold text-primary bg-primary/5 rounded-md px-3 py-2 mb-2">
+                      {bigDomain}
+                    </p>
+                    <div className="space-y-3 ml-2">
+                      {sortedSubDomains.map((subDomain) => {
+                        const subs = subMap.get(subDomain)!
+                        const isAutres = subDomain === 'Autres'
+
+                        return (
+                          <div key={subDomain}>
+                            {/* Petit titre : Langues congolaises, Français, Mathématiques, etc. */}
+                            {!isAutres && (
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1 pl-2 border-l-2 border-muted-foreground/30">
+                                {subDomain}
+                              </p>
+                            )}
+                            <div className="space-y-1.5">
+                              {subs.map((s) => (
+                                <div key={s.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg border bg-card hover:shadow-sm transition-shadow">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium truncate">
+                                      {s.domain && !s.domain.toUpperCase().startsWith('DOMAINE')
+                                        ? `${s.domain}-${s.name}`
+                                        : s.name}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Code: {s.code}
+                                      {s.maxTJ ? ` · TJ: ${s.maxTJ}` : ''}
+                                      {s.maxEX ? ` · EX: ${s.maxEX}` : ''}
+                                      {s.maxTRIM ? ` · TRIM: ${s.maxTRIM}` : ''}
+                                      {s.maxAnnuel ? ` · Annuel: ${s.maxAnnuel}` : ''}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditSubject(s)}>
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </Button>
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500" onClick={() => setDeleteSubject(s)}>
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
