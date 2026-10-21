@@ -4285,68 +4285,82 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                             )}
                           </div>
 
-                          {/* Domains grid */}
-                          <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3 bg-card">
+                          {/* Domains grid — hiérarchie 3 niveaux : domaine → sous-domaine → matières */}
+                          <div className="p-3 space-y-4 bg-card">
                             {struct.domaines.map((dom: any, di: number) => {
-                              // Collect all courses from all sous-domaines
+                              // Compute domain total from sous-total
+                              const domainTotal = dom.sousTotal
+                                ? (typeof dom.sousTotal.maxTrim1 === 'number' ? dom.sousTotal.maxTrim1 : 0) +
+                                  (trimesterCount >= 2 && typeof dom.sousTotal.maxTrim2 === 'number' ? dom.sousTotal.maxTrim2 : 0) +
+                                  (trimesterCount >= 3 && typeof dom.sousTotal.maxTrim3 === 'number' ? dom.sousTotal.maxTrim3 : 0)
+                                : 0
                               const allCourses: any[] = []
                               for (const sd of dom.sousDomaines || []) {
                                 for (const c of sd.courses || []) {
                                   allCourses.push(c)
                                 }
                               }
-                              // Compute domain total from sous-total
-                              const domainTotal = dom.sousTotal
-                                ? (typeof dom.sousTotal.maxTrim1 === 'number' ? dom.sousTotal.maxTrim1 : 0) +
-                                  (trimesterCount >= 2 && typeof dom.sousTotal.maxTrim2 === 'number' ? dom.sousTotal.maxTrim2 : 0) +
-                                  (trimesterCount >= 3 && typeof dom.sousTotal.maxTrim3 === 'number' ? dom.sousTotal.maxTrim3 : 0)
-                                : allCourses.reduce((s, c) => s + (typeof c.maxPer === 'number' ? c.maxPer : 0), 0)
 
                               return (
-                                <div
-                                  key={di}
-                                  className="rounded-lg border border-border overflow-hidden hover:shadow-sm transition-shadow"
-                                >
-                                  {/* Domain header */}
-                                  <div className="px-3 py-1.5 border-b bg-muted/40">
-                                    <p className="text-xs font-semibold text-foreground truncate">{dom.nom}</p>
+                                <div key={di}>
+                                  {/* GROS TITRE — DOMAINE DES LANGUES, etc. */}
+                                  <div className="px-3 py-2 rounded-md bg-primary/10 border border-primary/20 mb-2">
+                                    <p className="text-sm font-bold text-primary truncate">{dom.nom}</p>
                                     <p className="text-[10px] text-muted-foreground">
                                       {allCourses.length} cours · Total: {domainTotal} pts
                                     </p>
                                   </div>
-                                  {/* Courses list */}
-                                  <div className="divide-y divide-border max-h-[240px] overflow-y-auto">
-                                    {allCourses.map((c: any, ci: number) => {
-                                      const maxTJ = typeof c.maxPer === 'number' ? c.maxPer : null
-                                      const maxEX = typeof c.maxEX1 === 'number' ? c.maxEX1 : null
-                                      const maxTR = typeof c.maxTrim1 === 'number' ? c.maxTrim1 : null
-                                      const maxAnn = maxTR
-                                        ? maxTR * trimesterCount
-                                        : null
+
+                                  {/* Sous-domaines avec leurs matières */}
+                                  <div className="space-y-3 ml-3">
+                                    {(dom.sousDomaines || []).map((sd: any, sdi: number) => {
+                                      const sdCourses = sd.courses || []
+                                      if (sdCourses.length === 0) return null
+
                                       return (
-                                        <div key={ci} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs">
-                                          <span className="flex-1 truncate font-medium">{c.nom}</span>
-                                          <div className="flex items-center gap-1 shrink-0">
-                                            {maxTJ != null && (
-                                              <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px]" title="Max Travail Journalier">
-                                                TJ {maxTJ}
-                                              </span>
-                                            )}
-                                            {maxEX != null && (
-                                              <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 font-mono text-[10px]" title="Max Examen">
-                                                EX {maxEX}
-                                              </span>
-                                            )}
-                                            {maxTR != null && (
-                                              <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400 font-mono text-[10px]" title="Max Trimestriel">
-                                                TR {maxTR}
-                                              </span>
-                                            )}
-                                            {maxAnn != null && (
-                                              <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-mono text-[10px] font-bold" title="Max Annuel (calculé)">
-                                                {maxAnn}
-                                              </span>
-                                            )}
+                                        <div key={sdi}>
+                                          {/* PETIT TITRE — Langues congolaises, Français, etc. */}
+                                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1 pl-2 border-l-2 border-muted-foreground/30">
+                                            {sd.nom}
+                                          </p>
+
+                                          {/* MATIÈRES */}
+                                          <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
+                                            {sdCourses.map((c: any, ci: number) => {
+                                              const maxTJ = typeof c.maxPer === 'number' ? c.maxPer : null
+                                              const maxEX = typeof c.maxEX1 === 'number' ? c.maxEX1 : null
+                                              const maxTR = typeof c.maxTrim1 === 'number' ? c.maxTrim1 : null
+                                              const maxAnn = maxTR ? maxTR * trimesterCount : null
+                                              return (
+                                                <div key={ci} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs hover:bg-muted/30 transition-colors">
+                                                  <span className="flex-1 truncate font-medium">
+                                                    {sd.nom}-{c.nom}
+                                                  </span>
+                                                  <div className="flex items-center gap-1 shrink-0">
+                                                    {maxTJ != null && (
+                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px]">
+                                                        TJ {maxTJ}
+                                                      </span>
+                                                    )}
+                                                    {maxEX != null && (
+                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 font-mono text-[10px]">
+                                                        EX {maxEX}
+                                                      </span>
+                                                    )}
+                                                    {maxTR != null && (
+                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400 font-mono text-[10px]">
+                                                        TR {maxTR}
+                                                      </span>
+                                                    )}
+                                                    {maxAnn != null && (
+                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-mono text-[10px] font-bold">
+                                                        {maxAnn}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              )
+                                            })}
                                           </div>
                                         </div>
                                       )
