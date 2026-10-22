@@ -351,7 +351,20 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
     // vs "Expression Orale" Français)
     if (matiereNormalized && (matiereNormalized !== currentSubjectNormalized || columnPositionInSubject >= 9)) {
       if (currentSubject) subjects.push(currentSubject)
-      currentSubject = { name: matiere, columns: [] }
+
+      // Extraire le nom de la matière depuis l'en-tête hiérarchique.
+      // L'en-tête peut être :
+      //   "DOMAINE DES LANGUES-LANGUES CONGOLAISES-Expression orale"
+      //   → nom = "Expression orale"
+      //   ou simplement "Expression orale" (sans hiérarchie)
+      //   → nom = "Expression orale"
+      let subjectName = matiere
+      if (matiere.includes('-')) {
+        const parts = matiere.split('-')
+        subjectName = parts[parts.length - 1].trim()
+      }
+
+      currentSubject = { name: subjectName, columns: [] }
       currentSubjectNormalized = matiereNormalized
       columnPositionInSubject = 0
     }
@@ -917,36 +930,27 @@ async function findOrCreateSubject(subjectName: string, result: SeedResult) {
   const code = generateSubjectCode(subjectName)
   const domain = getSubjectDomain(subjectName)
 
-  // 1. Chercher par code exact
-  let subject = await db.subject.findUnique({ where: { code } })
+  // 1. Chercher par nom EXACT (sensible à la casse) en premier
+  //    On utilise le nom exact car "Expression orale" (Langues congolaises)
+  //    et "Expression Orale" (Français) sont des matières DIFFÉRENTES
+  let subject = await db.subject.findFirst({
+    where: { name: subjectName },
+  })
 
-  // 2. Si pas trouvé par code, chercher par nom normalisé (insensible à la casse)
-  //    pour éviter les doublons comme "Expression orale" vs "Expression Orale"
+  // 2. Si pas trouvé par nom exact, chercher par code
   if (!subject) {
-    const normalizedName = subjectName.toLowerCase().replace(/\s+/g, ' ').trim()
-    // Recherche par contains insensible à la casse
-    const candidates = await db.subject.findMany({
-      where: {
-        name: {
-          equals: subjectName,
-          mode: 'insensitive',
-        },
-      },
-      take: 1,
-    })
-    if (candidates.length > 0) {
-      subject = candidates[0]
-      // Mettre à jour le domaine si manquant
-      if (!subject.domain && domain) {
-        subject = await db.subject.update({
-          where: { id: subject.id },
-          data: { domain }
-        })
-      }
-    }
+    subject = await db.subject.findUnique({ where: { code } })
   }
 
-  // 3. Si toujours pas trouvé, créer
+  // 3. Mettre à jour le domaine si manquant
+  if (subject && !subject.domain && domain) {
+    subject = await db.subject.update({
+      where: { id: subject.id },
+      data: { domain }
+    })
+  }
+
+  // 4. Si toujours pas trouvé, créer
   if (!subject) {
     subject = await db.subject.create({
       data: {
@@ -1051,14 +1055,26 @@ function extractLevel(className: string): string {
 }
 
 function generateSubjectCode(name: string): string {
-  // Génère un code unique de 8 caractères max à partir du nom
+  // Génère un code unique à partir du nom complet de la matière.
+  // On utilise les initiales + les premiers caractères pour éviter les
+  // collisions (ex: "Expression orale" et "Expression Ecrite" qui
+  // généraient le même code "EXPRESSI" avec l'ancien algorithme).
   const normalized = name
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^A-Z0-9]/g, '')
-    .substring(0, 8)
-  return normalized || 'SUBJ'
+    .replace(/[^A-Z0-9 ]/g, '')
+    .trim()
+
+  const words = normalized.split(/\s+/).filter((w) => w.length > 0)
+  if (words.length === 0) return 'SUBJ'
+  if (words.length === 1) return words[0].substring(0, 12)
+
+  // Pour les matières multi-mots: initiale du premier mot + mots complets
+  // Ex: "Expression orale" → "EXPRORALE" (au lieu de "EXPRESSI")
+  //     "Expression Ecrite" → "EXPRECRITE" (différent de "EXPRORALE")
+  const code = words.map((w) => w.substring(0, 4)).join('')
+  return code.substring(0, 16) || 'SUBJ'
 }
 
 /**
