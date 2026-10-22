@@ -461,7 +461,7 @@ export default function GradesModule() {
 
   // Filter grades client-side for type and search
   const filteredGrades = grades.filter((grade) => {
-    if (filterType && filterType !== 'all' && grade.type !== filterType) return false;
+    if (filterType && filterType !== 'all' && grade.type?.toLowerCase() !== filterType.toLowerCase()) return false;
     if (searchQuery) {
       const name = grade.student
         ? `${grade.student.firstName} ${grade.student.lastName}`.toLowerCase()
