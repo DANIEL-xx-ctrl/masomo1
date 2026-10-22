@@ -345,8 +345,11 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
 
     const type = headerRow2[col] ? String(headerRow2[col]).trim() : ''
 
-    // Nouvelle matière si le nom normalisé change
-    if (matiereNormalized && matiereNormalized !== currentSubjectNormalized) {
+    // Nouvelle matière si le nom normalisé change OU si on a déjà 9 colonnes
+    // (gère le cas où deux matières ont le même nom normalisé mais sont
+    // des matières différentes, ex: "Expression orale" Langues congolaises
+    // vs "Expression Orale" Français)
+    if (matiereNormalized && (matiereNormalized !== currentSubjectNormalized || columnPositionInSubject >= 9)) {
       if (currentSubject) subjects.push(currentSubject)
       currentSubject = { name: matiere, columns: [] }
       currentSubjectNormalized = matiereNormalized
@@ -356,18 +359,18 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
     if (currentSubject && type) {
       // Utiliser la position dans le groupe de 9 colonnes pour déterminer
       // le trimestre et le type de note.
-      // Position 0 = 1er (T1 devoir)
-      // Position 1 = 2èP (T1 controle)
-      // Position 2 = EX  (T1 examen)
-      // Position 3 = 3èP (T2 devoir)
-      // Position 4 = 4èP (T2 controle)
-      // Position 5 = EX  (T2 examen)
-      // Position 6 = 5èP (T3 devoir)
-      // Position 7 = 6èP (T3 controle)
-      // Position 8 = EX  (T3 examen)
+      // Position 0 = 1er (T1 — 1ère période)
+      // Position 1 = 2èP (T1 — 2ème période)
+      // Position 2 = EX  (T1 — examen)
+      // Position 3 = 3èP (T2 — 1ère période)
+      // Position 4 = 4èP (T2 — 2ème période)
+      // Position 5 = EX  (T2 — examen)
+      // Position 6 = 5èP (T3 — 1ère période)
+      // Position 7 = 6èP (T3 — 2ème période)
+      // Position 8 = EX  (T3 — examen)
       const pos = columnPositionInSubject % 9
       const trimesterMap: Array<'1er' | '2eme' | '3eme'> = ['1er', '1er', '1er', '2eme', '2eme', '2eme', '3eme', '3eme', '3eme']
-      const typeMap: Array<'période' | 'examen'> = ['période', 'examen', 'examen', 'période', 'examen', 'examen', 'période', 'examen', 'examen']
+      const typeMap: Array<'période' | 'examen'> = ['période', 'période', 'examen', 'période', 'période', 'examen', 'période', 'période', 'examen']
 
       currentSubject.columns.push({
         index: col,
