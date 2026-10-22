@@ -70,7 +70,7 @@ interface ParsedGrade {
   studentIdNumber: string
   subjectName: string
   trimester: '1er' | '2eme' | '3eme'
-  type: 'période' | 'examen'
+  type: string
   value: number
   maxValue: number
 }
@@ -313,7 +313,7 @@ export async function parseBulletinExcel(
 
 interface SubjectMapping {
   name: string
-  columns: Array<{ index: number; trimester: '1er' | '2eme' | '3eme'; type: 'période' | 'examen' }>
+  columns: Array<{ index: number; trimester: '1er' | '2eme' | '3eme'; type: string }>
 }
 
 function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[] {
@@ -358,19 +358,24 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
 
     if (currentSubject && type) {
       // Utiliser la position dans le groupe de 9 colonnes pour déterminer
-      // le trimestre et le type de note.
-      // Position 0 = 1er (T1 — 1ère période)
-      // Position 1 = 2èP (T1 — 2ème période)
-      // Position 2 = EX  (T1 — examen)
-      // Position 3 = 3èP (T2 — 1ère période)
-      // Position 4 = 4èP (T2 — 2ème période)
-      // Position 5 = EX  (T2 — examen)
-      // Position 6 = 5èP (T3 — 1ère période)
-      // Position 7 = 6èP (T3 — 2ème période)
-      // Position 8 = EX  (T3 — examen)
+      // le trimestre et le type de note précis.
+      // Les types sont basés sur les labels du bulletin Excel :
+      //   1er  → "1ère période"   (T1)
+      //   2èP  → "2ème période"   (T1)
+      //   EX   → "examen"         (T1)
+      //   3èP  → "1ère période"   (T2)
+      //   4èP  → "2ème période"   (T2)
+      //   EX   → "examen"         (T2)
+      //   5èP  → "1ère période"   (T3)
+      //   6èP  → "2ème période"   (T3)
+      //   EX   → "examen"         (T3)
       const pos = columnPositionInSubject % 9
       const trimesterMap: Array<'1er' | '2eme' | '3eme'> = ['1er', '1er', '1er', '2eme', '2eme', '2eme', '3eme', '3eme', '3eme']
-      const typeMap: Array<'période' | 'examen'> = ['période', 'période', 'examen', 'période', 'période', 'examen', 'période', 'période', 'examen']
+      const typeMap: Array<string> = [
+        '1ère période', '2ème période', 'examen',   // T1
+        '1ère période', '2ème période', 'examen',   // T2
+        '1ère période', '2ème période', 'examen',   // T3
+      ]
 
       currentSubject.columns.push({
         index: col,
@@ -387,7 +392,7 @@ function identifySubjects(headerRow1: any[], headerRow2: any[]): SubjectMapping[
 
 function mapNoteType(typeLabel: string): {
   trimester: '1er' | '2eme' | '3eme'
-  type: 'période' | 'examen'
+  type: string
 } | null {
   const t = typeLabel.toLowerCase().trim()
 
