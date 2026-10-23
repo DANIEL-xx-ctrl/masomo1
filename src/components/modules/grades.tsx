@@ -460,8 +460,36 @@ export default function GradesModule() {
   }, [filterDegree, isPrimaire, visibleClasses, visibleSubjects, filterClassId, filterSubjectId]);
 
   // Filter grades client-side for type and search
+  // Le filtre type doit matcher plusieurs variantes car les notes en base
+  // peuvent avoir des types différents selon l'époque du seed:
+  //   "p1" / "1ère période" / "période" / "devoir"  → 1ère période T1
+  //   "p2" / "2ème période"                          → 2ème période T1
+  //   "examen_t1" / "examen"                         → examen T1
+  //   etc.
+  const TYPE_ALIASES: Record<string, string[]> = {
+    'p1': ['p1', '1ère période', '1ere période', 'période', 'periode', 'devoir'],
+    'p2': ['p2', '2ème période', '2eme période'],
+    'examen_t1': ['examen_t1', 'examen'],
+    'p3': ['p3', '3ème période', '3eme période'],
+    'p4': ['p4', '4ème période', '4eme période'],
+    'examen_t2': ['examen_t2'],
+    'p5': ['p5', '5ème période', '5eme période'],
+    'p6': ['p6', '6ème période', '6eme période'],
+    'examen_t3': ['examen_t3'],
+    'controle': ['controle', 'contrôle'],
+  }
+  function matchesType(gradeType: string, filterType: string): boolean {
+    if (gradeType?.toLowerCase() === filterType.toLowerCase()) return true
+    const aliases = TYPE_ALIASES[filterType]
+    if (aliases) {
+      const gtLower = gradeType?.toLowerCase().trim()
+      return aliases.some(a => a.toLowerCase() === gtLower)
+    }
+    return false
+  }
+
   const filteredGrades = grades.filter((grade) => {
-    if (filterType && filterType !== 'all' && grade.type?.toLowerCase() !== filterType.toLowerCase()) return false;
+    if (filterType && filterType !== 'all' && !matchesType(grade.type || '', filterType)) return false;
     if (searchQuery) {
       const name = grade.student
         ? `${grade.student.firstName} ${grade.student.lastName}`.toLowerCase()
