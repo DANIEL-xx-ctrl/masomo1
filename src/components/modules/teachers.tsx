@@ -286,11 +286,11 @@ export default function TeachersModule() {
 
   // Fetch subjects (pre-filtered by institution type on the backend).
   // Used to populate the datalist suggestions when adding a teacher's subjects.
-  const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([])
+  const [subjects, setSubjects] = useState<Array<{ id: string; name: string; domain?: string | null; degree?: string | null }>>([])
   useEffect(() => {
     fetch('/api/subjects')
       .then((r) => r.json())
-      .then((d) => setSubjects((d.subjects || []).map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }))))
+      .then((d) => setSubjects((d.subjects || []).map((s: any) => ({ id: s.id, name: s.name, domain: s.domain, degree: s.degree }))))
       .catch(() => {})
   }, [])
 
