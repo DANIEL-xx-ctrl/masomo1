@@ -1266,7 +1266,14 @@ export default function TeachersModule() {
                     added to the `subjects` array and displayed as a removable
                     badge below. */}
                 <div className="flex gap-2">
-                  <Select value={subjectInput} onValueChange={(v) => { setSubjectInput(v); }}>
+                  <Select value="" onValueChange={(v) => {
+                    if (!v) return
+                    // Ajouter directement la matière sélectionnée
+                    if (!form.subjects.some((s) => s.toLowerCase() === v.toLowerCase())) {
+                      setForm((prev) => ({ ...prev, subjects: [...prev.subjects, v] }))
+                    }
+                    setSubjectInput('')
+                  }}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Sélectionner une matière…" />
                     </SelectTrigger>
@@ -1316,15 +1323,6 @@ export default function TeachersModule() {
                       })()}
                     </SelectContent>
                   </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addSubject}
-                    disabled={!subjectInput.trim()}
-                  >
-                    <Plus className="w-4 h-4" />
-                  </Button>
                 </div>
                 {form.subjects.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-1">
