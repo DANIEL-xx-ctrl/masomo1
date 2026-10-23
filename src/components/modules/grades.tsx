@@ -508,7 +508,7 @@ export default function GradesModule() {
     // the backend will create a new subject from the typed name.
     const trimmedSubjectName = formSubjectName.trim();
     const matchedSubject = trimmedSubjectName
-      ? subjects.find((s) => s.name.toLowerCase() === trimmedSubjectName.toLowerCase())
+      ? subjects.find((s) => s.name === trimmedSubjectName)
       : undefined;
     const resolvedSubjectId = matchedSubject?.id || '';
     const resolvedSubjectName = !matchedSubject && trimmedSubjectName ? trimmedSubjectName : null;
@@ -570,7 +570,7 @@ export default function GradesModule() {
     // Résoudre la matière modifiée (comme pour l'ajout)
     const trimmedSubjectName = formSubjectName.trim();
     const matchedSubject = trimmedSubjectName
-      ? subjects.find((s) => s.name.toLowerCase() === trimmedSubjectName.toLowerCase())
+      ? subjects.find((s) => s.name === trimmedSubjectName)
       : undefined;
     const resolvedSubjectId = matchedSubject?.id || formSubjectId || '';
     const resolvedSubjectName = !matchedSubject && !formSubjectId && trimmedSubjectName ? trimmedSubjectName : null;

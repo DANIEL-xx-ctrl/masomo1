@@ -41,7 +41,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAppStore } from '@/lib/store';
 import { withSchoolYear } from '@/lib/utils';
 import { DAYS_OF_WEEK, DAY_LABELS, TIME_SLOTS } from '@/lib/constants';
-import type { Schedule, Class, Teacher } from '@/lib/types';
+import type { Schedule, Class, Teacher, Subject } from '@/lib/types';
 
 // Subject color palette (emerald/teal-based)
 const SUBJECT_COLORS = [
@@ -90,6 +90,7 @@ export default function ScheduleModule() {
   // Add form state
   const [formClassId, setFormClassId] = useState('');
   const [formSubject, setFormSubject] = useState('');
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [formTeacherId, setFormTeacherId] = useState('');
   const [formDay, setFormDay] = useState('1');
   const [formStartTime, setFormStartTime] = useState('08:00');
@@ -119,6 +120,16 @@ export default function ScheduleModule() {
     }
   }, [addToast, schoolYear]);
 
+  const fetchSubjects = useCallback(async () => {
+    try {
+      const res = await fetch('/api/subjects');
+      const data = await res.json();
+      setSubjects(data.subjects || []);
+    } catch {
+      // silent
+    }
+  }, []);
+
   const fetchSchedules = useCallback(async () => {
     if (!selectedClassId) return;
     setLoading(true);
@@ -136,7 +147,8 @@ export default function ScheduleModule() {
   useEffect(() => {
     fetchClasses();
     fetchTeachers();
-  }, [fetchClasses, fetchTeachers]);
+    fetchSubjects();
+  }, [fetchClasses, fetchTeachers, fetchSubjects]);
 
   useEffect(() => {
     if (selectedClassId) fetchSchedules();
@@ -449,12 +461,56 @@ export default function ScheduleModule() {
       </div>
       <div className="grid gap-2">
         <Label htmlFor="schedule-subject">Matière *</Label>
-        <Input
-          id="schedule-subject"
-          value={formSubject}
-          onChange={(e) => setFormSubject(e.target.value)}
-          placeholder="Ex: Mathématiques"
-        />
+        <Select value={formSubject} onValueChange={setFormSubject}>
+          <SelectTrigger>
+            <SelectValue placeholder="Sélectionner une matière" />
+          </SelectTrigger>
+          <SelectContent>
+            {(() => {
+              const subToBig: Record<string, string> = {
+                'Langues congolaises': 'DOMAINE DES LANGUES',
+                'Français': 'DOMAINE DES LANGUES',
+                'Mathématiques': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                'Sciences': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                'Technologie': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                'Univers social': "DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",
+                'Arts': 'DOMAINE DES ARTS',
+                'Développement personnel': 'DOMAINE DU DÉVELOPPEMENT PERSONNEL',
+                'Autres': 'Autres',
+              }
+              const bigOrd = ['DOMAINE DES LANGUES','DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',"DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",'DOMAINE DES ARTS','DOMAINE DU DÉVELOPPEMENT PERSONNEL','Autres']
+              const hier = new Map<string, Map<string, typeof subjects>>()
+              for (const s of subjects) {
+                const sub = (s as any).domain || 'Autres'
+                const big = subToBig[sub] || (sub.toUpperCase().startsWith('DOMAINE') ? sub : 'Autres')
+                if (!hier.has(big)) hier.set(big, new Map())
+                const sm = hier.get(big)!
+                if (!sm.has(sub)) sm.set(sub, [])
+                sm.get(sub)!.push(s)
+              }
+              const sBig = Array.from(hier.keys()).sort((a, b) => {
+                const ia = bigOrd.indexOf(a), ib = bigOrd.indexOf(b)
+                return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+              })
+              return sBig.map((bigD) => {
+                const subM = hier.get(bigD)!
+                const sSubs = Array.from(subM.keys()).sort()
+                return (
+                  <optgroup key={bigD} label={bigD}>
+                    {sSubs.map((subD) => {
+                      const subs2 = subM.get(subD)!
+                      return subs2.map((sub) => (
+                        <SelectItem key={sub.id} value={sub.name}>
+                          {subD === 'Autres' ? sub.name : `${subD}-${sub.name}`}
+                        </SelectItem>
+                      ))
+                    })}
+                  </optgroup>
+                )
+              })
+            })()}
+          </SelectContent>
+        </Select>
       </div>
       <div className="grid gap-2">
         <Label htmlFor="schedule-teacher">Enseignant</Label>

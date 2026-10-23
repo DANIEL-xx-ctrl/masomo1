@@ -1266,26 +1266,56 @@ export default function TeachersModule() {
                     added to the `subjects` array and displayed as a removable
                     badge below. */}
                 <div className="flex gap-2">
-                  <Input
-                    id="t-subject-add"
-                    value={subjectInput}
-                    onChange={(e) => setSubjectInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        addSubject()
-                      }
-                    }}
-                    placeholder="Ajouter une matière…"
-                    list="teacher-subjects-list"
-                  />
-                  {/* Datalist with pre-defined subjects based on institution type.
-                      The user can type freely OR pick from the suggestions. */}
-                  <datalist id="teacher-subjects-list">
-                    {subjects.map((sub) => (
-                      <option key={sub.id} value={sub.name} />
-                    ))}
-                  </datalist>
+                  <Select value={subjectInput} onValueChange={(v) => { setSubjectInput(v); }}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Sélectionner une matière…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(() => {
+                        const subToBig: Record<string, string> = {
+                          'Langues congolaises': 'DOMAINE DES LANGUES',
+                          'Français': 'DOMAINE DES LANGUES',
+                          'Mathématiques': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                          'Sciences': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                          'Technologie': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                          'Univers social': "DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",
+                          'Arts': 'DOMAINE DES ARTS',
+                          'Développement personnel': 'DOMAINE DU DÉVELOPPEMENT PERSONNEL',
+                          'Autres': 'Autres',
+                        }
+                        const bigOrd = ['DOMAINE DES LANGUES','DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',"DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",'DOMAINE DES ARTS','DOMAINE DU DÉVELOPPEMENT PERSONNEL','Autres']
+                        const hier = new Map<string, Map<string, typeof subjects>>()
+                        for (const s of subjects) {
+                          const sub = (s as any).domain || 'Autres'
+                          const big = subToBig[sub] || (sub.toUpperCase().startsWith('DOMAINE') ? sub : 'Autres')
+                          if (!hier.has(big)) hier.set(big, new Map())
+                          const sm = hier.get(big)!
+                          if (!sm.has(sub)) sm.set(sub, [])
+                          sm.get(sub)!.push(s)
+                        }
+                        const sBig = Array.from(hier.keys()).sort((a, b) => {
+                          const ia = bigOrd.indexOf(a), ib = bigOrd.indexOf(b)
+                          return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+                        })
+                        return sBig.map((bigD) => {
+                          const subM = hier.get(bigD)!
+                          const sSubs = Array.from(subM.keys()).sort()
+                          return (
+                            <optgroup key={bigD} label={bigD}>
+                              {sSubs.map((subD) => {
+                                const subs2 = subM.get(subD)!
+                                return subs2.map((sub) => (
+                                  <SelectItem key={sub.id} value={sub.name}>
+                                    {subD === 'Autres' ? sub.name : `${subD}-${sub.name}`}
+                                  </SelectItem>
+                                ))
+                              })}
+                            </optgroup>
+                          )
+                        })
+                      })()}
+                    </SelectContent>
+                  </Select>
                   <Button
                     type="button"
                     variant="outline"
