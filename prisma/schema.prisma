@@ -229,8 +229,16 @@ model Subject {
   maxEX     Int?
   maxTRIM   Int?
   maxAnnuel Int?
-  // Domain grouping (e.g. "DOMAINE DES LANGUES", "DOMAINE DES MATHÉMATIQUES")
-  // Used for the RDC primary school bulletin layout.
+  // Hiérarchie à 3 niveaux (demandée par l'utilisateur) :
+  //   title    — TITRE  (ex: "DOMAINE DES LANGUES", "DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE")
+  //   subtitle — SOUS-TITRE (ex: "Langues congolaises", "Français", "Mathématiques")
+  //   name     — MATIÈRE (ex: "Expression orale", "Vocabulaire")
+  // Ces 3 champs sont stockés explicitement pour éviter tout mappage côté frontend.
+  title     String?
+  subtitle  String?
+  // Legacy "domain" field — conservé pour compatibilité arrière. Lors d'une migration,
+  // on essaie d'en déduire title/subtitle. Pour les nouveaux sujets créés via l'UI,
+  // preferer utiliser directement title + subtitle.
   domain    String?
   // Which degree this subject belongs to (for primary school):
   // "elementaire" (1ère & 2ème), "moyen" (3ème & 4ème), "terminal" (5ème & 6ème)
