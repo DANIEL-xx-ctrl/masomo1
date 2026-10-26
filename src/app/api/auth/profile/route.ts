@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
         institutionId: true,
         createdAt: true,
         updatedAt: true,
-        institution: { select: { name: true } },
+        institution: { select: { name: true, institutionType: true } },
         student: { select: { image: true } },
         teacher: { select: { image: true } },
         parent: { select: { image: true } },
@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
         // (app-shell.tsx merges this response into currentUser, and without
         // this field the institution name was being cleared to undefined).
         institutionName: user.institution?.name || null,
+        institutionType: user.institution?.institutionType || null,
         resolvedAvatar,
       },
     })
@@ -253,7 +254,7 @@ export async function PUT(request: NextRequest) {
         institutionId: true,
         createdAt: true,
         updatedAt: true,
-        institution: { select: { name: true } },
+        institution: { select: { name: true, institutionType: true } },
       },
     })
 
@@ -268,6 +269,7 @@ export async function PUT(request: NextRequest) {
       user: {
         ...updatedUser,
         institutionName: updatedUser.institution?.name || null,
+        institutionType: updatedUser.institution?.institutionType || null,
       },
       message:
         action === 'password-deleted'
