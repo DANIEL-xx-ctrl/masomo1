@@ -287,10 +287,14 @@ export default function TeachersModule() {
   // Fetch subjects (pre-filtered by institution type on the backend).
   // Used to populate the datalist suggestions when adding a teacher's subjects.
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string; domain?: string | null; degree?: string | null }>>([])
+  const [institutionType, setInstitutionType] = useState<string>('secondaire')
   useEffect(() => {
     fetch('/api/subjects')
       .then((r) => r.json())
-      .then((d) => setSubjects((d.subjects || []).map((s: any) => ({ id: s.id, name: s.name, domain: s.domain, degree: s.degree }))))
+      .then((d) => {
+        setSubjects((d.subjects || []).map((s: any) => ({ id: s.id, name: s.name, domain: s.domain, degree: s.degree })))
+        setInstitutionType(d.institutionType || 'secondaire')
+      })
       .catch(() => {})
   }, [])
 
@@ -1266,6 +1270,11 @@ export default function TeachersModule() {
                     added to the `subjects` array and displayed as a removable
                     badge below. */}
                 <div className="flex gap-2">
+                  {institutionType === 'primaire' ? (
+                    <div className="flex-1 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 text-xs text-blue-700 dark:text-blue-300">
+                      École Primaire : l'enseignant enseigne toutes les matières automatiquement. Sélectionnez ci-dessous pour préciser ses spécialités.
+                    </div>
+                  ) : null}
                   <Select value="" onValueChange={(v) => {
                     if (!v) return
                     // Ajouter directement la matière sélectionnée

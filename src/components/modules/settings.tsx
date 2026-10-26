@@ -4155,6 +4155,12 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                 const uploadedCount = bulletinTemplates.filter((t) =>
                   levels.includes(t.level)
                 ).length
+                // Labels courts pour mobile, labels complets pour desktop
+                const shortLabel: Record<string, string> = {
+                  elementaire: '1ère-2ème',
+                  moyen: '3ème-4ème',
+                  terminal: '5ème-6ème',
+                }
                 return (
                   <Button
                     key={deg.id}
@@ -4163,7 +4169,8 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                     className={selectedDegree === deg.id ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
                     onClick={() => setSelectedDegree(deg.id)}
                   >
-                    {deg.label}
+                    <span className="sm:hidden">{shortLabel[deg.id] || deg.label}</span>
+                    <span className="hidden sm:inline">{deg.label}</span>
                     {uploadedCount > 0 && (
                       <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-bold" title={`${uploadedCount} bulletin(s) uploadé(s)`}>
                         {uploadedCount}
