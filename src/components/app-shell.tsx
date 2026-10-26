@@ -592,21 +592,29 @@ export default function AppShell() {
               <Menu className="w-5 h-5" />
             </Button>
 
-            {/* Page title + Institution badge */}
+            {/* Page title + Institution badge (nom + type) */}
             <div className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3">
               <h1 className="text-base sm:text-lg font-semibold truncate">
                 {MODULE_TITLES[activeModule]}
               </h1>
               <InstitutionBadge />
-              {/* Type d'institution (affiché en complément sur petits écrans) */}
+              {/* Sur petits écrans (mobile), le InstitutionBadge est caché
+                  (hidden md:inline-flex). On affiche donc un badge compact
+                  avec le NOM + le TYPE pour que l'info reste visible. */}
               {currentUser?.role === 'super_admin' && activeInstitutionName && (
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                  {INSTITUTION_TYPE_LABELS[activeInstitutionType || 'secondaire'] || 'Institution'}
+                <span className="md:hidden inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 max-w-[140px]">
+                  <span className="truncate">{activeInstitutionName}</span>
+                  {INSTITUTION_TYPE_LABELS[activeInstitutionType || 'secondaire'] && (
+                    <span className="shrink-0 opacity-80">· {INSTITUTION_TYPE_LABELS[activeInstitutionType || 'secondaire']}</span>
+                  )}
                 </span>
               )}
-              {currentUser?.role !== 'super_admin' && currentUser?.institutionType && (
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                  {INSTITUTION_TYPE_LABELS[currentUser.institutionType] || 'Institution'}
+              {currentUser?.role !== 'super_admin' && currentUser?.institutionName && (
+                <span className="md:hidden inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 max-w-[140px]">
+                  <span className="truncate">{currentUser.institutionName}</span>
+                  {currentUser.institutionType && INSTITUTION_TYPE_LABELS[currentUser.institutionType] && (
+                    <span className="shrink-0 opacity-80">· {INSTITUTION_TYPE_LABELS[currentUser.institutionType]}</span>
+                  )}
                 </span>
               )}
             </div>
@@ -707,24 +715,29 @@ export default function AppShell() {
                 © 2024 MASOMO — Système de Gestion Scolaire
               </p>
               <div className="flex items-center gap-3 flex-wrap justify-center">
-                {/* Institution type — visible especially on mobile where the
-                    header badge is hidden (InstitutionBadge has hidden md:inline-flex).
-                    Affiche le TYPE (École Primaire / École Secondaire) à la place du nom. */}
+                {/* Institution : NOM + TYPE — visible surtout sur mobile où
+                    le badge d'en-tête est caché (InstitutionBadge a hidden md:inline-flex). */}
                 {(() => {
-                  const typeLabel = currentUser?.role === 'super_admin'
-                    ? (activeInstitutionName
-                        ? (INSTITUTION_TYPE_LABELS[activeInstitutionType || 'secondaire'] || 'Institution')
-                        : null)
-                    : (currentUser?.institutionType
-                        ? (INSTITUTION_TYPE_LABELS[currentUser.institutionType] || 'Institution')
-                        : null)
-                  if (!typeLabel) return null
+                  const name = currentUser?.role === 'super_admin'
+                    ? (activeInstitutionName || null)
+                    : (currentUser?.institutionName || null)
+                  const type = currentUser?.role === 'super_admin'
+                    ? (activeInstitutionType || null)
+                    : (currentUser?.institutionType || null)
+                  const typeLabel = type ? (INSTITUTION_TYPE_LABELS[type] || null) : null
+                  if (!name && !typeLabel) return null
                   return (
                     <p className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
                       <Building2 className="w-3 h-3" />
-                      <span className="font-semibold text-primary truncate max-w-[180px]">
-                        {typeLabel}
-                      </span>
+                      {name && (
+                        <span className="font-semibold text-primary truncate max-w-[180px]" title={name}>
+                          {name}
+                        </span>
+                      )}
+                      {name && typeLabel && <span className="text-muted-foreground/60">·</span>}
+                      {typeLabel && (
+                        <span className="text-muted-foreground truncate">{typeLabel}</span>
+                      )}
                     </p>
                   )
                 })()}
