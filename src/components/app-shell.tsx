@@ -596,6 +596,17 @@ export default function AppShell() {
                 {MODULE_TITLES[activeModule]}
               </h1>
               <InstitutionBadge />
+              {/* Type d'institution */}
+              {currentUser?.role === 'super_admin' && activeInstitutionName && (
+                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                  {activeInstitutionName}
+                </span>
+              )}
+              {currentUser?.role !== 'super_admin' && currentUser?.institutionName && (
+                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                  {currentUser.institutionName}
+                </span>
+              )}
             </div>
 
             {/* Right side */}
