@@ -43,6 +43,7 @@ interface Institution {
   email: string | null
   currentYear: string
   active: boolean
+  institutionType?: string | null
   createdAt: string
   _count?: { users: number; classes: number }
 }
@@ -599,7 +600,7 @@ export default function SuperAdminModule() {
     setSearchQuery('')
     fetchInstData(inst.id)
     // Set institution context in store so other modules can use it
-    setInstitution(inst.id, inst.name, inst.password)
+    setInstitution(inst.id, inst.name, inst.password, inst.institutionType)
   }
 
   // Select an institution by id from the dropdown (opens its separate detail view)

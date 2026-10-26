@@ -1061,21 +1061,19 @@ export default function GradesModule() {
                     const ia = bigOrd.indexOf(a), ib = bigOrd.indexOf(b)
                     return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
                   })
-                  return sBig.map((bigD) => {
+                  return sBig.flatMap((bigD) => {
                     const subM = hier.get(bigD)!
                     const sSubs = Array.from(subM.keys()).sort()
-                    return (
-                      <optgroup key={bigD} label={bigD}>
-                        {sSubs.map((subD) => {
-                          const subs2 = subM.get(subD)!
-                          return subs2.map((sub) => (
-                            <SelectItem key={sub.id} value={sub.id}>
-                              {subD === 'Autres' ? sub.name : `${subD}-${sub.name}`}
-                            </SelectItem>
-                          ))
-                        })}
-                      </optgroup>
-                    )
+                    return sSubs.map((subD) => {
+                      const subs2 = subM.get(subD)!
+                      return subs2.map((sub) => (
+                        <SelectItem key={sub.id} value={sub.id}>
+                          {subD === 'Autres'
+                            ? sub.name
+                            : `${bigD}, ${subD}-${sub.name}, ${sub.name}`}
+                        </SelectItem>
+                      ))
+                    }).flat()
                   })
                 })()}
               </SelectContent>
@@ -1628,7 +1626,7 @@ export default function GradesModule() {
                                             }`}
                                           >
                                             <span className="flex-1 truncate">
-                                              {isAutres ? sub.name : `${subD}-${sub.name}`}
+                                              {isAutres ? sub.name : `${bigD}, ${subD}-${sub.name}, ${sub.name}`}
                                             </span>
                                             {sub.maxTJ != null && (
                                               <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px] shrink-0">
@@ -1822,32 +1820,95 @@ export default function GradesModule() {
                       <option key={sub.id} value={sub.name} />
                     ))}
                   </datalist>
-                  {/* Liste cliquable des matières filtrées par promotion */}
+                  {/* Liste cliquable des matières filtrées par promotion —
+                      hiérarchie au format titre, sous titre-titre, matière. */}
                   {isPrimaire && formDegree !== 'all' && formVisibleSubjects.length > 0 && (
-                    <div className="border rounded-md max-h-[120px] overflow-y-auto divide-y">
-                      {formVisibleSubjects.map((sub) => {
-                        const isSelected = formSubjectName === sub.name;
-                        return (
-                          <button
-                            key={sub.id}
-                            type="button"
-                            onClick={() => {
-                              setFormSubjectName(sub.name);
-                              setFormSubjectId(sub.id);
-                            }}
-                            className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between gap-2 ${
-                              isSelected
-                                ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 font-semibold'
-                                : 'hover:bg-muted/60'
-                            }`}
-                          >
-                            <span className="flex-1 truncate">{sub.name}</span>
-                            {sub.domain && (
-                              <span className="text-[10px] text-muted-foreground shrink-0">{sub.domain}</span>
-                            )}
-                          </button>
-                        );
-                      })}
+                    <div className="border rounded-md max-h-[160px] overflow-y-auto">
+                      {(() => {
+                        const subToBig: Record<string, string> = {
+                          'Langues congolaises': 'DOMAINE DES LANGUES',
+                          'Français': 'DOMAINE DES LANGUES',
+                          'Mathématiques': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                          'Sciences': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                          'Technologie': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                          'Univers social': "DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",
+                          'Arts': 'DOMAINE DES ARTS',
+                          'Développement personnel': 'DOMAINE DU DÉVELOPPEMENT PERSONNEL',
+                          'Autres': 'Autres',
+                        }
+                        const bigOrd = [
+                          'DOMAINE DES LANGUES',
+                          'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                          "DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",
+                          'DOMAINE DES ARTS',
+                          'DOMAINE DU DÉVELOPPEMENT PERSONNEL',
+                          'Autres',
+                        ]
+                        const hier = new Map<string, Map<string, typeof formVisibleSubjects>>()
+                        for (const s of formVisibleSubjects) {
+                          const sub = s.domain || 'Autres'
+                          const big = subToBig[sub] || (sub.toUpperCase().startsWith('DOMAINE') ? sub : 'Autres')
+                          if (!hier.has(big)) hier.set(big, new Map())
+                          const sm = hier.get(big)!
+                          if (!sm.has(sub)) sm.set(sub, [])
+                          sm.get(sub)!.push(s)
+                        }
+                        const sBig = Array.from(hier.keys()).sort((a, b) => {
+                          const ia = bigOrd.indexOf(a), ib = bigOrd.indexOf(b)
+                          return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+                        })
+                        return sBig.map((bigD) => {
+                          const subM = hier.get(bigD)!
+                          const sSubs = Array.from(subM.keys()).sort()
+                          return (
+                            <div key={bigD}>
+                              <p className="px-3 py-1 text-[10px] font-bold text-primary bg-primary/5 sticky top-0">
+                                {bigD}
+                              </p>
+                              {sSubs.map((subD) => {
+                                const subs2 = subM.get(subD)!
+                                const isAutres = subD === 'Autres'
+                                return (
+                                  <div key={subD}>
+                                    {!isAutres && (
+                                      <p className="px-4 py-0.5 text-[9px] font-semibold text-muted-foreground uppercase border-l-2 border-muted-foreground/20 ml-2">
+                                        {subD}
+                                      </p>
+                                    )}
+                                    {subs2.map((sub) => {
+                                      const isSelected = formSubjectName === sub.name
+                                      return (
+                                        <button
+                                          key={sub.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setFormSubjectName(sub.name)
+                                            setFormSubjectId(sub.id)
+                                          }}
+                                          className={`w-full text-left px-4 py-1.5 text-xs transition-colors flex items-center justify-between gap-2 ${
+                                            isSelected
+                                              ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 font-semibold'
+                                              : 'hover:bg-muted/60'
+                                          }`}
+                                        >
+                                          <span className="flex-1 truncate">
+                                            {isAutres ? sub.name : `${bigD}, ${subD}-${sub.name}, ${sub.name}`}
+                                          </span>
+                                          {sub.maxTJ != null && (
+                                            <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px] shrink-0">
+                                              TJ {sub.maxTJ}
+                                            </span>
+                                          )}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )
+                        })
+                      })()}
                     </div>
                   )}
                 </>

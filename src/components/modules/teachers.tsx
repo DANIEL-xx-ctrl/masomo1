@@ -26,6 +26,7 @@ import {
   Printer,
   Filter,
   MoreHorizontal,
+  Info,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
@@ -962,10 +963,10 @@ export default function TeachersModule() {
                           <TableCell className="font-medium">{teacher.lastName}</TableCell>
                           <TableCell>{teacher.firstName}</TableCell>
                           <TableCell>
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap gap-1 max-w-[220px]">
                               {getTeacherSubjects(teacher).map((subj, idx) => (
-                                <Badge key={`${subj}-${idx}`} variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800">
-                                  {subj}
+                                <Badge key={`${subj}-${idx}`} variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800 max-w-full">
+                                  <span className="truncate max-w-[200px]" title={subj}>{subj}</span>
                                 </Badge>
                               ))}
                             </div>
@@ -1074,9 +1075,9 @@ export default function TeachersModule() {
                               <Badge
                                 key={`${subj}-${idx}`}
                                 variant="outline"
-                                className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800 text-xs max-w-full truncate"
+                                className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800 text-xs max-w-full"
                               >
-                                <span className="truncate">{subj}</span>
+                                <span className="truncate max-w-[140px]" title={subj}>{subj}</span>
                               </Badge>
                             ))}
                             <Badge
@@ -1270,11 +1271,6 @@ export default function TeachersModule() {
                     added to the `subjects` array and displayed as a removable
                     badge below. */}
                 <div className="flex gap-2">
-                  {institutionType === 'primaire' ? (
-                    <div className="flex-1 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 text-xs text-blue-700 dark:text-blue-300">
-                      École Primaire : l'enseignant enseigne toutes les matières automatiquement. Sélectionnez ci-dessous pour préciser ses spécialités.
-                    </div>
-                  ) : null}
                   <Select value="" onValueChange={(v) => {
                     if (!v) return
                     // Ajouter directement la matière sélectionnée
@@ -1339,13 +1335,15 @@ export default function TeachersModule() {
                       <Badge
                         key={`${subj}-${idx}`}
                         variant="secondary"
-                        className="gap-1 pr-1"
+                        className="gap-1 pr-1 max-w-full"
                       >
-                        {subj}
+                        <span className="truncate max-w-[180px]" title={subj}>
+                          {subj}
+                        </span>
                         <button
                           type="button"
                           onClick={() => removeSubject(idx)}
-                          className="rounded-full hover:bg-muted-foreground/20 p-0.5"
+                          className="rounded-full hover:bg-muted-foreground/20 p-0.5 shrink-0"
                           aria-label={`Retirer ${subj}`}
                         >
                           <X className="w-3 h-3" />
@@ -1471,6 +1469,17 @@ export default function TeachersModule() {
             )}
           </div>
 
+          {/* Note explicative en bas du modal — affichée en petits caractères,
+              en ligne, uniquement pour les écoles primaires. */}
+          {institutionType === 'primaire' && (
+            <p className="text-[11px] leading-snug text-muted-foreground flex items-center gap-1 flex-wrap">
+              <Info className="h-3 w-3 shrink-0 text-blue-500" />
+              <span>
+                Si c&apos;est l&apos;école primaire, l&apos;enseignant enseigne toutes les matières — la sélection ci-dessus sert uniquement à préciser ses spécialités.
+              </span>
+            </p>
+          )}
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>
               Annuler
@@ -1510,8 +1519,8 @@ export default function TeachersModule() {
                     </h3>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       {getTeacherSubjects(viewingTeacher).map((subj, idx) => (
-                        <Badge key={`${subj}-${idx}`} variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800">
-                          {subj}
+                        <Badge key={`${subj}-${idx}`} variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/20 dark:text-teal-400 dark:border-teal-800 max-w-full">
+                          <span className="truncate max-w-[200px]" title={subj}>{subj}</span>
                         </Badge>
                       ))}
                       <Badge
