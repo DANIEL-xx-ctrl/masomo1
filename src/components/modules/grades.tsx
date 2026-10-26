@@ -19,6 +19,7 @@ import {
   FileSpreadsheet,
   FileType2,
   ChevronDown,
+  X,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -246,6 +247,9 @@ export default function GradesModule() {
   // Filters
   const [filterClassId, setFilterClassId] = useState<string>('all');
   const [filterSubjectId, setFilterSubjectId] = useState<string>('all');
+  // Filtres hiérarchiques en cascade : Titre → Sous-titre → Matière
+  const [filterSubjectTitle, setFilterSubjectTitle] = useState<string>('all');
+  const [filterSubjectSubtitle, setFilterSubjectSubtitle] = useState<string>('all');
   const [filterDegree, setFilterDegree] = useState<string>('all');
   const [filterTrimester, setFilterTrimester] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
@@ -494,6 +498,18 @@ export default function GradesModule() {
     ? subjects.filter((s) => s.degree === filterDegree || (!s.degree && filterDegree === 'elementaire'))
     : subjects;
 
+  // Subjects further filtered by the selected Title (cascade niveau 1).
+  // Si filterSubjectTitle === 'all', on garde tout.
+  const subjectsFilteredByTitle = filterSubjectTitle !== 'all'
+    ? visibleSubjects.filter((s) => (s.title || 'Autres') === filterSubjectTitle)
+    : visibleSubjects;
+
+  // Subjects further filtered by the selected Subtitle (cascade niveau 2).
+  // Si filterSubjectSubtitle === 'all', on garde ceux du titre sélectionné.
+  const subjectsFilteredBySubtitle = filterSubjectSubtitle !== 'all'
+    ? subjectsFilteredByTitle.filter((s) => (s.subtitle || 'Autres') === filterSubjectSubtitle)
+    : subjectsFilteredByTitle;
+
   // When the degree changes, reset the class and subject filters so they
   // don't reference classes/subjects that are no longer visible.
   useEffect(() => {
@@ -505,6 +521,29 @@ export default function GradesModule() {
       setFilterSubjectId('all');
     }
   }, [filterDegree, isPrimaire, visibleClasses, visibleSubjects, filterClassId, filterSubjectId]);
+
+  // When the selected Title changes, reset the Subtitle and Matière filters
+  // so they don't reference subtitles/subjects that are no longer visible.
+  useEffect(() => {
+    if (filterSubjectSubtitle !== 'all') {
+      const availableSubtitles = subjectsFilteredByTitle.map((s) => s.subtitle || 'Autres');
+      if (!availableSubtitles.includes(filterSubjectSubtitle)) {
+        setFilterSubjectSubtitle('all');
+      }
+    }
+    if (filterSubjectId !== 'all' && !subjectsFilteredByTitle.some((s) => s.id === filterSubjectId)) {
+      setFilterSubjectId('all');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterSubjectTitle]);
+
+  // When the selected Subtitle changes, reset the Matière filter
+  useEffect(() => {
+    if (filterSubjectId !== 'all' && !subjectsFilteredBySubtitle.some((s) => s.id === filterSubjectId)) {
+      setFilterSubjectId('all');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterSubjectSubtitle]);
 
   // Filter grades client-side for type and search
   // Le filtre type doit matcher plusieurs variantes car les notes en base
@@ -1054,7 +1093,13 @@ export default function GradesModule() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {/* ── Barre de filtres ──
+              Sur desktop : 2 lignes
+                Ligne 1 : Classe | Titre | Sous-titre | Matière
+                Ligne 2 : Trimestre | Type | Recherche
+              Sur mobile : empilés en 1 colonne */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* 1. Classe */}
             <Select value={filterClassId} onValueChange={setFilterClassId}>
               <SelectTrigger>
                 <SelectValue placeholder="Classe" />
@@ -1066,36 +1111,82 @@ export default function GradesModule() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* 2. Titre (cascade niveau 1) */}
+            <Select value={filterSubjectTitle} onValueChange={setFilterSubjectTitle}>
+              <SelectTrigger>
+                <SelectValue placeholder="Titre" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les titres</SelectItem>
+                {(() => {
+                  // Liste unique des titres, triés par ordre canonique
+                  const titles = Array.from(new Set(visibleSubjects.map((s) => s.title || 'Autres')))
+                  const sorted = titles.sort((a, b) => {
+                    const ia = TITLE_ORDER.indexOf(a)
+                    const ib = TITLE_ORDER.indexOf(b)
+                    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+                  })
+                  return sorted.map((t) => {
+                    const count = visibleSubjects.filter((s) => (s.title || 'Autres') === t).length
+                    return (
+                      <SelectItem key={t} value={t}>
+                        {t} <span className="text-[10px] text-muted-foreground">({count})</span>
+                      </SelectItem>
+                    )
+                  })
+                })()}
+              </SelectContent>
+            </Select>
+
+            {/* 3. Sous-titre (cascade niveau 2 — filtré par titre) */}
+            <Select value={filterSubjectSubtitle} onValueChange={setFilterSubjectSubtitle}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sous-titre" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les sous-titres</SelectItem>
+                {(() => {
+                  // Sous-titres filtrés par le titre sélectionné
+                  const subs = filterSubjectTitle !== 'all' ? subjectsFilteredByTitle : visibleSubjects
+                  const subtitles = Array.from(new Set(subs.map((s) => s.subtitle || 'Autres'))).sort()
+                  return subtitles.map((st) => {
+                    const count = subs.filter((s) => (s.subtitle || 'Autres') === st).length
+                    return (
+                      <SelectItem key={st} value={st}>
+                        {st} <span className="text-[10px] text-muted-foreground">({count})</span>
+                      </SelectItem>
+                    )
+                  })
+                })()}
+              </SelectContent>
+            </Select>
+
+            {/* 4. Matière (cascade niveau 3 — filtrée par titre + sous-titre) */}
             <Select value={filterSubjectId} onValueChange={setFilterSubjectId}>
               <SelectTrigger>
                 <SelectValue placeholder="Matière" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  Toutes les matières{isPrimaire && filterDegree !== 'all' ? ` (${visibleSubjects.length})` : ''}
+                  Toutes les matières ({subjectsFilteredBySubtitle.length})
                 </SelectItem>
-                {isPrimaire && filterDegree !== 'all' && visibleSubjects.length === 0 && (
+                {subjectsFilteredBySubtitle.length === 0 && (
                   <SelectItem value="_none" disabled>
-                    Aucune matière pour cette promotion
+                    Aucune matière{isPrimaire && filterDegree !== 'all' ? ' pour cette promotion' : ''}
                   </SelectItem>
                 )}
-                {(() => {
-                  // ── Hiérarchie lue directement depuis les champs DB title/subtitle/name ──
-                  const hierarchy = buildSubjectHierarchy(visibleSubjects)
-                  return hierarchy.flatMap(({ title, subtitles }) =>
-                    subtitles.flatMap(({ subtitle, subjects: subs }) =>
-                      subs.map((sub) => (
-                        <SelectItem key={sub.id} value={sub.id}>
-                          {subtitle === 'Autres' && title === 'Autres'
-                            ? sub.name
-                            : `${title}, ${subtitle}-${sub.name}, ${sub.name}`}
-                        </SelectItem>
-                      ))
-                    )
-                  )
-                })()}
+                {subjectsFilteredBySubtitle.map((sub) => (
+                  <SelectItem key={sub.id} value={sub.id}>
+                    {sub.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Deuxième ligne de filtres : Trimestre | Type | Recherche */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
             <Select value={filterTrimester} onValueChange={setFilterTrimester}>
               <SelectTrigger>
                 <SelectValue placeholder="Trimestre" />
@@ -1146,6 +1237,52 @@ export default function GradesModule() {
               />
             </div>
           </div>
+
+          {/* Récapitulatif des filtres matière actifs */}
+          {(filterSubjectTitle !== 'all' || filterSubjectSubtitle !== 'all' || filterSubjectId !== 'all') && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="font-semibold text-muted-foreground">Filtre matière :</span>
+              {filterSubjectTitle !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => { setFilterSubjectTitle('all'); setFilterSubjectSubtitle('all'); setFilterSubjectId('all'); }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                >
+                  {filterSubjectTitle}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {filterSubjectSubtitle !== 'all' && (
+                <>
+                  <span className="text-muted-foreground/60">›</span>
+                  <button
+                    type="button"
+                    onClick={() => { setFilterSubjectSubtitle('all'); setFilterSubjectId('all'); }}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900 transition-colors"
+                  >
+                    {filterSubjectSubtitle}
+                    <X className="w-3 h-3" />
+                  </button>
+                </>
+              )}
+              {filterSubjectId !== 'all' && (() => {
+                const selected = subjects.find((s) => s.id === filterSubjectId)
+                return (
+                  <>
+                    <span className="text-muted-foreground/60">›</span>
+                    <button
+                      type="button"
+                      onClick={() => setFilterSubjectId('all')}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900 transition-colors"
+                    >
+                      {selected?.name || '—'}
+                      <X className="w-3 h-3" />
+                    </button>
+                  </>
+                )
+              })()}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1721,11 +1858,11 @@ export default function GradesModule() {
                 Quand on sélectionne une période dans un dropdown, le max
                 correspondant s'affiche et la zone de saisie devient active. */}
             <div className="grid gap-2">
-              <Label>
-                Trimestre &amp; Période *
+              <Label className="flex flex-col gap-0.5">
+                <span>Trimestre &amp; Période *</span>
                 {selectedFormSubject && (
-                  <span className="text-xs text-muted-foreground ml-1 font-normal">
-                    (max période: {selectedFormSubject.maxTJ ?? '—'} · max examen: {selectedFormSubject.maxEX ?? '—'})
+                  <span className="text-xs text-muted-foreground font-normal block">
+                    (max période : {selectedFormSubject.maxTJ ?? '—'} · max examen : {selectedFormSubject.maxEX ?? '—'})
                   </span>
                 )}
               </Label>
@@ -2014,11 +2151,11 @@ export default function GradesModule() {
 
             {/* ── Trimestres avec dropdowns de périodes (édition) ── */}
             <div className="grid gap-2">
-              <Label>
-                Trimestre &amp; Période
+              <Label className="flex flex-col gap-0.5">
+                <span>Trimestre &amp; Période</span>
                 {selectedFormSubject && (
-                  <span className="text-xs text-muted-foreground ml-1 font-normal">
-                    (max période: {selectedFormSubject.maxTJ ?? '—'} · max examen: {selectedFormSubject.maxEX ?? '—'})
+                  <span className="text-xs text-muted-foreground font-normal block">
+                    (max période : {selectedFormSubject.maxTJ ?? '—'} · max examen : {selectedFormSubject.maxEX ?? '—'})
                   </span>
                 )}
               </Label>
