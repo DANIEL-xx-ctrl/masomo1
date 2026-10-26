@@ -34,7 +34,8 @@ export async function GET(request: Request) {
           select: { grades: true },
         },
       },
-      orderBy: [{ domain: 'asc' }, { name: 'asc' }],
+      // Tri hiérarchique : titre → sous-titre → matière
+      orderBy: [{ title: 'asc' }, { subtitle: 'asc' }, { name: 'asc' }],
     })
 
     const subjectsWithCount = subjects.map((subject) => ({
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { name, code, coefficient } = body
+    const { name, code, coefficient, title, subtitle, domain, degree, level, maxTJ, maxEX, maxTRIM, maxAnnuel } = body
 
     if (!name || !code) {
       return NextResponse.json(
@@ -80,6 +81,16 @@ export async function POST(request: Request) {
         name,
         code,
         coefficient: coefficient || 1,
+        title: title ?? null,
+        subtitle: subtitle ?? null,
+        // Si domain n'est pas fourni mais title l'est, on utilise title comme domain (compatibilité arrière)
+        domain: domain ?? title ?? null,
+        degree: degree ?? null,
+        level: level ?? null,
+        maxTJ: maxTJ ?? null,
+        maxEX: maxEX ?? null,
+        maxTRIM: maxTRIM ?? null,
+        maxAnnuel: maxAnnuel ?? null,
       },
     })
 
