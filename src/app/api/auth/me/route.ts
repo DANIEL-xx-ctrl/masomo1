@@ -21,6 +21,10 @@ export async function GET(request: Request) {
         },
         teacher: true,
         parent: true,
+        staff: true,
+        institution: {
+          select: { id: true, name: true, institutionType: true, currentYear: true, active: true },
+        },
       },
     })
 
@@ -31,9 +35,15 @@ export async function GET(request: Request) {
       )
     }
 
-    const { password: _, ...userWithoutPassword } = user
+    const { password: _, institution: __, ...userWithoutPassword } = user
 
-    return NextResponse.json({ user: userWithoutPassword })
+    return NextResponse.json({
+      user: {
+        ...userWithoutPassword,
+        institutionName: user.institution?.name || null,
+        institutionType: user.institution?.institutionType || null,
+      },
+    })
   } catch (error) {
     console.error('Get current user error:', error)
     return NextResponse.json(
