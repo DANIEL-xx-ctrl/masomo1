@@ -287,13 +287,21 @@ export default function TeachersModule() {
 
   // Fetch subjects (pre-filtered by institution type on the backend).
   // Used to populate the datalist suggestions when adding a teacher's subjects.
-  const [subjects, setSubjects] = useState<Array<{ id: string; name: string; domain?: string | null; degree?: string | null }>>([])
+  // On inclut title + subtitle (hiérarchie à 3 niveaux stockée en DB).
+  const [subjects, setSubjects] = useState<Array<{ id: string; name: string; title?: string | null; subtitle?: string | null; domain?: string | null; degree?: string | null }>>([])
   const [institutionType, setInstitutionType] = useState<string>('secondaire')
   useEffect(() => {
     fetch('/api/subjects')
       .then((r) => r.json())
       .then((d) => {
-        setSubjects((d.subjects || []).map((s: any) => ({ id: s.id, name: s.name, domain: s.domain, degree: s.degree })))
+        setSubjects((d.subjects || []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          title: s.title,
+          subtitle: s.subtitle,
+          domain: s.domain,
+          degree: s.degree,
+        })))
         setInstitutionType(d.institutionType || 'secondaire')
       })
       .catch(() => {})
@@ -1284,29 +1292,32 @@ export default function TeachersModule() {
                     </SelectTrigger>
                     <SelectContent>
                       {(() => {
-                        const subToBig: Record<string, string> = {
-                          'Langues congolaises': 'DOMAINE DES LANGUES',
-                          'Français': 'DOMAINE DES LANGUES',
-                          'Mathématiques': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
-                          'Sciences': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
-                          'Technologie': 'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
-                          'Univers social': "DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",
-                          'Arts': 'DOMAINE DES ARTS',
-                          'Développement personnel': 'DOMAINE DU DÉVELOPPEMENT PERSONNEL',
-                          'Autres': 'Autres',
-                        }
-                        const bigOrd = ['DOMAINE DES LANGUES','DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',"DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",'DOMAINE DES ARTS','DOMAINE DU DÉVELOPPEMENT PERSONNEL','Autres']
+                        // Hiérarchie lue directement depuis les champs DB
+                        // title/subtitle/name — plus de mappage côté frontend.
+                        const TITLE_ORDER = [
+                          'DOMAINE DES LANGUES',
+                          'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE',
+                          "DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT",
+                          'DOMAINE DES ARTS',
+                          'DOMAINE DU DÉVELOPPEMENT PERSONNEL',
+                          'Autres',
+                        ]
                         const hier = new Map<string, Map<string, typeof subjects>>()
                         for (const s of subjects) {
-                          const sub = (s as any).domain || 'Autres'
-                          const big = subToBig[sub] || (sub.toUpperCase().startsWith('DOMAINE') ? sub : 'Autres')
-                          if (!hier.has(big)) hier.set(big, new Map())
-                          const sm = hier.get(big)!
-                          if (!sm.has(sub)) sm.set(sub, [])
-                          sm.get(sub)!.push(s)
+                          const title = (s as any).title || (s as any).domain || 'Autres'
+                          const subtitle = (s as any).subtitle || 'Autres'
+                          // Si domain ressemble à un titre (commence par DOMAINE),
+                          // l'utiliser comme titre et déduire le sous-titre du name
+                          const finalTitle = title.toUpperCase().startsWith('DOMAINE')
+                            ? title
+                            : (subtitle !== 'Autres' ? title : 'Autres')
+                          if (!hier.has(finalTitle)) hier.set(finalTitle, new Map())
+                          const sm = hier.get(finalTitle)!
+                          if (!sm.has(subtitle)) sm.set(subtitle, [])
+                          sm.get(subtitle)!.push(s)
                         }
                         const sBig = Array.from(hier.keys()).sort((a, b) => {
-                          const ia = bigOrd.indexOf(a), ib = bigOrd.indexOf(b)
+                          const ia = TITLE_ORDER.indexOf(a), ib = TITLE_ORDER.indexOf(b)
                           return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
                         })
                         return sBig.map((bigD) => {
@@ -1318,7 +1329,9 @@ export default function TeachersModule() {
                                 const subs2 = subM.get(subD)!
                                 return subs2.map((sub) => (
                                   <SelectItem key={sub.id} value={sub.name}>
-                                    {subD === 'Autres' ? sub.name : `${subD}-${sub.name}`}
+                                    {subD === 'Autres' && bigD === 'Autres'
+                                      ? sub.name
+                                      : `${bigD}, ${subD}-${sub.name}, ${sub.name}`}
                                   </SelectItem>
                                 ))
                               })}
