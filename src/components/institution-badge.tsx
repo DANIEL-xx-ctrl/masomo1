@@ -3,35 +3,51 @@
 import { motion } from 'framer-motion'
 import { School, ShieldCheck } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
+import { getInstitutionTypeLabel } from '@/lib/constants'
 
 /**
- * Petit badge animé affichant le nom de l'institution connectée.
+ * Petit badge animé affichant le TYPE de l'institution connectée
+ * (École Primaire / École Secondaire / Université) à la place du nom.
  *
- * - Pour le Super Admin : affiche le nom de l'institution actuellement sélectionnée
- *   (via activeInstitutionName), ou "Vue globale" si aucune n'est sélectionnée.
- * - Pour les autres rôles : affiche le nom de l'institution de l'utilisateur
- *   (via currentUser.institutionName).
+ * - Pour le Super Admin : affiche le type de l'institution actuellement sélectionnée
+ *   (via activeInstitutionType), ou "Vue globale" si aucune n'est sélectionnée.
+ * - Pour les autres rôles : affiche le type de l'institution de l'utilisateur
+ *   (via currentUser.institutionType).
  *
  * Le badge apparaît avec une animation douce (fade + slide + pulse subtil)
  * et est conçu pour s'afficher en petit format dans l'en-tête de l'application.
  */
+
 export function InstitutionBadge() {
   const currentUser = useAppStore((s) => s.currentUser)
   const activeInstitutionName = useAppStore((s) => s.activeInstitutionName)
+  const activeInstitutionType = useAppStore((s) => s.activeInstitutionType)
 
   const isSuperAdmin = currentUser?.role === 'super_admin'
 
-  // Détermine le nom à afficher
-  const institutionName = isSuperAdmin
-    ? (activeInstitutionName || 'Vue globale')
-    : (currentUser?.institutionName || null)
+  // Détermine le type à afficher
+  const institutionType = isSuperAdmin
+    ? (activeInstitutionType || null)
+    : (currentUser?.institutionType || null)
+
+  // Le libellé affichable
+  const label = isSuperAdmin
+    ? (activeInstitutionName
+        ? (getInstitutionTypeLabel(institutionType) || 'Institution')
+        : 'Vue globale')
+    : (getInstitutionTypeLabel(institutionType) || currentUser?.institutionName || null)
 
   // Si aucune information d'institution n'est disponible, on n'affiche rien
-  if (!institutionName) return null
+  if (!label) return null
+
+  // Clé d'animation : change quand le label change pour re-déclencher l'animation
+  const animKey = isSuperAdmin
+    ? `${activeInstitutionName || 'global'}-${label}`
+    : label
 
   return (
     <motion.div
-      key={institutionName} // re-déclenche l'animation quand le nom change
+      key={animKey}
       initial={{ opacity: 0, y: -6, scale: 0.92 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{
@@ -45,10 +61,10 @@ export function InstitutionBadge() {
         bg-primary/5 border border-primary/15
         text-primary
         text-[11px] font-medium
-        max-w-[140px] lg:max-w-[220px] xl:max-w-[280px]
+        max-w-[180px] lg:max-w-[240px] xl:max-w-[300px]
         shrink-0
       "
-      title={`Institution connectée : ${institutionName}`}
+      title={isSuperAdmin && activeInstitutionName ? `${activeInstitutionName} — ${label}` : label}
     >
       {isSuperAdmin ? (
         <ShieldCheck className="w-3 h-3 shrink-0" />
@@ -68,8 +84,9 @@ export function InstitutionBadge() {
       />
 
       <span className="truncate leading-tight">
-        {institutionName}
+        {label}
       </span>
     </motion.div>
   )
 }
+

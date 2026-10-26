@@ -52,7 +52,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAppStore } from '@/lib/store'
 import { useTheme } from 'next-themes'
-import { NAV_ITEMS, ROLE_LABELS } from '@/lib/constants'
+import { NAV_ITEMS, ROLE_LABELS, INSTITUTION_TYPE_LABELS } from '@/lib/constants'
 import { avatarUrl } from '@/lib/utils'
 import { useOfflineStatus } from '@/hooks/use-offline'
 import { onAvatarChanged } from '@/hooks/use-avatar-refresh'
@@ -186,7 +186,7 @@ function SidebarNav({
 }
 
 export default function AppShell() {
-  const { activeModule, setActiveModule, currentUser, logout, sidebarOpen, toggleSidebar, setSidebarOpen, login: updateStoreUser, schoolYear, activeInstitutionName } = useAppStore()
+  const { activeModule, setActiveModule, currentUser, logout, sidebarOpen, toggleSidebar, setSidebarOpen, login: updateStoreUser, schoolYear, activeInstitutionName, activeInstitutionType } = useAppStore()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -273,6 +273,7 @@ export default function AppShell() {
             avatar: data.user.resolvedAvatar ?? data.user.avatar ?? currentUser.avatar,
             updatedAt: data.user.updatedAt ?? currentUser.updatedAt,
             institutionName: data.user.institutionName ?? currentUser.institutionName ?? null,
+            institutionType: data.user.institutionType ?? currentUser.institutionType ?? null,
           })
         }
       } catch {
@@ -327,6 +328,7 @@ export default function AppShell() {
             avatar: data.user.resolvedAvatar ?? data.user.avatar ?? currentUser.avatar,
             updatedAt: data.user.updatedAt ?? currentUser.updatedAt,
             institutionName: data.user.institutionName ?? currentUser.institutionName ?? null,
+            institutionType: data.user.institutionType ?? currentUser.institutionType ?? null,
           })
         }
       } catch {
@@ -596,15 +598,15 @@ export default function AppShell() {
                 {MODULE_TITLES[activeModule]}
               </h1>
               <InstitutionBadge />
-              {/* Type d'institution */}
+              {/* Type d'institution (affiché en complément sur petits écrans) */}
               {currentUser?.role === 'super_admin' && activeInstitutionName && (
                 <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                  {activeInstitutionName}
+                  {INSTITUTION_TYPE_LABELS[activeInstitutionType || 'secondaire'] || 'Institution'}
                 </span>
               )}
-              {currentUser?.role !== 'super_admin' && currentUser?.institutionName && (
+              {currentUser?.role !== 'super_admin' && currentUser?.institutionType && (
                 <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                  {currentUser.institutionName}
+                  {INSTITUTION_TYPE_LABELS[currentUser.institutionType] || 'Institution'}
                 </span>
               )}
             </div>
@@ -705,16 +707,27 @@ export default function AppShell() {
                 © 2024 MASOMO — Système de Gestion Scolaire
               </p>
               <div className="flex items-center gap-3 flex-wrap justify-center">
-                {/* Institution name — visible especially on mobile where the
-                    header badge is hidden (InstitutionBadge has hidden md:inline-flex) */}
-                {(activeInstitutionName || currentUser?.institutionName) && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
-                    <Building2 className="w-3 h-3" />
-                    <span className="font-semibold text-primary truncate max-w-[150px]">
-                      {activeInstitutionName || currentUser?.institutionName}
-                    </span>
-                  </p>
-                )}
+                {/* Institution type — visible especially on mobile where the
+                    header badge is hidden (InstitutionBadge has hidden md:inline-flex).
+                    Affiche le TYPE (École Primaire / École Secondaire) à la place du nom. */}
+                {(() => {
+                  const typeLabel = currentUser?.role === 'super_admin'
+                    ? (activeInstitutionName
+                        ? (INSTITUTION_TYPE_LABELS[activeInstitutionType || 'secondaire'] || 'Institution')
+                        : null)
+                    : (currentUser?.institutionType
+                        ? (INSTITUTION_TYPE_LABELS[currentUser.institutionType] || 'Institution')
+                        : null)
+                  if (!typeLabel) return null
+                  return (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+                      <Building2 className="w-3 h-3" />
+                      <span className="font-semibold text-primary truncate max-w-[180px]">
+                        {typeLabel}
+                      </span>
+                    </p>
+                  )
+                })()}
                 {schoolYear && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
                     <CalendarDays className="w-3 h-3" />
