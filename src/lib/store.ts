@@ -23,7 +23,8 @@ interface AppState {
   activeInstitutionId: string | null;
   activeInstitutionName: string | null;
   activeInstitutionPassword: string | null;
-  setInstitution: (id: string, name: string, password: string) => void;
+  activeInstitutionType: string | null;
+  setInstitution: (id: string, name: string, password: string, type?: string | null) => void;
   clearInstitution: () => void;
 
   // UI
@@ -77,6 +78,7 @@ export const useAppStore = create<AppState>()(
           activeInstitutionId: null,
           activeInstitutionName: null,
           activeInstitutionPassword: null,
+          activeInstitutionType: null,
         }),
       logout: () =>
         set({
@@ -87,6 +89,7 @@ export const useAppStore = create<AppState>()(
           activeInstitutionId: null,
           activeInstitutionName: null,
           activeInstitutionPassword: null,
+          activeInstitutionType: null,
         }),
 
       // Super Admin profile extra fields
@@ -111,17 +114,20 @@ export const useAppStore = create<AppState>()(
       activeInstitutionId: null,
       activeInstitutionName: null,
       activeInstitutionPassword: null,
-      setInstitution: (id, name, password) =>
+      activeInstitutionType: null,
+      setInstitution: (id, name, password, type) =>
         set({
           activeInstitutionId: id,
           activeInstitutionName: name,
           activeInstitutionPassword: password,
+          activeInstitutionType: type ?? null,
         }),
       clearInstitution: () =>
         set({
           activeInstitutionId: null,
           activeInstitutionName: null,
           activeInstitutionPassword: null,
+          activeInstitutionType: null,
         }),
 
       // UI
@@ -166,6 +172,7 @@ export const useAppStore = create<AppState>()(
         activeInstitutionId: state.activeInstitutionId,
         activeInstitutionName: state.activeInstitutionName,
         activeInstitutionPassword: state.activeInstitutionPassword,
+        activeInstitutionType: state.activeInstitutionType,
       }),
     }
   )

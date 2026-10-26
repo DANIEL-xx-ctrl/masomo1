@@ -374,6 +374,22 @@ export const CLASS_PROMOTION_LABELS: Record<string, string> = Object.fromEntries
   CLASS_PROMOTIONS.map((p) => [p.value, p.label])
 );
 
+// ---------- Institution Types ----------
+// Map les valeurs brutes de `Institution.institutionType` vers des libellés
+// affichables en français (utilisés par le badge d'en-tête et le pied de page).
+export const INSTITUTION_TYPE_LABELS: Record<string, string> = {
+  primaire: 'École Primaire',
+  secondaire: 'École Secondaire',
+  universite: 'Université',
+  université: 'Université',
+};
+
+/** Retourne le libellé français d'un type d'institution. */
+export function getInstitutionTypeLabel(type?: string | null): string {
+  if (!type) return '';
+  return INSTITUTION_TYPE_LABELS[type] || '';
+}
+
 /** Récupère le degree (elementaire/moyen/terminal) à partir d'une promotion. */
 export function promotionToDegree(promotion: string | null | undefined): string | null {
   if (!promotion) return null;

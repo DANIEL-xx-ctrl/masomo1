@@ -96,6 +96,7 @@ export interface User {
   userCode: string | null;
   institutionId: string | null;
   institutionName?: string | null;
+  institutionType?: string | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
