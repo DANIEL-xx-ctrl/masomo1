@@ -111,7 +111,7 @@ export async function POST(request: Request) {
         parent: true,
         staff: true,
         institution: {
-          select: { id: true, name: true, active: true, currentYear: true },
+          select: { id: true, name: true, active: true, currentYear: true, institutionType: true },
         },
       },
     })
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
           parent: true,
           staff: true,
           institution: {
-            select: { id: true, name: true, active: true, currentYear: true },
+            select: { id: true, name: true, active: true, currentYear: true, institutionType: true },
           },
         },
       })
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
               parent: true,
               staff: true,
               institution: {
-                select: { id: true, name: true, active: true, currentYear: true },
+                select: { id: true, name: true, active: true, currentYear: true, institutionType: true },
               },
             },
           })
@@ -181,7 +181,7 @@ export async function POST(request: Request) {
             parent: true,
             staff: true,
             institution: {
-              select: { id: true, name: true, active: true, currentYear: true },
+              select: { id: true, name: true, active: true, currentYear: true, institutionType: true },
             },
           },
         })
@@ -209,7 +209,7 @@ export async function POST(request: Request) {
             parent: true,
             staff: true,
             institution: {
-              select: { id: true, name: true, active: true, currentYear: true },
+              select: { id: true, name: true, active: true, currentYear: true, institutionType: true },
             },
           },
         })
@@ -232,7 +232,7 @@ export async function POST(request: Request) {
           parent: true,
           staff: true,
           institution: {
-            select: { id: true, name: true, active: true, currentYear: true },
+            select: { id: true, name: true, active: true, currentYear: true, institutionType: true },
           },
         } as const
 
@@ -310,6 +310,7 @@ export async function POST(request: Request) {
       user: {
         ...userWithoutPassword,
         institutionName: user.institution?.name || null,
+        institutionType: user.institution?.institutionType || null,
       },
       message: 'Connexion réussie',
     })
