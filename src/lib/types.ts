@@ -219,6 +219,21 @@ export interface Subject {
   name: string;
   code: string;
   coefficient: number;
+  // Hiérarchie à 3 niveaux (stockée explicitement en DB) :
+  //   title    — TITRE (ex: "DOMAINE DES LANGUES")
+  //   subtitle — SOUS-TITRE (ex: "Français")
+  //   name     — MATIÈRE (ex: "Vocabulaire")
+  title?: string | null;
+  subtitle?: string | null;
+  // Legacy domain field — conservé pour compatibilité arrière.
+  domain?: string | null;
+  // Primary-school-specific fields
+  degree?: string | null;
+  level?: string | null;
+  maxTJ?: number | null;
+  maxEX?: number | null;
+  maxTRIM?: number | null;
+  maxAnnuel?: number | null;
   createdAt: string;
   updatedAt: string;
   // Relations
