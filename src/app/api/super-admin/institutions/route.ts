@@ -25,6 +25,7 @@ export async function GET() {
       password: inst.password,
       currentYear: inst.currentYear,
       active: inst.active,
+      institutionType: inst.institutionType || 'secondaire',
       adminCount: inst.users.length,
       admins: inst.users,
       totalUsers: inst._count.users,
