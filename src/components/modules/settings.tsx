@@ -87,6 +87,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { useAppStore } from '@/lib/store'
 import { ROLE_LABELS, ROLES } from '@/lib/constants'
 import type { UserRole } from '@/lib/types'
@@ -4497,18 +4502,24 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                                       ? `${s.domain}-${s.name}` : s.name
                                     return (
                                     <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs hover:bg-muted/30 transition-colors">
-                                      <TooltipProvider delayDuration={300}>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span className="flex-1 font-medium text-[10px] sm:text-xs break-words whitespace-normal min-w-0 leading-tight cursor-help">
-                                              {subjectLabel}
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="top" className="max-w-[280px] text-xs break-words whitespace-normal z-50">
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <span
+                                            className="flex-1 font-medium text-[10px] sm:text-xs break-words whitespace-normal min-w-0 leading-tight cursor-pointer hover:text-primary hover:underline"
+                                            title={subjectLabel}
+                                          >
                                             {subjectLabel}
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
+                                          </span>
+                                        </PopoverTrigger>
+                                        <PopoverContent side="top" className="max-w-[280px] text-xs break-words whitespace-normal z-50 w-auto">
+                                          <p className="font-medium text-foreground">{subjectLabel}</p>
+                                          {s.code && <p className="text-[10px] text-muted-foreground mt-1">Code : {s.code}</p>}
+                                          {s.domain && !s.domain.toUpperCase().startsWith('DOMAINE') && (
+                                            <p className="text-[10px] text-muted-foreground">Domaine : {s.domain}</p>
+                                          )}
+                                          <p className="text-[10px] text-muted-foreground mt-1">Touchez pour fermer</p>
+                                        </PopoverContent>
+                                      </Popover>
                                       <div className="flex items-center gap-1.5 shrink-0">
                                         {s.maxTJ != null && (
                                           <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px]">

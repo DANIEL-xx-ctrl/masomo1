@@ -1524,7 +1524,7 @@ export default function GradesModule() {
           <DialogHeader>
             <DialogTitle>Ajouter une note</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+          <div className="flex flex-col gap-4 py-4 max-h-[60vh] overflow-y-auto overflow-x-hidden min-w-0">
             {/* Promotion (degré) — visible seulement pour les institutions primaires.
                 L'utilisateur doit d'abord sélectionner une promotion pour voir
                 les classes et matières correspondantes. */}
@@ -1714,7 +1714,7 @@ export default function GradesModule() {
                   return (
                     <>
                       {/* Cascade : 3 Selects côte à côte sur desktop, empilés sur mobile */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-0">
                         {/* 1. TITRE */}
                         <Select
                           value={formSubjectTitle || '_all'}
@@ -1866,7 +1866,7 @@ export default function GradesModule() {
                   </span>
                 )}
               </Label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-0">
                 {TRIMESTERS.map((t) => {
                   const periods = TRIMESTER_PERIODS[t.value];
                   const isActiveTrimester = formTrimester === t.value;
@@ -1981,7 +1981,7 @@ export default function GradesModule() {
           <DialogHeader>
             <DialogTitle>Modifier la note</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+          <div className="flex flex-col gap-4 py-4 max-h-[60vh] overflow-y-auto overflow-x-hidden min-w-0">
             {/* ── Matière (modifiable) — sélection hiérarchique en cascade
                     TITRE → SOUS-TITRE → MATIÈRE ── */}
             <div className="grid gap-2">
@@ -2018,7 +2018,7 @@ export default function GradesModule() {
                 return (
                   <>
                     {/* Cascade : 3 Selects côte à côte sur desktop, empilés sur mobile */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-0">
                       {/* 1. TITRE */}
                       <Select
                         value={formSubjectTitle || '_all'}
@@ -2159,7 +2159,7 @@ export default function GradesModule() {
                   </span>
                 )}
               </Label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-0">
                 {TRIMESTERS.map((t) => {
                   const periods = TRIMESTER_PERIODS[t.value];
                   const isActiveTrimester = formTrimester === t.value;
