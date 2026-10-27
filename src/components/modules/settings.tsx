@@ -81,6 +81,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useAppStore } from '@/lib/store'
 import { ROLE_LABELS, ROLES } from '@/lib/constants'
 import type { UserRole } from '@/lib/types'
@@ -4486,12 +4492,23 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
 
                                 {/* MATIÈRES */}
                                 <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
-                                  {subs.map((s) => (
+                                  {subs.map((s) => {
+                                    const subjectLabel = s.domain && !s.domain.toUpperCase().startsWith('DOMAINE')
+                                      ? `${s.domain}-${s.name}` : s.name
+                                    return (
                                     <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs hover:bg-muted/30 transition-colors">
-                                      <span className="flex-1 truncate font-medium">
-                                        {s.domain && !s.domain.toUpperCase().startsWith('DOMAINE')
-                                          ? `${s.domain}-${s.name}` : s.name}
-                                      </span>
+                                      <TooltipProvider delayDuration={300}>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="flex-1 font-medium text-[10px] sm:text-xs break-words whitespace-normal min-w-0 leading-tight cursor-help">
+                                              {subjectLabel}
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent side="top" className="max-w-[280px] text-xs break-words whitespace-normal z-50">
+                                            {subjectLabel}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
                                       <div className="flex items-center gap-1.5 shrink-0">
                                         {s.maxTJ != null && (
                                           <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px]">
@@ -4529,7 +4546,8 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                                         </button>
                                       </div>
                                     </div>
-                                  ))}
+                                    )
+                                  })}
                                 </div>
                               </div>
                             )

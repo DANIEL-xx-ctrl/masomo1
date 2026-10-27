@@ -1727,7 +1727,7 @@ export default function GradesModule() {
                             setFormSubjectId('');
                           }}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger className="text-xs sm:text-sm min-h-[2.5rem] h-auto [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:break-words [&_[data-slot=select-value]]:line-clamp-none">
                             <SelectValue placeholder="Titre…" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1752,7 +1752,7 @@ export default function GradesModule() {
                           }}
                           disabled={!formSubjectTitle}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger className="text-xs sm:text-sm min-h-[2.5rem] h-auto [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:break-words [&_[data-slot=select-value]]:line-clamp-none">
                             <SelectValue placeholder={formSubjectTitle ? 'Sous-titre…' : 'Choisir un titre d\'abord'} />
                           </SelectTrigger>
                           <SelectContent>
@@ -1781,7 +1781,7 @@ export default function GradesModule() {
                           }}
                           disabled={finalSubjects.length === 0}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger className="text-xs sm:text-sm min-h-[2.5rem] h-auto [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:break-words [&_[data-slot=select-value]]:line-clamp-none">
                             <SelectValue placeholder={finalSubjects.length === 0 ? 'Aucune matière' : 'Matière…'} />
                           </SelectTrigger>
                           <SelectContent>
@@ -1803,13 +1803,13 @@ export default function GradesModule() {
 
                       {/* Récapitulatif de la sélection en cours */}
                       {formSubjectId && formSubjectName && (
-                        <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-1">
+                        <div className="text-[10px] sm:text-xs text-muted-foreground flex flex-wrap items-center gap-1">
                           <span className="font-semibold text-foreground">Sélection :</span>
-                          {formSubjectTitle && <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">{formSubjectTitle}</span>}
+                          {formSubjectTitle && <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary break-words whitespace-normal min-w-0 max-w-full">{formSubjectTitle}</span>}
                           {formSubjectSubtitle && <span className="text-muted-foreground/60">›</span>}
-                          {formSubjectSubtitle && <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">{formSubjectSubtitle}</span>}
+                          {formSubjectSubtitle && <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 break-words whitespace-normal min-w-0 max-w-full">{formSubjectSubtitle}</span>}
                           <span className="text-muted-foreground/60">›</span>
-                          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-semibold">{formSubjectName}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-semibold break-words whitespace-normal min-w-0 max-w-full">{formSubjectName}</span>
                         </div>
                       )}
 
