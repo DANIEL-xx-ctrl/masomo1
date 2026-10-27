@@ -9,6 +9,7 @@ import {
 import { useAppStore } from '@/lib/store'
 import { useTheme } from 'next-themes'
 import { fireConfetti } from '@/lib/confetti'
+import { useOfflineStatus } from '@/hooks/use-offline'
 
 // ---------- Floating-label input ----------
 // The placeholder sits inside the input as a regular placeholder until the
@@ -137,6 +138,10 @@ export default function Login() {
   const login = useAppStore((s) => s.login)
   const setSchoolYear = useAppStore((s) => s.setSchoolYear)
   const { theme, setTheme } = useTheme()
+  // Detect offline state — when there's no network connection, the
+  // "Initialiser la base de données" button is meaningless (it would just
+  // fail with a network error), so we hide it to avoid confusing the user.
+  const { isOnline } = useOfflineStatus()
 
   // ---- Signup mode state ----
   // mode: 'login' | 'signup' — toggles between the connection form and the
@@ -521,7 +526,7 @@ export default function Login() {
                     </button>
                   </div>
 
-                  {dbEmpty && (
+                  {dbEmpty && isOnline && (
                     <button
                       type="button"
                       onClick={handleSeed}
@@ -540,6 +545,12 @@ export default function Login() {
                         </>
                       )}
                     </button>
+                  )}
+                  {dbEmpty && !isOnline && (
+                    <div className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-amber-500/30 text-amber-400/70 text-xs bg-amber-500/5">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>Hors ligne — réessayez avec une connexion internet active.</span>
+                    </div>
                   )}
                 </form>
 
