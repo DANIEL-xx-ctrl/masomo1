@@ -129,11 +129,12 @@ export function SchoolYearSelector() {
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          className="w-[124px] sm:w-[150px] h-9 gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10 text-primary shrink-0 justify-between"
+          className="w-9 sm:w-[150px] h-9 gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10 text-primary shrink-0 justify-between px-0 sm:px-3"
           aria-label="Année scolaire"
+          title={`Année scolaire : ${schoolYear}`}
         >
-          <CalendarDays className="w-4 h-4 text-primary shrink-0" />
-          <span className="truncate text-sm font-medium">{schoolYear}</span>
+          <CalendarDays className="w-4 h-4 text-primary shrink-0 mx-auto sm:mx-0" />
+          <span className="hidden sm:block truncate text-sm font-medium">{schoolYear}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent
