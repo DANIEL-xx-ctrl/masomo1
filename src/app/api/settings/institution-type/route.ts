@@ -44,6 +44,13 @@ export async function GET(request: Request) {
  * Body: { institutionType: "primaire" | "secondaire" | "universite" }
  * Updates the institution type. If "primaire" is selected, pre-seeds the
  * RDC primary school subjects with maxima if they don't exist yet.
+ *
+ * BUG FIX (issue 5): when the user switches to "primaire" while there are
+ * already subjects (level='primaire') that have grades/homeworks attached,
+ * the raw `db.subject.deleteMany({ where: { level: 'primaire' } })` fails
+ * with a foreign-key violation (Grade.subjectId + Homework.subjectId →
+ * Subject.id). To fix this, we delete the dependent rows first in a
+ * transaction, then delete the subjects, then re-seed.
  */
 export async function PATCH(request: Request) {
   try {
@@ -63,6 +70,14 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
     }
 
+    // Fetch the current institution type to decide whether we need to
+    // re-seed primary subjects (only when switching TO primaire).
+    const currentInstitution = await db.institution.findUnique({
+      where: { id: institutionId },
+      select: { institutionType: true },
+    })
+    const previousType = currentInstitution?.institutionType || 'secondaire'
+
     await db.institution.update({
       where: { id: institutionId },
       data: { institutionType },
@@ -73,11 +88,28 @@ export async function PATCH(request: Request) {
     // so the degree field is properly set.
     let seededCount = 0
     if (institutionType === 'primaire') {
-      // Delete existing primary subjects (level='primaire') that have no degree
-      // or are old-style — we replace them with the fresh set.
-      await db.subject.deleteMany({
+      // Collect the IDs of all existing primary subjects so we can safely
+      // cascade-delete their dependent rows (Grade, Homework) before the
+      // Subject.deleteMany() — otherwise Postgres throws a FK violation.
+      const existingPrimarySubjects = await db.subject.findMany({
         where: { level: 'primaire' },
+        select: { id: true },
       })
+      const subjectIds = existingPrimarySubjects.map((s) => s.id)
+
+      if (subjectIds.length > 0) {
+        await db.$transaction([
+          // 1. Delete all grades that point to these primary subjects.
+          db.grade.deleteMany({ where: { subjectId: { in: subjectIds } } }),
+          // 2. Delete all homeworks that point to these primary subjects.
+          // Homework.subjectId is optional (String?) — deleting homeworks
+          // is destructive but matches the user's intent when re-seeding
+          // the primary curriculum.
+          db.homework.deleteMany({ where: { subjectId: { in: subjectIds } } }),
+          // 3. Now safe to delete the primary subjects themselves.
+          db.subject.deleteMany({ where: { id: { in: subjectIds } } }),
+        ])
+      }
 
       const { PRIMARY_SUBJECTS } = await import('@/lib/primary-subjects')
       for (const s of PRIMARY_SUBJECTS) {
@@ -103,6 +135,12 @@ export async function PATCH(request: Request) {
           // Subject with this code may already exist (non-primary) — skip
         }
       }
+    } else if (previousType === 'primaire' && institutionType !== 'primaire') {
+      // Switching AWAY from primaire: keep the existing primary subjects
+      // (they may have grades attached and deleting them would lose data)
+      // but the institution's type has been updated above so the UI will
+      // stop showing the primary-school curriculum. The admin can manually
+      // delete unused primary subjects via the settings UI if desired.
     }
 
     return NextResponse.json({
@@ -115,4 +153,3 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
-
