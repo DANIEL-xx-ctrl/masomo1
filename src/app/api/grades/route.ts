@@ -32,24 +32,55 @@ export async function GET(request: Request) {
 
     if (studentId) where.studentId = studentId
     if (classId) where.classId = classId
-    // ── Case-insensitive subject filter ─────────────────────────
-    // The DB may contain duplicate-looking subjects with different cases
-    // (e.g. "Expression orale" lowercase + "Expression Orale" uppercase)
-    // — they are separate Subject records (different IDs) but represent
-    // the same course conceptually. When the user filters by one subject,
-    // we want to match grades from ALL subjects with the same name
-    // (case-insensitive), so selecting either returns the union of grades.
+    // ── Subject filter — case-insensitive on (name, title, subtitle) ──
+    // The DB contains several "subject" records that look the same to the user
+    // but differ in case (e.g. "Expression orale" lowercase legacy + "Expression
+    // Orale" uppercase from the RDC primary program) AND/OR in their
+    // title/subtitle attributes (e.g. one "Expression Orale" lives under
+    // `title=DOMAINE DES LANGUES, subtitle=Langues Congolaises`, another under
+    // `subtitle=Français`). They are separate Subject rows with their own IDs,
+    // but represent the same conceptual course.
+    //
+    // The user wants to:
+    //   - Match case-insensitively on the subject NAME (so "Expression orale"
+    //     and "Expression Orale" are treated as the same course) — this was
+    //     the v3 fix.
+    //   - BUT ALSO distinguish subjects that share the same name but live
+    //     under different (title, subtitle) groups. So "Expression Orale"
+    //     under (DOMAINE DES LANGUES, Français) must NOT return grades from
+    //     "Expression Orale" under (DOMAINE DES LANGUES, Langues Congolaises)
+    //     — these are different courses conceptually.
+    //
+    // The fix: when subjectId is provided, look up the pivot subject, then
+    // find ALL subjects with the same NAME (case-insensitive) AND the same
+    // TITLE (case-insensitive) AND the same SUBTITLE (case-insensitive).
+    // Grades from all those subject IDs are returned as the union.
     if (subjectId) {
       const pivot = await db.subject.findUnique({
         where: { id: subjectId },
-        select: { id: true, name: true },
+        select: { id: true, name: true, title: true, subtitle: true },
       })
       if (pivot) {
-        // Find all subjects with the same name (case-insensitive).
-        // Postgres `mode: 'insensitive'` performs a true case-insensitive
-        // comparison on the indexed text column.
+        // Build a Prisma filter that is case-insensitive on name + title +
+        // subtitle, AND matches NULL titles/subtitles exactly when the pivot
+        // has none (so the legacy "Expression orale" with title=null +
+        // subtitle=null doesn't get mixed with the structured "Expression
+        // Orale" under DOMAINE DES LANGUES / Langues Congolaises).
+        const sibFilter: Record<string, unknown> = {
+          name: { equals: pivot.name, mode: 'insensitive' },
+        }
+        if (pivot.title === null) {
+          sibFilter.title = null
+        } else {
+          sibFilter.title = { equals: pivot.title, mode: 'insensitive' }
+        }
+        if (pivot.subtitle === null) {
+          sibFilter.subtitle = null
+        } else {
+          sibFilter.subtitle = { equals: pivot.subtitle, mode: 'insensitive' }
+        }
         const siblings = await db.subject.findMany({
-          where: { name: { equals: pivot.name, mode: 'insensitive' } },
+          where: sibFilter,
           select: { id: true },
         })
         const ids = siblings.map((s) => s.id)
