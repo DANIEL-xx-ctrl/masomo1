@@ -594,7 +594,7 @@ export default function AppShell() {
 
             {/* Page title + Institution badge (nom + type) */}
             <div className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3">
-              <h1 className="text-base sm:text-lg font-semibold truncate">
+              <h1 className="hidden md:block text-base sm:text-lg font-semibold truncate shrink min-w-0">
                 {MODULE_TITLES[activeModule]}
               </h1>
               <InstitutionBadge />
@@ -602,18 +602,18 @@ export default function AppShell() {
                   (hidden md:inline-flex). On affiche donc un badge compact
                   avec le NOM + le TYPE pour que l'info reste visible. */}
               {currentUser?.role === 'super_admin' && activeInstitutionName && (
-                <span className="md:hidden inline-flex flex-col items-start gap-0 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 max-w-[100px] sm:max-w-[140px] leading-tight min-w-0 shrink">
-                  <span className="truncate w-full block">{activeInstitutionName}</span>
+                <span className="md:hidden flex flex-col items-stretch gap-0 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 flex-1 min-w-0 max-w-[140px] leading-tight">
+                  <span className="truncate w-full block leading-tight">{activeInstitutionName}</span>
                   {INSTITUTION_TYPE_LABELS[activeInstitutionType || 'secondaire'] && (
-                    <span className="shrink-0 opacity-80 text-[9px] leading-none whitespace-nowrap">· {INSTITUTION_TYPE_LABELS[activeInstitutionType || 'secondaire']}</span>
+                    <span className="opacity-80 text-[9px] leading-none truncate w-full block">{INSTITUTION_TYPE_LABELS[activeInstitutionType || 'secondaire']}</span>
                   )}
                 </span>
               )}
               {currentUser?.role !== 'super_admin' && currentUser?.institutionName && (
-                <span className="md:hidden inline-flex flex-col items-start gap-0 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 max-w-[100px] sm:max-w-[140px] leading-tight min-w-0 shrink">
-                  <span className="truncate w-full block">{currentUser.institutionName}</span>
+                <span className="md:hidden flex flex-col items-stretch gap-0 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 flex-1 min-w-0 max-w-[140px] leading-tight">
+                  <span className="truncate w-full block leading-tight">{currentUser.institutionName}</span>
                   {currentUser.institutionType && INSTITUTION_TYPE_LABELS[currentUser.institutionType] && (
-                    <span className="shrink-0 opacity-80 text-[9px] leading-none whitespace-nowrap">· {INSTITUTION_TYPE_LABELS[currentUser.institutionType]}</span>
+                    <span className="opacity-80 text-[9px] leading-none truncate w-full block">{INSTITUTION_TYPE_LABELS[currentUser.institutionType]}</span>
                   )}
                 </span>
               )}
