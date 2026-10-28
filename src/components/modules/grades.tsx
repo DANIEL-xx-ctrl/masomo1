@@ -197,11 +197,22 @@ function classLevelToDegree(level: string, promotion?: string | null): string | 
   return null;
 }
 
-/** Degree labels in French */
+/** Degree labels in French — full label is used as the `title` attribute
+ *  for accessibility, while the visible button text uses the short form
+ *  so the degree buttons fit on small mobile screens (Android/iOS). */
 const DEGREE_LABELS: Record<string, string> = {
   elementaire: 'Degré Élémentaire (1ère & 2ème)',
   moyen: 'Degré Moyen (3ème & 4ème)',
   terminal: 'Degré Terminal (5ème & 6ème)',
+}
+
+/** Short form of the degree labels — used for the button text so the
+ *  button fits in narrow containers on mobile. The full label is still
+ *  shown via the `title` attribute (long-press tooltip on touch). */
+const DEGREE_LABELS_SHORT: Record<string, string> = {
+  elementaire: 'Élémentaire',
+  moyen: 'Moyen',
+  terminal: 'Terminal',
 };
 
 /** Format an ISO date string (e.g. "2024-12-15") as a French date string. */
@@ -1072,12 +1083,13 @@ export default function GradesModule() {
                       key={degId}
                       size="sm"
                       variant={filterDegree === degId ? 'default' : 'outline'}
-                      className={filterDegree === degId ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+                      className={`min-w-0 ${filterDegree === degId ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}`}
                       onClick={() => setFilterDegree(degId)}
+                      title={degLabel}
                     >
-                      {degLabel}
+                      <span className="break-words whitespace-normal text-center leading-tight">{DEGREE_LABELS_SHORT[degId] || degLabel}</span>
                       {count > 0 && (
-                        <span className="ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
+                        <span className="ml-1.5 shrink-0 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
                           {count} classe{count > 1 ? 's' : ''}
                         </span>
                       )}
@@ -1543,7 +1555,7 @@ export default function GradesModule() {
                         size="sm"
                         type="button"
                         variant={formDegree === degId ? 'default' : 'outline'}
-                        className={formDegree === degId ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+                        className={`min-w-0 ${formDegree === degId ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}`}
                         onClick={() => {
                           setFormDegree(degId);
                           // Reset la classe et matière si elles ne correspondent plus
@@ -1552,10 +1564,11 @@ export default function GradesModule() {
                           setFormSubjectId('');
                           setFormSubjectName('');
                         }}
+                        title={degLabel}
                       >
-                        {degLabel}
+                        <span className="break-words whitespace-normal text-center leading-tight">{DEGREE_LABELS_SHORT[degId] || degLabel}</span>
                         {(count > 0 || subCount > 0) && (
-                          <span className="ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
+                          <span className="ml-1.5 shrink-0 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
                             {subCount} matière{subCount > 1 ? 's' : ''}
                           </span>
                         )}
