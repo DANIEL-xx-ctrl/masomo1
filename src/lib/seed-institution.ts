@@ -137,6 +137,8 @@ export interface SubjectRow {
   name: string
   code: string
   coefficient: number
+  title?: string
+  subtitle?: string
 }
 
 // ----------------------------------------------------------------------------

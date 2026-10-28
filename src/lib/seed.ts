@@ -133,6 +133,8 @@ interface SubjectRow {
   name: string
   code: string
   coefficient: number
+  title: string
+  subtitle: string
 }
 
 // ============================================================================
@@ -948,13 +950,17 @@ export async function runSeed() {
     })
 
     // ---- Create GLOBAL subjects (once, shared by all 3 institutions) ----
+    // Each subject follows the (titre, sous-titre, matière) hierarchy enforced
+    // by the rest of the app. Secondaire-level subjects that don't fit a
+    // primary domain are grouped under "Autres" / "Autres" so the filters and
+    // the bulletin-preview sections always have a non-null title+subtitle.
     const subjectsData = [
-      { name: 'Mathématiques', code: 'MATH', coefficient: 4 },
-      { name: 'Français', code: 'FR', coefficient: 4 },
-      { name: 'Anglais', code: 'ANG', coefficient: 3 },
-      { name: 'Histoire-Géo', code: 'HG', coefficient: 3 },
-      { name: 'SVT', code: 'SVT', coefficient: 3 },
-      { name: 'Physique-Chimie', code: 'PC', coefficient: 3 },
+      { name: 'Mathématiques', code: 'MATH', coefficient: 4, title: 'Autres', subtitle: 'Autres', level: 'secondaire' },
+      { name: 'Français', code: 'FR', coefficient: 4, title: 'Autres', subtitle: 'Autres', level: 'secondaire' },
+      { name: 'Anglais', code: 'ANG', coefficient: 3, title: 'Autres', subtitle: 'Autres', level: 'secondaire' },
+      { name: 'Histoire-Géo', code: 'HG', coefficient: 3, title: 'Autres', subtitle: 'Autres', level: 'secondaire' },
+      { name: 'SVT', code: 'SVT', coefficient: 3, title: 'Autres', subtitle: 'Autres', level: 'secondaire' },
+      { name: 'Physique-Chimie', code: 'PC', coefficient: 3, title: 'Autres', subtitle: 'Autres', level: 'secondaire' },
     ]
     const subjects: SubjectRow[] = []
     for (const s of subjectsData) {
@@ -964,6 +970,8 @@ export async function runSeed() {
         name: subject.name,
         code: subject.code,
         coefficient: subject.coefficient,
+        title: subject.title || 'Autres',
+        subtitle: subject.subtitle || 'Autres',
       })
     }
 
