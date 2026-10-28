@@ -32,7 +32,32 @@ export async function GET(request: Request) {
 
     if (studentId) where.studentId = studentId
     if (classId) where.classId = classId
-    if (subjectId) where.subjectId = subjectId
+    // ── Case-insensitive subject filter ─────────────────────────
+    // The DB may contain duplicate-looking subjects with different cases
+    // (e.g. "Expression orale" lowercase + "Expression Orale" uppercase)
+    // — they are separate Subject records (different IDs) but represent
+    // the same course conceptually. When the user filters by one subject,
+    // we want to match grades from ALL subjects with the same name
+    // (case-insensitive), so selecting either returns the union of grades.
+    if (subjectId) {
+      const pivot = await db.subject.findUnique({
+        where: { id: subjectId },
+        select: { id: true, name: true },
+      })
+      if (pivot) {
+        // Find all subjects with the same name (case-insensitive).
+        // Postgres `mode: 'insensitive'` performs a true case-insensitive
+        // comparison on the indexed text column.
+        const siblings = await db.subject.findMany({
+          where: { name: { equals: pivot.name, mode: 'insensitive' } },
+          select: { id: true },
+        })
+        const ids = siblings.map((s) => s.id)
+        where.subjectId = { in: ids.length > 0 ? ids : [subjectId] }
+      } else {
+        where.subjectId = subjectId
+      }
+    }
     if (trimester) where.trimester = trimester
     if (schoolYear) where.schoolYear = schoolYear
 
