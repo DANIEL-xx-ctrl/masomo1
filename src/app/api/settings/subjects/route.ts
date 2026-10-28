@@ -27,13 +27,19 @@ export async function GET(request: Request) {
 
 /**
  * POST /api/settings/subjects
- * Body: { name, code, coefficient, maxTJ, maxEX, maxTRIM, maxAnnuel, domain, level }
+ * Body: { name, code, coefficient, maxTJ, maxEX, maxTRIM, maxAnnuel, domain, level, title, subtitle, degree }
  * Creates a new subject with optional maxima.
+ *
+ * IMPORTANT: To enforce the (titre, sous-titre, matière) hierarchy used by
+ * the filters and bulletin previews, `title` and `subtitle` default to
+ * "Autres" when not provided. This guarantees no subject is ever created
+ * with null title/subtitle — which previously broke the case-insensitive
+ * subject filter (see /api/grades/route.ts).
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { name, code, coefficient, maxTJ, maxEX, maxTRIM, maxAnnuel, domain, level, degree } = body
+    const { name, code, coefficient, maxTJ, maxEX, maxTRIM, maxAnnuel, domain, level, title, subtitle, degree } = body
 
     if (!name || !code) {
       return NextResponse.json({ error: 'Nom et code requis' }, { status: 400 })
@@ -55,6 +61,12 @@ export async function POST(request: Request) {
         maxAnnuel: maxAnnuel || null,
         domain: domain || null,
         level: level || null,
+        // Default to "Autres"/"Autres" so the subject is always in a valid
+        // (title, subtitle, name) group — never null. The admin can later
+        // edit the title/subtitle via the UI if a more specific group is
+        // appropriate.
+        title: title || 'Autres',
+        subtitle: subtitle || 'Autres',
         degree: degree || null,
       },
     })
