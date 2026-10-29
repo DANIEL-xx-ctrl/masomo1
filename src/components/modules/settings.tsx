@@ -4343,7 +4343,8 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                                           </p>
 
                                           {/* MATIÈRES — 2 lines per course:
-                                              Line 1: titre › sous-titre › matière
+                                              Line 1: matière name only (titre & sous-titre already shown
+                                                      in the GROS TITRE / PETIT TITRE parents above)
                                               Line 2: TJ · EX · TR · Annuel badges */}
                                           <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
                                             {sdCourses.map((c: any, ci: number) => {
@@ -4353,13 +4354,11 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                                               const maxAnn = maxTR ? maxTR * trimesterCount : null
                                               return (
                                                 <div key={ci} className="flex flex-col gap-1 px-3 py-2 hover:bg-muted/30 transition-colors">
-                                                  {/* Line 1: titre › sous-titre › matière */}
+                                                  {/* Line 1: matière name only (titre & sous-titre already in parent headers) */}
                                                   <div className="flex items-center gap-1 text-[10px] sm:text-xs min-w-0 flex-wrap leading-tight">
-                                                    <span className="text-muted-foreground font-medium break-words whitespace-normal min-w-0">{dom.nom}</span>
-                                                    <span className="text-muted-foreground/50 shrink-0">›</span>
-                                                    <span className="text-muted-foreground break-words whitespace-normal min-w-0">{sd.nom}</span>
-                                                    <span className="text-muted-foreground/50 shrink-0">›</span>
-                                                    <span className="text-foreground font-semibold break-words whitespace-normal min-w-0">{c.nom}</span>
+                                                    <span className="text-foreground font-semibold break-words whitespace-normal min-w-0" title={`${dom.nom} › ${sd.nom} › ${c.nom}`}>
+                                                      {c.nom}
+                                                    </span>
                                                   </div>
                                                   {/* Line 2: TJ · EX · TR · Annuel */}
                                                   <div className="flex flex-wrap items-center gap-1 text-[10px]">
@@ -4504,23 +4503,16 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                                 )}
 
                                 {/* MATIÈRES — 2 lines per subject:
-                                    Line 1: titre › sous-titre › matière (+ edit/delete buttons on the right)
+                                    Line 1: matière name only (+ edit/delete buttons on the right)
+                                            — titre & sous-titre already shown in GROS TITRE / PETIT TITRE parents above
                                     Line 2: TJ · EX · TR · Annuel badges */}
                                 <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
                                   {subs.map((s) => {
                                     return (
                                     <div key={s.id} className="flex flex-col gap-1 px-3 py-2 hover:bg-muted/30 transition-colors">
-                                      {/* Line 1: titre › sous-titre › matière + action buttons */}
+                                      {/* Line 1: matière name only + action buttons */}
                                       <div className="flex items-center gap-1 text-[10px] sm:text-xs min-w-0 flex-wrap leading-tight">
-                                        <span className="text-muted-foreground font-medium break-words whitespace-normal min-w-0" title={s.title || 'Autres'}>
-                                          {s.title || 'Autres'}
-                                        </span>
-                                        <span className="text-muted-foreground/50 shrink-0">›</span>
-                                        <span className="text-muted-foreground break-words whitespace-normal min-w-0" title={s.subtitle || 'Autres'}>
-                                          {s.subtitle || 'Autres'}
-                                        </span>
-                                        <span className="text-muted-foreground/50 shrink-0">›</span>
-                                        <span className="text-foreground font-semibold break-words whitespace-normal min-w-0">
+                                        <span className="text-foreground font-semibold break-words whitespace-normal min-w-0" title={`${s.title || 'Autres'} › ${s.subtitle || 'Autres'} › ${s.name}`}>
                                           {s.name}
                                         </span>
                                         {/* Edit/Delete buttons on the right */}
