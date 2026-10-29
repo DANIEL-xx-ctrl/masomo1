@@ -1190,7 +1190,7 @@ export default function GradesModule() {
                 )}
                 {subjectsFilteredBySubtitle.map((sub) => (
                   <SelectItem key={sub.id} value={sub.id}>
-                    {sub.name}
+                    {sub.name}{sub.subtitle && sub.subtitle !== 'Autres' ? ` · ${sub.subtitle}` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1803,7 +1803,7 @@ export default function GradesModule() {
                             ) : (
                               finalSubjects.map((sub) => (
                                 <SelectItem key={sub.id} value={sub.id}>
-                                  {sub.name}
+                                  {sub.name}{sub.subtitle && sub.subtitle !== 'Autres' ? ` · ${sub.subtitle}` : ''}
                                   {sub.maxTJ != null && (
                                     <span className="ml-2 text-[10px] text-muted-foreground">TJ {sub.maxTJ}</span>
                                   )}
@@ -2104,7 +2104,7 @@ export default function GradesModule() {
                           ) : (
                             finalSubjects.map((sub) => (
                               <SelectItem key={sub.id} value={sub.id}>
-                                {sub.name}
+                                {sub.name}{sub.subtitle && sub.subtitle !== 'Autres' ? ` · ${sub.subtitle}` : ''}
                                 {sub.maxTJ != null && (
                                   <span className="ml-2 text-[10px] text-muted-foreground">TJ {sub.maxTJ}</span>
                                 )}
