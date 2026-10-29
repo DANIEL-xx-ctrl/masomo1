@@ -4342,7 +4342,9 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                                             {sd.nom}
                                           </p>
 
-                                          {/* MATIÈRES */}
+                                          {/* MATIÈRES — 2 lines per course:
+                                              Line 1: titre › sous-titre › matière
+                                              Line 2: TJ · EX · TR · Annuel badges */}
                                           <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
                                             {sdCourses.map((c: any, ci: number) => {
                                               const maxTJ = typeof c.maxPer === 'number' ? c.maxPer : null
@@ -4350,29 +4352,35 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                                               const maxTR = typeof c.maxTrim1 === 'number' ? c.maxTrim1 : null
                                               const maxAnn = maxTR ? maxTR * trimesterCount : null
                                               return (
-                                                <div key={ci} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs hover:bg-muted/30 transition-colors">
-                                                  <span className="flex-1 truncate font-medium">
-                                                    {sd.nom}-{c.nom}
-                                                  </span>
-                                                  <div className="flex items-center gap-1 shrink-0">
+                                                <div key={ci} className="flex flex-col gap-1 px-3 py-2 hover:bg-muted/30 transition-colors">
+                                                  {/* Line 1: titre › sous-titre › matière */}
+                                                  <div className="flex items-center gap-1 text-[10px] sm:text-xs min-w-0 flex-wrap leading-tight">
+                                                    <span className="text-muted-foreground font-medium break-words whitespace-normal min-w-0">{dom.nom}</span>
+                                                    <span className="text-muted-foreground/50 shrink-0">›</span>
+                                                    <span className="text-muted-foreground break-words whitespace-normal min-w-0">{sd.nom}</span>
+                                                    <span className="text-muted-foreground/50 shrink-0">›</span>
+                                                    <span className="text-foreground font-semibold break-words whitespace-normal min-w-0">{c.nom}</span>
+                                                  </div>
+                                                  {/* Line 2: TJ · EX · TR · Annuel */}
+                                                  <div className="flex flex-wrap items-center gap-1 text-[10px]">
                                                     {maxTJ != null && (
-                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px]">
+                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono">
                                                         TJ {maxTJ}
                                                       </span>
                                                     )}
                                                     {maxEX != null && (
-                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 font-mono text-[10px]">
+                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 font-mono">
                                                         EX {maxEX}
                                                       </span>
                                                     )}
                                                     {maxTR != null && (
-                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400 font-mono text-[10px]">
+                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400 font-mono">
                                                         TR {maxTR}
                                                       </span>
                                                     )}
                                                     {maxAnn != null && (
-                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-mono text-[10px] font-bold">
-                                                        {maxAnn}
+                                                      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-mono font-bold">
+                                                        Annuel {maxAnn}
                                                       </span>
                                                     )}
                                                   </div>
@@ -4495,66 +4503,66 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
                                   </p>
                                 )}
 
-                                {/* MATIÈRES */}
+                                {/* MATIÈRES — 2 lines per subject:
+                                    Line 1: titre › sous-titre › matière (+ edit/delete buttons on the right)
+                                    Line 2: TJ · EX · TR · Annuel badges */}
                                 <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
                                   {subs.map((s) => {
-                                    const subjectLabel = s.domain && !s.domain.toUpperCase().startsWith('DOMAINE')
-                                      ? `${s.domain}-${s.name}` : s.name
                                     return (
-                                    <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs hover:bg-muted/30 transition-colors">
-                                      <Popover>
-                                        <PopoverTrigger asChild>
-                                          <span
-                                            className="flex-1 font-medium text-[10px] sm:text-xs break-words whitespace-normal min-w-0 leading-tight cursor-pointer hover:text-primary hover:underline"
-                                            title={subjectLabel}
+                                    <div key={s.id} className="flex flex-col gap-1 px-3 py-2 hover:bg-muted/30 transition-colors">
+                                      {/* Line 1: titre › sous-titre › matière + action buttons */}
+                                      <div className="flex items-center gap-1 text-[10px] sm:text-xs min-w-0 flex-wrap leading-tight">
+                                        <span className="text-muted-foreground font-medium break-words whitespace-normal min-w-0" title={s.title || 'Autres'}>
+                                          {s.title || 'Autres'}
+                                        </span>
+                                        <span className="text-muted-foreground/50 shrink-0">›</span>
+                                        <span className="text-muted-foreground break-words whitespace-normal min-w-0" title={s.subtitle || 'Autres'}>
+                                          {s.subtitle || 'Autres'}
+                                        </span>
+                                        <span className="text-muted-foreground/50 shrink-0">›</span>
+                                        <span className="text-foreground font-semibold break-words whitespace-normal min-w-0">
+                                          {s.name}
+                                        </span>
+                                        {/* Edit/Delete buttons on the right */}
+                                        <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                                          <button
+                                            className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                            onClick={() => openEditSubject(s)}
+                                            title="Modifier"
                                           >
-                                            {subjectLabel}
-                                          </span>
-                                        </PopoverTrigger>
-                                        <PopoverContent side="top" className="max-w-[280px] text-xs break-words whitespace-normal z-50 w-auto">
-                                          <p className="font-medium text-foreground">{subjectLabel}</p>
-                                          {s.code && <p className="text-[10px] text-muted-foreground mt-1">Code : {s.code}</p>}
-                                          {s.domain && !s.domain.toUpperCase().startsWith('DOMAINE') && (
-                                            <p className="text-[10px] text-muted-foreground">Domaine : {s.domain}</p>
-                                          )}
-                                          <p className="text-[10px] text-muted-foreground mt-1">Touchez pour fermer</p>
-                                        </PopoverContent>
-                                      </Popover>
-                                      <div className="flex items-center gap-1.5 shrink-0">
+                                            <Pencil className="w-3 h-3" />
+                                          </button>
+                                          <button
+                                            className="p-0.5 rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                            onClick={() => setDeleteSubject(s)}
+                                            title="Supprimer"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                      {/* Line 2: TJ · EX · TR · Annuel badges */}
+                                      <div className="flex flex-wrap items-center gap-1 text-[10px]">
                                         {s.maxTJ != null && (
-                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono text-[10px]">
+                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 font-mono">
                                             TJ {s.maxTJ}
                                           </span>
                                         )}
                                         {s.maxEX != null && (
-                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 font-mono text-[10px]">
+                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400 font-mono">
                                             EX {s.maxEX}
                                           </span>
                                         )}
                                         {s.maxTRIM != null && (
-                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400 font-mono text-[10px]">
+                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-400 font-mono">
                                             TR {s.maxTRIM}
                                           </span>
                                         )}
                                         {s.maxAnnuel != null && (
-                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-mono text-[10px] font-bold">
-                                            {s.maxAnnuel}
+                                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-mono font-bold">
+                                            Annuel {s.maxAnnuel}
                                           </span>
                                         )}
-                                        <button
-                                          className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10"
-                                          onClick={() => openEditSubject(s)}
-                                          title="Modifier"
-                                        >
-                                          <Pencil className="w-3 h-3" />
-                                        </button>
-                                        <button
-                                          className="p-0.5 rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                          onClick={() => setDeleteSubject(s)}
-                                          title="Supprimer"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
                                       </div>
                                     </div>
                                     )
