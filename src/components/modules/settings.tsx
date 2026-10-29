@@ -3693,10 +3693,10 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
     const reference = deg?.reference || ''
     const maxGeneral = deg?.maxGeneralAnnuel || 0
 
-    // Group by domain
+    // Group by subtitle (falls back to legacy `domain` field for older subjects)
     const grouped: Record<string, typeof degreeSubjects> = {}
     for (const s of degreeSubjects) {
-      const key = s.domain || 'Autres'
+      const key = s.subtitle || s.domain || 'Autres'
       if (!grouped[key]) grouped[key] = []
       grouped[key].push(s)
     }
@@ -4457,8 +4457,15 @@ function InstitutionTypeSection({ currentUser }: InstitutionTypeSectionProps) {
 
               const hierMap = new Map<string, Map<string, typeof filteredSubjects>>()
               for (const s of filteredSubjects) {
-                const sub = s.domain || 'Autres'
-                const big = subToBig[sub] || (sub.toUpperCase().startsWith('DOMAINE') ? sub : 'Autres')
+                // Use the structured (title, subtitle) fields — NOT the legacy
+                // `domain` field which may be null after the DB migration.
+                // This ensures subjects are correctly grouped:
+                //   big  = s.title  (e.g. "DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE")
+                //   sub  = s.subtitle (e.g. "Mathématiques" / "Sciences" / "Technologie")
+                // Without this, subjects with domain=null all fall into "Autres"
+                // and Mathématiques / Sciences / Technologie get mixed together.
+                const sub = s.subtitle || s.domain || 'Autres'
+                const big = s.title || subToBig[sub] || (sub.toUpperCase().startsWith('DOMAINE') ? sub : 'Autres')
                 if (!hierMap.has(big)) hierMap.set(big, new Map())
                 const sm = hierMap.get(big)!
                 if (!sm.has(sub)) sm.set(sub, [])
