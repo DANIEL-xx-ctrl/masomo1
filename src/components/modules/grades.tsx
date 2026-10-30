@@ -509,17 +509,14 @@ export default function GradesModule() {
     ? subjects.filter((s) => s.degree === filterDegree || (!s.degree && filterDegree === 'elementaire'))
     : subjects;
 
-  // Subjects further filtered by the selected Title (cascade niveau 1).
-  // Si filterSubjectTitle === 'all', on garde tout.
-  const subjectsFilteredByTitle = filterSubjectTitle !== 'all'
-    ? visibleSubjects.filter((s) => (s.title || 'Autres') === filterSubjectTitle)
-    : visibleSubjects;
+  // ── INDEPENDENT filters (not cascade) ──
+  // Each of the 3 selects (Titre, Sous-titre, Matière) shows ALL available
+  // values from visibleSubjects. Changing one does NOT reset the others.
+  // The grade filtering applies all 3 independently (AND logic).
 
-  // Subjects further filtered by the selected Subtitle (cascade niveau 2).
-  // Si filterSubjectSubtitle === 'all', on garde ceux du titre sélectionné.
-  const subjectsFilteredBySubtitle = filterSubjectSubtitle !== 'all'
-    ? subjectsFilteredByTitle.filter((s) => (s.subtitle || 'Autres') === filterSubjectSubtitle)
-    : subjectsFilteredByTitle;
+  // Dropdown options: derived from visibleSubjects directly (independent)
+  const availableTitles = Array.from(new Set(visibleSubjects.map((s) => s.title || 'Autres'))).sort();
+  const availableSubtitles = Array.from(new Set(visibleSubjects.map((s) => s.subtitle || 'Autres'))).sort();
 
   // When the degree changes, reset the class and subject filters so they
   // don't reference classes/subjects that are no longer visible.
@@ -533,28 +530,7 @@ export default function GradesModule() {
     }
   }, [filterDegree, isPrimaire, visibleClasses, visibleSubjects, filterClassId, filterSubjectId]);
 
-  // When the selected Title changes, reset the Subtitle and Matière filters
-  // so they don't reference subtitles/subjects that are no longer visible.
-  useEffect(() => {
-    if (filterSubjectSubtitle !== 'all') {
-      const availableSubtitles = subjectsFilteredByTitle.map((s) => s.subtitle || 'Autres');
-      if (!availableSubtitles.includes(filterSubjectSubtitle)) {
-        setFilterSubjectSubtitle('all');
-      }
-    }
-    if (filterSubjectId !== 'all' && !subjectsFilteredByTitle.some((s) => s.id === filterSubjectId)) {
-      setFilterSubjectId('all');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterSubjectTitle]);
-
-  // When the selected Subtitle changes, reset the Matière filter
-  useEffect(() => {
-    if (filterSubjectId !== 'all' && !subjectsFilteredBySubtitle.some((s) => s.id === filterSubjectId)) {
-      setFilterSubjectId('all');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterSubjectSubtitle]);
+  // NO cascade resets — the 3 filters are independent.
 
   // Filter grades client-side for type and search
   // Le filtre type doit matcher plusieurs variantes car les notes en base
@@ -587,6 +563,21 @@ export default function GradesModule() {
 
   const filteredGrades = grades.filter((grade) => {
     if (filterType && filterType !== 'all' && !matchesType(grade.type || '', filterType)) return false;
+    // ── Independent subject filters (AND logic) ──
+    // Each filter is applied independently. If only one is set, only that
+    // one restricts the grades. If multiple are set, all must match.
+    if (filterSubjectTitle !== 'all') {
+      const gradeTitle = grade.subject?.title || 'Autres';
+      if (gradeTitle !== filterSubjectTitle) return false;
+    }
+    if (filterSubjectSubtitle !== 'all') {
+      const gradeSubtitle = grade.subject?.subtitle || 'Autres';
+      if (gradeSubtitle !== filterSubjectSubtitle) return false;
+    }
+    // filterSubjectId is already sent to the API (which does case-insensitive
+    // name+title+subtitle matching). When subjectId is set AND title/subtitle
+    // are also set, the API narrows by subjectId and the client further
+    // narrows by title/subtitle (redundant but correct — AND logic).
     if (searchQuery) {
       const name = grade.student
         ? `${grade.student.firstName} ${grade.student.lastName}`.toLowerCase()
@@ -1151,7 +1142,7 @@ export default function GradesModule() {
               </SelectContent>
             </Select>
 
-            {/* 3. Sous-titre (cascade niveau 2 — filtré par titre) */}
+            {/* 2. Sous-titre — INDEPENDANT (affiche TOUS les sous-titres, pas de cascade) */}
             <Select value={filterSubjectSubtitle} onValueChange={setFilterSubjectSubtitle}>
               <SelectTrigger>
                 <SelectValue placeholder="Sous-titre" />
@@ -1159,11 +1150,10 @@ export default function GradesModule() {
               <SelectContent>
                 <SelectItem value="all">Tous les sous-titres</SelectItem>
                 {(() => {
-                  // Sous-titres filtrés par le titre sélectionné
-                  const subs = filterSubjectTitle !== 'all' ? subjectsFilteredByTitle : visibleSubjects
-                  const subtitles = Array.from(new Set(subs.map((s) => s.subtitle || 'Autres'))).sort()
+                  // Tous les sous-titres disponibles — indépendant du titre sélectionné
+                  const subtitles = availableSubtitles
                   return subtitles.map((st) => {
-                    const count = subs.filter((s) => (s.subtitle || 'Autres') === st).length
+                    const count = visibleSubjects.filter((s) => (s.subtitle || 'Autres') === st).length
                     return (
                       <SelectItem key={st} value={st}>
                         {st} <span className="text-[10px] text-muted-foreground">({count})</span>
@@ -1174,21 +1164,21 @@ export default function GradesModule() {
               </SelectContent>
             </Select>
 
-            {/* 4. Matière (cascade niveau 3 — filtrée par titre + sous-titre) */}
+            {/* 4. Matière — INDEPENDANT (affiche TOUTES les matières, pas de cascade) */}
             <Select value={filterSubjectId} onValueChange={setFilterSubjectId}>
               <SelectTrigger>
                 <SelectValue placeholder="Matière" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  Toutes les matières ({subjectsFilteredBySubtitle.length})
+                  Toutes les matières ({visibleSubjects.length})
                 </SelectItem>
-                {subjectsFilteredBySubtitle.length === 0 && (
+                {visibleSubjects.length === 0 && (
                   <SelectItem value="_none" disabled>
                     Aucune matière{isPrimaire && filterDegree !== 'all' ? ' pour cette promotion' : ''}
                   </SelectItem>
                 )}
-                {subjectsFilteredBySubtitle.map((sub) => (
+                {visibleSubjects.map((sub) => (
                   <SelectItem key={sub.id} value={sub.id}>
                     {sub.name}{sub.subtitle && sub.subtitle !== 'Autres' ? ` · ${sub.subtitle}` : ''}
                   </SelectItem>
@@ -1257,7 +1247,7 @@ export default function GradesModule() {
               {filterSubjectTitle !== 'all' && (
                 <button
                   type="button"
-                  onClick={() => { setFilterSubjectTitle('all'); setFilterSubjectSubtitle('all'); setFilterSubjectId('all'); }}
+                  onClick={() => { setFilterSubjectTitle('all'); }}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                 >
                   {filterSubjectTitle}
@@ -1269,7 +1259,7 @@ export default function GradesModule() {
                   <span className="text-muted-foreground/60">›</span>
                   <button
                     type="button"
-                    onClick={() => { setFilterSubjectSubtitle('all'); setFilterSubjectId('all'); }}
+                    onClick={() => { setFilterSubjectSubtitle('all'); }}
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900 transition-colors"
                   >
                     {filterSubjectSubtitle}
