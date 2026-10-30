@@ -20,6 +20,8 @@ import {
   FileType2,
   Wallet,
   X,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,6 +40,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -95,6 +107,14 @@ export default function BulletinsModule() {
   // Individual bulletin export (PDF / Excel)
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+
+  // ===== Bulletin deletion =====
+  // Bulletin currently targeted by the delete confirmation dialog (null when
+  // the dialog is closed). The dialog asks for explicit confirmation before
+  // calling DELETE /api/bulletins/[id] — we never silently destroy a
+  // generated bulletin.
+  const [deleteTarget, setDeleteTarget] = useState<Bulletin | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // ===== Proclamation list =====
   type Period = 'trimester' | 'semester' | 'annual';
@@ -346,6 +366,47 @@ export default function BulletinsModule() {
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Export Excel impossible');
     } finally {
       setExportingExcel(false);
+    }
+  };
+
+  // ===== Bulletin deletion =====
+  // Open the confirmation dialog for a specific bulletin. Triggered from
+  // either the card's delete button or the detail dialog's delete button.
+  const handleDeleteClick = (bulletin: Bulletin) => {
+    setDeleteTarget(bulletin);
+  };
+
+  // Confirmed deletion — calls DELETE /api/bulletins/[id] and refreshes the
+  // list on success. We also close the detail dialog if it was open for the
+  // same bulletin.
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/bulletins/${deleteTarget.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Erreur ${res.status}`);
+      }
+      // If the detail dialog is showing the bulletin we just deleted, close it.
+      if (detailBulletin?.id === deleteTarget.id) {
+        setDetailDialogOpen(false);
+        setDetailBulletin(null);
+        setDetailGrades([]);
+      }
+      addToast(
+        'success',
+        'Bulletin supprimé',
+        deleteTarget.student
+          ? `Le bulletin de ${deleteTarget.student.firstName} ${deleteTarget.student.lastName} (${TRIMESTER_LABELS[deleteTarget.trimester] || deleteTarget.trimester}) a été supprimé.`
+          : 'Le bulletin a été supprimé.'
+      );
+      setDeleteTarget(null);
+      fetchBulletins();
+    } catch (error) {
+      addToast('error', 'Erreur', error instanceof Error ? error.message : 'Impossible de supprimer le bulletin');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -665,20 +726,91 @@ export default function BulletinsModule() {
                     )}
                   </div>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-4"
-                    onClick={(e) => { e.stopPropagation(); openDetail(bulletin); }}
-                  >
-                    <Eye className="w-4 h-4 mr-2" /> Voir le bulletin
-                  </Button>
+                  <div className="flex gap-2 mt-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={(e) => { e.stopPropagation(); openDetail(bulletin); }}
+                    >
+                      <Eye className="w-4 h-4 mr-2" /> Voir le bulletin
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(bulletin); }}
+                      title="Supprimer ce bulletin"
+                      aria-label={`Supprimer le bulletin de ${bulletin.student?.firstName || ''} ${bulletin.student?.lastName || ''}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
           ))}
         </div>
       )}
+
+      {/* ===== Delete confirmation dialog =====
+          The user must confirm before a bulletin is destroyed. The dialog
+          shows the student name + trimester so there is no ambiguity about
+          which bulletin is being removed. The notes themselves are NOT
+          affected by this deletion — only the bulletin record. */}
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
+        <AlertDialogContent className="sm:max-w-[440px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400">
+                <AlertTriangle className="w-4 h-4" />
+              </span>
+              Supprimer ce bulletin ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget ? (
+                <>
+                  Vous êtes sur le point de supprimer le bulletin de{' '}
+                  <strong className="text-foreground">
+                    {deleteTarget.student ? `${deleteTarget.student.firstName} ${deleteTarget.student.lastName}` : 'cet élève'}
+                  </strong>{' '}
+                  pour le{' '}
+                  <strong className="text-foreground">
+                    {TRIMESTER_LABELS[deleteTarget.trimester] || deleteTarget.trimester}
+                  </strong>{' '}
+                  (année {deleteTarget.schoolYear || schoolYear}).
+                  <br /><br />
+                  Les notes de l'élève ne sont pas affectées — seul le bulletin édité est supprimé. Vous pourrez le regénérer à tout moment.
+                  <br /><br />
+                  Cette action est <strong className="text-red-600 dark:text-red-400">irréversible</strong>.
+                </>
+              ) : (
+                'Ce bulletin sera supprimé.'
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleConfirmDelete(); }}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 text-white focus-visible:ring-red-600"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Suppression…
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Supprimer le bulletin
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Generate Bulletin Dialog */}
       <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
@@ -969,6 +1101,16 @@ export default function BulletinsModule() {
 
           <DialogFooter className="print:hidden shrink-0 border-t bg-background px-6 py-3 mt-0">
             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2 w-full">
+              <Button
+                onClick={() => { if (detailBulletin) handleDeleteClick(detailBulletin); }}
+                disabled={!detailBulletin || deleting}
+                variant="outline"
+                className="w-full sm:w-auto sm:mr-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
+                title="Supprimer ce bulletin édité"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Supprimer
+              </Button>
               <Button
                 onClick={handleExportPdf}
                 disabled={exportingPdf || !detailBulletin}
