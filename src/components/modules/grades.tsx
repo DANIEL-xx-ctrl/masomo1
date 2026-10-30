@@ -122,6 +122,38 @@ const TITLE_ORDER = [
   'Autres',
 ]
 
+/**
+ * Abréviations affichées dans les dropdowns Titre pour éviter que les
+ * libellés longs (ex: "DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE")
+ * ne cassent la mise en page du SelectTrigger ou ne soient tronqués.
+ *
+ * Le `value` envoyé au formulaire reste le TITRE COMPLET (clé de la map)
+ * pour préserver la cohérence avec les données en DB ; seul l'affichage
+ * est abrégé. L'utilisateur peut survoler l'option pour voir le titre
+ * complet via l'attribut `title` (tooltip HTML natif).
+ */
+const TITLE_ABBREVIATIONS: Record<string, string> = {
+  'DOMAINE DES LANGUES': 'Langues',
+  'DOMAINE DES MATHÉMATIQUES, SCIENCES ET TECHNOLOGIE': 'Maths · Sciences · Tech.',
+  "DOMAINE DE L'UNIVERS SOCIAL ET ENVIRONNEMENT": 'Univers social · Env.',
+  'DOMAINE DES ARTS': 'Arts',
+  'DOMAINE DU DÉVELOPPEMENT PERSONNEL': 'Dév. personnel',
+  'Autres': 'Autres',
+}
+
+/** Renvoie une version courte d'un TITRE.
+ *  - Si le titre est dans TITLE_ABBREVIATIONS → utilise l'abréviation officielle.
+ *  - Sinon, si le titre dépasse 28 caractères → tronque avec ellipsis « … ».
+ *  - Sinon → renvoie le titre tel quel. */
+function shortenTitle(title: string): string {
+  if (TITLE_ABBREVIATIONS[title]) return TITLE_ABBREVIATIONS[title];
+  if (title.length <= 28) return title;
+  // Coupe au dernier espace avant la limite pour couper proprement entre mots.
+  const cut = title.slice(0, 25);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 8 ? cut.slice(0, lastSpace) : cut) + '…';
+}
+
 /** Construit la hiérarchie titre → sous-titre → matières à partir d'une liste
  *  de subjects, en utilisant les champs `title` et `subtitle` stockés en DB.
  *  Si title/subtitle sont null, on regroupe sous "Autres". */
@@ -1132,8 +1164,8 @@ export default function GradesModule() {
                   return sorted.map((t) => {
                     const count = visibleSubjects.filter((s) => (s.title || 'Autres') === t).length
                     return (
-                      <SelectItem key={t} value={t}>
-                        {t} <span className="text-[10px] text-muted-foreground">({count})</span>
+                      <SelectItem key={t} value={t} title={t}>
+                        {shortenTitle(t)} <span className="text-[10px] text-muted-foreground">({count})</span>
                       </SelectItem>
                     )
                   })
@@ -1247,9 +1279,10 @@ export default function GradesModule() {
                 <button
                   type="button"
                   onClick={() => { setFilterSubjectTitle('all'); }}
+                  title={filterSubjectTitle}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                 >
-                  {filterSubjectTitle}
+                  {shortenTitle(filterSubjectTitle)}
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -1735,8 +1768,8 @@ export default function GradesModule() {
                           <SelectContent>
                             <SelectItem value="_all">Tous les titres</SelectItem>
                             {hierarchy.map((h) => (
-                              <SelectItem key={h.title} value={h.title}>
-                                {h.title}
+                              <SelectItem key={h.title} value={h.title} title={h.title}>
+                                {shortenTitle(h.title)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -1807,7 +1840,7 @@ export default function GradesModule() {
                       {formSubjectId && formSubjectName && (
                         <div className="text-[10px] sm:text-xs text-muted-foreground flex flex-wrap items-center gap-1">
                           <span className="font-semibold text-foreground">Sélection :</span>
-                          {formSubjectTitle && <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary break-words whitespace-normal min-w-0 max-w-full">{formSubjectTitle}</span>}
+                          {formSubjectTitle && <span title={formSubjectTitle} className="px-1.5 py-0.5 rounded bg-primary/10 text-primary break-words whitespace-normal min-w-0 max-w-full">{shortenTitle(formSubjectTitle)}</span>}
                           {formSubjectSubtitle && <span className="text-muted-foreground/60">›</span>}
                           {formSubjectSubtitle && <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 break-words whitespace-normal min-w-0 max-w-full">{formSubjectSubtitle}</span>}
                           <span className="text-muted-foreground/60">›</span>
@@ -2038,8 +2071,8 @@ export default function GradesModule() {
                         <SelectContent>
                           <SelectItem value="_all">Tous les titres</SelectItem>
                           {hierarchy.map((h) => (
-                            <SelectItem key={h.title} value={h.title}>
-                              {h.title}
+                            <SelectItem key={h.title} value={h.title} title={h.title}>
+                              {shortenTitle(h.title)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -2108,7 +2141,7 @@ export default function GradesModule() {
                     {formSubjectId && formSubjectName && (
                       <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-1">
                         <span className="font-semibold text-foreground">Sélection :</span>
-                        {formSubjectTitle && <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">{formSubjectTitle}</span>}
+                        {formSubjectTitle && <span title={formSubjectTitle} className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">{shortenTitle(formSubjectTitle)}</span>}
                         {formSubjectSubtitle && <span className="text-muted-foreground/60">›</span>}
                         {formSubjectSubtitle && <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">{formSubjectSubtitle}</span>}
                         <span className="text-muted-foreground/60">›</span>
