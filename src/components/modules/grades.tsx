@@ -518,17 +518,14 @@ export default function GradesModule() {
   const availableTitles = Array.from(new Set(visibleSubjects.map((s) => s.title || 'Autres'))).sort();
   const availableSubtitles = Array.from(new Set(visibleSubjects.map((s) => s.subtitle || 'Autres'))).sort();
 
-  // When the degree changes, reset the class and subject filters so they
-  // don't reference classes/subjects that are no longer visible.
+  // When the degree changes, reset only the subject filter (NOT the class
+  // filter — the class dropdown now shows ALL classes regardless of degree).
   useEffect(() => {
     if (!isPrimaire) return;
-    if (filterClassId !== 'all' && !visibleClasses.some((c) => c.id === filterClassId)) {
-      setFilterClassId('all');
-    }
     if (filterSubjectId !== 'all' && !visibleSubjects.some((s) => s.id === filterSubjectId)) {
       setFilterSubjectId('all');
     }
-  }, [filterDegree, isPrimaire, visibleClasses, visibleSubjects, filterClassId, filterSubjectId]);
+  }, [filterDegree, isPrimaire, visibleSubjects, filterSubjectId]);
 
   // NO cascade resets — the 3 filters are independent.
 
@@ -1109,8 +1106,10 @@ export default function GradesModule() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toutes les classes</SelectItem>
-                {visibleClasses.map((cls) => (
-                  <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+                {classes.map((cls) => (
+                  <SelectItem key={cls.id} value={cls.id}>
+                    {cls.name}{cls.promotion ? ` (${DEGREE_LABELS_SHORT[classLevelToDegree(cls.level, cls.promotion) || ''] || ''})` : ''}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
