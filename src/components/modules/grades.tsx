@@ -141,13 +141,22 @@ const TITLE_ABBREVIATIONS: Record<string, string> = {
   'Autres': 'Autres',
 }
 
-/** Renvoie une version courte d'un TITRE.
- *  - Si le titre est dans TITLE_ABBREVIATIONS → utilise l'abréviation officielle.
- *  - Sinon, si le titre dépasse 28 caractères → tronque avec ellipsis « … ».
- *  - Sinon → renvoie le titre tel quel. */
+/** Renvoie une version courte d'un TITRE — mais SEULEMENT si le titre est
+ *  réellement long (> 28 caractères). Les titres courts (ex: "DOMAINE DES
+ *  ARTS", "Autres") sont renvoyés tels quels pour préserver la lisibilité.
+ *
+ *  - Si le titre est court (≤ 28 caractères) → renvoyé tel quel.
+ *  - Sinon, si le titre est dans TITLE_ABBREVIATIONS → abréviation officielle.
+ *  - Sinon → tronqué avec ellipsis « … ».
+ *
+ *  Utilisé uniquement pour l'affichage APRES sélection (SelectTrigger,
+ *  chips de filtre actif, breadcrumb). Les items des dropdowns affichent
+ *  toujours le titre COMPLET — l'utilisateur choisit parmi les titres
+ *  complets, puis l'abréviation prend le relais dans la zone sélectionnée
+ *  pour éviter les débordements. */
 function shortenTitle(title: string): string {
-  if (TITLE_ABBREVIATIONS[title]) return TITLE_ABBREVIATIONS[title];
   if (title.length <= 28) return title;
+  if (TITLE_ABBREVIATIONS[title]) return TITLE_ABBREVIATIONS[title];
   // Coupe au dernier espace avant la limite pour couper proprement entre mots.
   const cut = title.slice(0, 25);
   const lastSpace = cut.lastIndexOf(' ');
@@ -1149,7 +1158,16 @@ export default function GradesModule() {
             {/* 2. Titre (cascade niveau 1) */}
             <Select value={filterSubjectTitle} onValueChange={setFilterSubjectTitle}>
               <SelectTrigger>
-                <SelectValue placeholder="Titre" />
+                {/* Affichage après sélection : « Tous les titres » si pas de
+                    filtre, sinon l'abréviation pour les titres longs (le
+                    titre complet reste affiché pour les titres courts et
+                    dans la liste déroulante ci-dessous). Tooltip natif =
+                    titre complet pour lever toute ambiguïté. */}
+                {filterSubjectTitle === 'all' ? (
+                  <span>Tous les titres</span>
+                ) : (
+                  <span title={filterSubjectTitle} className="truncate">{shortenTitle(filterSubjectTitle)}</span>
+                )}
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les titres</SelectItem>
@@ -1164,8 +1182,8 @@ export default function GradesModule() {
                   return sorted.map((t) => {
                     const count = visibleSubjects.filter((s) => (s.title || 'Autres') === t).length
                     return (
-                      <SelectItem key={t} value={t} title={t}>
-                        {shortenTitle(t)} <span className="text-[10px] text-muted-foreground">({count})</span>
+                      <SelectItem key={t} value={t}>
+                        {t} <span className="text-[10px] text-muted-foreground">({count})</span>
                       </SelectItem>
                     )
                   })
@@ -1763,13 +1781,21 @@ export default function GradesModule() {
                           }}
                         >
                           <SelectTrigger className="text-xs sm:text-sm min-h-[2.5rem] h-auto [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:break-words [&_[data-slot=select-value]]:line-clamp-none">
-                            <SelectValue placeholder="Titre…" />
+                            {/* Affichage après sélection : « Tous les titres »
+                                si rien de choisi, sinon l'abréviation pour les
+                                titres longs. Le titre complet reste affiché
+                                dans la liste déroulante ci-dessous. */}
+                            {!formSubjectTitle ? (
+                              <span className="text-muted-foreground">Tous les titres</span>
+                            ) : (
+                              <span title={formSubjectTitle} className="truncate" data-slot="select-value">{shortenTitle(formSubjectTitle)}</span>
+                            )}
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="_all">Tous les titres</SelectItem>
                             {hierarchy.map((h) => (
-                              <SelectItem key={h.title} value={h.title} title={h.title}>
-                                {shortenTitle(h.title)}
+                              <SelectItem key={h.title} value={h.title}>
+                                {h.title}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -2066,13 +2092,21 @@ export default function GradesModule() {
                         }}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Titre…" />
+                          {/* Affichage après sélection : « Tous les titres »
+                              si rien de choisi, sinon l'abréviation pour les
+                              titres longs. Le titre complet reste affiché
+                              dans la liste déroulante ci-dessous. */}
+                          {!formSubjectTitle ? (
+                            <span className="text-muted-foreground">Tous les titres</span>
+                          ) : (
+                            <span title={formSubjectTitle} className="truncate">{shortenTitle(formSubjectTitle)}</span>
+                          )}
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="_all">Tous les titres</SelectItem>
                           {hierarchy.map((h) => (
-                            <SelectItem key={h.title} value={h.title} title={h.title}>
-                              {shortenTitle(h.title)}
+                            <SelectItem key={h.title} value={h.title}>
+                              {h.title}
                             </SelectItem>
                           ))}
                         </SelectContent>
