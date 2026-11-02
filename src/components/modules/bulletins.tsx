@@ -1,38 +1,33 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ClipboardList,
-  Plus,
   Printer,
   Eye,
   Loader2,
   Award,
-  TrendingUp,
   Users,
-  Star,
-  ChevronDown,
-  ChevronUp,
   FileDown,
   FileSpreadsheet,
   Trophy,
   FileType2,
-  Wallet,
   X,
-  Trash2,
   AlertTriangle,
+  Search,
+  GraduationCap,
+  Hash,
+  Info,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
-import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -41,119 +36,158 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { useAppStore } from '@/lib/store';
 import { withSchoolYear } from '@/lib/utils';
-import {
-  TRIMESTERS,
-  TRIMESTER_LABELS,
-  GRADE_TYPE_LABELS,
-} from '@/lib/constants';
-import type { Bulletin, Class, Student, Grade, Subject } from '@/lib/types';
+import { TRIMESTERS, TRIMESTER_LABELS } from '@/lib/constants';
+import type { Class, Student } from '@/lib/types';
+
+// ============================================================================
+// Helpers — duplication légère de `bulletin-parser.ts` (côté client, sans
+// dépendance à `xlsx`). Sert à détecter le niveau (1-12) d'une classe depuis
+// son nom pour pré-trier les élèves selon le template de leur promotion.
+// ============================================================================
+
+/** Détecte le numéro de niveau (1-12) à partir d'un nom de classe. */
+function detectClassLevelClient(className: string): number {
+  if (!className) return 0;
+  const base = className.toLowerCase();
+  const m =
+    base.match(/(\d)[èe]me/) ||
+    base.match(/(\d)_?me/) ||
+    base.match(/(\d)_?re/) ||
+    base.match(/(\d)re/) ||
+    base.match(/(\d)/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/** Label joli pour un niveau numérique (ex: 4 → "4ème PRIMAIRE"). */
+function levelLabelClient(level: number): string {
+  const map: Record<number, string> = {
+    1: '1ère PRIMAIRE',
+    2: '2ème PRIMAIRE',
+    3: '3ème PRIMAIRE',
+    4: '4ème PRIMAIRE',
+    5: '5ème PRIMAIRE',
+    6: '6ème PRIMAIRE',
+    7: '1ère SECONDAIRE',
+    8: '2ème SECONDAIRE',
+    9: '3ème SECONDAIRE',
+    10: '4ème SECONDAIRE',
+    11: '5ème SECONDAIRE',
+    12: '6ème SECONDAIRE',
+  };
+  return map[level] || `Niveau ${level}`;
+}
+
+// ============================================================================
+// Types locaux
+// ============================================================================
+
+interface TemplateInfo {
+  id: string;
+  name: string;
+  level: number;
+  fileName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PreviewMeta {
+  templateName: string;
+  level: number;
+  sheetName: string;
+  subjectsCount: number;
+  gradesInserted: number;
+}
+
+// ============================================================================
+// Proclamation types (sous-module conservé mais compacté)
+// ============================================================================
+
+type Period = 'trimester' | 'semester' | 'annual';
+interface ProcEntry {
+  rank: number;
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  className: string;
+  classLevel: string;
+  average: number;
+  percentage: number;
+  appreciation: string;
+  mention: string;
+  passed: boolean;
+}
+interface ProcResult {
+  entries: ProcEntry[];
+  params: {
+    schoolYear: string;
+    period: Period;
+    periodLabel: string;
+    classLabel: string;
+    trimester: string | null;
+    semester: string | null;
+  };
+  institution: { name: string } | null;
+  stats: {
+    totalStudents: number;
+    passedCount: number;
+    failedCount: number;
+    classAverage: number;
+    successRate: number;
+    highestAverage: number;
+    lowestAverage: number;
+  };
+}
+
+// ============================================================================
+// Composant principal
+// ============================================================================
 
 export default function BulletinsModule() {
   const addToast = useAppStore((s) => s.addToast);
   const schoolYear = useAppStore((s) => s.schoolYear);
+  const currentUser = useAppStore((s) => s.currentUser);
+  const activeInstitutionId = useAppStore((s) => s.activeInstitutionId);
 
-  const [bulletins, setBulletins] = useState<Bulletin[]>([]);
+  // Institution effective : super_admin → activeInstitutionId ; sinon →
+  // l'institution de l'utilisateur courant.
+  const effectiveInstitutionId = useMemo(
+    () => activeInstitutionId || currentUser?.institutionId || null,
+    [activeInstitutionId, currentUser]
+  );
+
+  // ----- State -----
   const [classes, setClasses] = useState<Class[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [templates, setTemplates] = useState<TemplateInfo[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(true);
+  const [loadingTemplates, setLoadingTemplates] = useState(true);
 
-  // Filters
+  // Filtres
   const [filterClassId, setFilterClassId] = useState<string>('all');
-  const [filterTrimester, setFilterTrimester] = useState<string>('all');
+  const [studentSearch, setStudentSearch] = useState<string>('');
 
-  // Generate dialog
-  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [genStudentId, setGenStudentId] = useState('');
-  const [genClassId, setGenClassId] = useState('');
-  const [genTrimester, setGenTrimester] = useState<'1er' | '2eme' | '3eme'>('1er');
-  // Students belonging to the selected class (in the generate dialog).
-  // Reloaded every time the class changes, so the user only sees students
-  // actually enrolled in that class for the current school year.
-  const [genClassStudents, setGenClassStudents] = useState<Student[]>([]);
-  const [genClassStudentsLoading, setGenClassStudentsLoading] = useState(false);
+  // Élèves de la classe sélectionnée
+  const [classStudents, setClassStudents] = useState<Student[]>([]);
+  const [classStudentsLoading, setClassStudentsLoading] = useState(false);
 
-  // Detail view
-  const [detailBulletin, setDetailBulletin] = useState<Bulletin | null>(null);
-  const [detailGrades, setDetailGrades] = useState<Grade[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  // ----- State : prévisualisation du bulletin -----
+  const [previewStudent, setPreviewStudent] = useState<Student | null>(null);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string>('');
+  const [previewMeta, setPreviewMeta] = useState<PreviewMeta | null>(null);
+  const [previewError, setPreviewError] = useState<string>('');
+  const [exporting, setExporting] = useState<'xlsx' | 'pdf' | 'word' | null>(null);
 
-  // Individual bulletin export (PDF / Excel)
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const [exportingExcel, setExportingExcel] = useState(false);
-
-  // ===== Bulletin deletion =====
-  // Bulletin currently targeted by the delete confirmation dialog (null when
-  // the dialog is closed). The dialog asks for explicit confirmation before
-  // calling DELETE /api/bulletins/[id] — we never silently destroy a
-  // generated bulletin.
-  const [deleteTarget, setDeleteTarget] = useState<Bulletin | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  // ===== Proclamation list =====
-  type Period = 'trimester' | 'semester' | 'annual';
-  interface ProcEntry {
-    rank: number;
-    studentId: string;
-    firstName: string;
-    lastName: string;
-    fullName: string;
-    className: string;
-    classLevel: string;
-    average: number;
-    percentage: number;
-    appreciation: string;
-    mention: string;
-    passed: boolean;
-  }
-  interface ProcResult {
-    entries: ProcEntry[];
-    params: {
-      schoolYear: string;
-      period: Period;
-      periodLabel: string;
-      classLabel: string;
-      trimester: string | null;
-      semester: string | null;
-    };
-    institution: { name: string } | null;
-    stats: {
-      totalStudents: number;
-      passedCount: number;
-      failedCount: number;
-      classAverage: number;
-      successRate: number;
-      highestAverage: number;
-      lowestAverage: number;
-    };
-  }
-
+  // ----- State : proclamation (sous-module compacté) -----
   const [procDialogOpen, setProcDialogOpen] = useState(false);
   const [procPeriod, setProcPeriod] = useState<Period>('trimester');
   const [procClassId, setProcClassId] = useState<string>('all');
@@ -163,160 +197,160 @@ export default function BulletinsModule() {
   const [procResult, setProcResult] = useState<ProcResult | null>(null);
   const [procError, setProcError] = useState<string>('');
   const [procExporting, setProcExporting] = useState<'pdf' | 'excel' | 'word' | null>(null);
-  // Pre-selection of students: after the admin loads the candidate list for
-  // a class, they can check which students should appear in the proclamation.
-  // The "Passer à la proclamation" button MOVES the checked students into a
-  // separate "destination" zone (procConfirmedStudents). Only students in
-  // that zone appear in the generated proclamation list.
   const [procCandidates, setProcCandidates] = useState<Array<{ id: string; firstName: string; lastName: string; className: string }>>([]);
   const [procCandidatesLoading, setProcCandidatesLoading] = useState(false);
   const [procSelectedIds, setProcSelectedIds] = useState<Set<string>>(new Set());
-  // Destination zone — students moved here via "Passer à la proclamation".
-  // Only these students appear in the generated proclamation list.
   const [procConfirmedStudents, setProcConfirmedStudents] = useState<Array<{ id: string; firstName: string; lastName: string; className: string }>>([]);
 
+  // ============================================================================
+  // Fetchers
+  // ============================================================================
+
   const fetchClasses = useCallback(async () => {
+    setLoadingClasses(true);
     try {
       const res = await fetch(withSchoolYear('/api/classes', schoolYear));
       const data = await res.json();
       setClasses(data.classes || []);
     } catch {
       addToast('error', 'Erreur', 'Impossible de charger les classes');
+    } finally {
+      setLoadingClasses(false);
     }
   }, [addToast, schoolYear]);
 
-  // Fetch only the students belonging to a specific class (used in the
-  // generate-bulletin dialog). When no class is selected, the list is empty.
-  const fetchClassStudents = useCallback(async (classId: string) => {
-    if (!classId) {
-      setGenClassStudents([]);
+  const fetchTemplates = useCallback(async () => {
+    if (!effectiveInstitutionId) {
+      setTemplates([]);
+      setLoadingTemplates(false);
       return;
     }
-    setGenClassStudentsLoading(true);
+    setLoadingTemplates(true);
     try {
-      // Ask for a large limit so we get the whole class in one page.
+      const res = await fetch(`/api/bulletins/templates-by-level?institutionId=${effectiveInstitutionId}`);
+      const data = await res.json();
+      setTemplates(data.templates || []);
+    } catch {
+      // Silencieux : on continue avec templates vides (la carte élève montrera "pas de template")
+      setTemplates([]);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  }, [effectiveInstitutionId]);
+
+  const fetchClassStudents = useCallback(async (classId: string) => {
+    if (!classId) {
+      setClassStudents([]);
+      return;
+    }
+    setClassStudentsLoading(true);
+    try {
       const params = new URLSearchParams();
       params.set('classId', classId);
-      params.set('limit', '200');
+      params.set('limit', '300');
       params.set('status', 'all');
       const res = await fetch(withSchoolYear(`/api/students?${params.toString()}`, schoolYear));
       const data = await res.json();
-      setGenClassStudents(data.students || []);
+      setClassStudents(data.students || []);
     } catch {
       addToast('error', 'Erreur', 'Impossible de charger les élèves de cette classe');
-      setGenClassStudents([]);
+      setClassStudents([]);
     } finally {
-      setGenClassStudentsLoading(false);
+      setClassStudentsLoading(false);
     }
   }, [addToast, schoolYear]);
 
-  // Reload the student list whenever the selected class changes in the dialog.
-  // NOTE: we intentionally keep the dependency array minimal (genClassId +
-  // dialog open state) to avoid an infinite update loop — fetchClassStudents
-  // updates genClassStudents, which we must NOT list as a dependency here.
-  useEffect(() => {
-    if (generateDialogOpen) {
-      fetchClassStudents(genClassId);
-    }
-  }, [genClassId, generateDialogOpen, fetchClassStudents]);
+  // Effets initiaux
+  useEffect(() => { fetchClasses(); }, [fetchClasses]);
+  useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
-  // When the class-scoped student list changes, make sure the previously
-  // chosen student is still valid. If not, clear the selection. This runs as
-  // a separate effect to avoid coupling it to the fetch effect above.
+  // Recharge les élèves quand la classe change
   useEffect(() => {
-    if (genStudentId && genClassStudents.length > 0 && !genClassStudents.some((s) => s.id === genStudentId)) {
-      setGenStudentId('');
+    if (filterClassId && filterClassId !== 'all') {
+      fetchClassStudents(filterClassId);
+    } else {
+      setClassStudents([]);
     }
-  }, [genClassStudents, genStudentId]);
+  }, [filterClassId, fetchClassStudents]);
 
-  const fetchBulletins = useCallback(async () => {
-    setLoading(true);
+  // ============================================================================
+  // Map niveau → template disponible
+  // ============================================================================
+
+  const templatesByLevel = useMemo(() => {
+    const m = new Map<number, TemplateInfo>();
+    for (const t of templates) m.set(t.level, t);
+    return m;
+  }, [templates]);
+
+  // Pour chaque classe, calcule son niveau + indique si un template existe
+  const classInfoMap = useMemo(() => {
+    const m = new Map<string, { level: number; hasTemplate: boolean; templateName?: string }>();
+    for (const cls of classes) {
+      const level = detectClassLevelClient(cls.name) || detectClassLevelClient(cls.level);
+      const tpl = level > 0 ? templatesByLevel.get(level) : undefined;
+      m.set(cls.id, { level, hasTemplate: !!tpl, templateName: tpl?.name });
+    }
+    return m;
+  }, [classes, templatesByLevel]);
+
+  // Élèves filtrés par recherche
+  const filteredStudents = useMemo(() => {
+    if (!studentSearch.trim()) return classStudents;
+    const q = studentSearch.toLowerCase().trim();
+    return classStudents.filter((s) => {
+      const fullName = `${s.lastName} ${s.firstName}`.toLowerCase();
+      const userCode = (s as Student & { user?: { userCode?: string } }).user?.userCode || '';
+      return fullName.includes(q) || userCode.toLowerCase().includes(q);
+    });
+  }, [classStudents, studentSearch]);
+
+  // ============================================================================
+  // Actions : prévisualisation + export
+  // ============================================================================
+
+  /** Ouvre le dialog de prévisualisation pour un élève.
+   *  Appelle `/api/bulletins/template-rendered/preview` qui :
+   *    1. Charge le template Excel de la promotion de l'élève.
+   *    2. Trouve la feuille LISTE correspondante.
+   *    3. Efface toutes les lignes élèves (rows 3+) du template.
+   *    4. Insère UNE ligne avec : NOMS, N° ID (userCode), SEXE, DATE_NAISS,
+   *       CLASSE + les notes de l'élève placées dans les colonnes correspondant
+   *       aux en-têtes de cours (9 colonnes par matière : T1=P,P,EX puis
+   *       T2=P,P,EX puis T3=P,P,EX).
+   *    5. Renvoie le HTML de la feuille remplie (tableau fidèle au template).
+   */
+  const handlePreview = async (student: Student) => {
+    setPreviewStudent(student);
+    setPreviewDialogOpen(true);
+    setPreviewLoading(true);
+    setPreviewHtml('');
+    setPreviewMeta(null);
+    setPreviewError('');
     try {
       const params = new URLSearchParams();
+      params.set('studentId', student.id);
+      params.set('schoolYear', schoolYear);
       if (filterClassId && filterClassId !== 'all') params.set('classId', filterClassId);
-      if (filterTrimester && filterTrimester !== 'all') params.set('trimester', filterTrimester);
-      const res = await fetch(withSchoolYear(`/api/bulletins?${params.toString()}`, schoolYear));
-      const data = await res.json();
-      setBulletins(data.bulletins || []);
-    } catch {
-      addToast('error', 'Erreur', 'Impossible de charger les bulletins');
-    } finally {
-      setLoading(false);
-    }
-  }, [filterClassId, filterTrimester, schoolYear, addToast]);
-
-  useEffect(() => {
-    fetchClasses();
-  }, [fetchClasses]);
-
-  useEffect(() => {
-    fetchBulletins();
-  }, [fetchBulletins]);
-
-  const handleGenerate = async () => {
-    if (!genClassId) {
-      addToast('warning', 'Classe requise', 'Veuillez sélectionner une classe');
-      return;
-    }
-    if (!genStudentId || !genTrimester) {
-      addToast('warning', 'Champs requis', 'Veuillez sélectionner un élève et un trimestre');
-      return;
-    }
-    setGenerating(true);
-    try {
-      const res = await fetch('/api/bulletins', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId: genStudentId,
-          classId: genClassId || undefined,
-          trimester: genTrimester,
-          schoolYear,
-        }),
-      });
+      const res = await fetch(`/api/bulletins/template-rendered/preview?${params.toString()}`);
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Erreur serveur');
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Erreur ${res.status}`);
       }
-      addToast('success', 'Bulletin généré', 'Le bulletin a été généré avec succès');
-      setGenerateDialogOpen(false);
-      fetchBulletins();
-    } catch (error) {
-      addToast('error', 'Erreur', error instanceof Error ? error.message : 'Impossible de générer le bulletin');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const openDetail = async (bulletin: Bulletin) => {
-    setDetailBulletin(bulletin);
-    setDetailDialogOpen(true);
-    setDetailLoading(true);
-    try {
-      const res = await fetch(withSchoolYear(`/api/grades?studentId=${bulletin.studentId}&trimester=${bulletin.trimester}`, schoolYear));
       const data = await res.json();
-      setDetailGrades(data.grades || []);
-    } catch {
-      addToast('error', 'Erreur', 'Impossible de charger les détails du bulletin');
+      setPreviewHtml(data.html || '');
+      setPreviewMeta(data.meta || null);
+      if (!data.html) {
+        setPreviewError('Aperçu vide — vérifiez que le template contient bien une feuille LISTE.');
+      }
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : 'Impossible de générer l\'aperçu');
     } finally {
-      setDetailLoading(false);
+      setPreviewLoading(false);
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
-  // Build the export URL for a given format (pdf | excel), carrying the
-  // current schoolYear so the backend queries the right grades.
-  const buildExportUrl = (format: 'pdf' | 'excel') => {
-    const params = new URLSearchParams();
-    params.set('bulletinId', detailBulletin!.id);
-    params.set('schoolYear', detailBulletin!.schoolYear || schoolYear);
-    return withSchoolYear(`/api/bulletins/export/${format}?${params.toString()}`, schoolYear);
-  };
-
-  // Trigger a browser download for a binary blob returned by the export API.
+  /** Téléchargement générique d'un blob binaire renvoyé par l'API. */
   const triggerDownload = async (url: string, fallbackName: string) => {
     const res = await fetch(url);
     if (!res.ok) {
@@ -327,7 +361,6 @@ export default function BulletinsModule() {
     const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = objectUrl;
-    // Try to read the filename from Content-Disposition, otherwise fallback.
     const cd = res.headers.get('Content-Disposition') || '';
     const match = cd.match(/filename="?([^";]+)"?/);
     a.download = match ? match[1] : fallbackName;
@@ -337,80 +370,47 @@ export default function BulletinsModule() {
     URL.revokeObjectURL(objectUrl);
   };
 
-  const handleExportPdf = async () => {
-    if (!detailBulletin) return;
-    setExportingPdf(true);
-    try {
-      await triggerDownload(
-        buildExportUrl('pdf'),
-        `bulletin_${detailBulletin.student?.lastName || 'eleve'}_${detailBulletin.trimester}.pdf`
-      );
-      addToast('success', 'Export PDF', 'Le bulletin a été exporté en PDF');
-    } catch (error) {
-      addToast('error', 'Erreur', error instanceof Error ? error.message : 'Export PDF impossible');
-    } finally {
-      setExportingPdf(false);
-    }
+  /** Construit l'URL d'export pour un élève donné (format xlsx | pdf | word).
+   *  Le backend charge le template de la promotion, efface les lignes élèves,
+   *  insère la ligne de l'élève avec ses notes + N° ID, puis renvoie le
+   *  fichier dans le format demandé. Pour pdf/word, conversion via LibreOffice
+   *  headless — le résultat est conforme à la mise en page du template
+   *  (bordures, fusions, couleurs, largeurs de colonnes). */
+  const buildExportUrl = (format: 'xlsx' | 'pdf' | 'word') => {
+    const params = new URLSearchParams();
+    params.set('studentId', previewStudent!.id);
+    params.set('schoolYear', schoolYear);
+    params.set('format', format);
+    if (filterClassId && filterClassId !== 'all') params.set('classId', filterClassId);
+    return `/api/bulletins/template-rendered?${params.toString()}`;
   };
 
-  const handleExportExcel = async () => {
-    if (!detailBulletin) return;
-    setExportingExcel(true);
+  const handleExport = async (format: 'xlsx' | 'pdf' | 'word') => {
+    if (!previewStudent) return;
+    setExporting(format);
     try {
-      await triggerDownload(
-        buildExportUrl('excel'),
-        `bulletin_${detailBulletin.student?.lastName || 'eleve'}_${detailBulletin.trimester}.xlsx`
-      );
-      addToast('success', 'Export Excel', 'Le bulletin a été exporté en Excel');
-    } catch (error) {
-      addToast('error', 'Erreur', error instanceof Error ? error.message : 'Export Excel impossible');
-    } finally {
-      setExportingExcel(false);
-    }
-  };
-
-  // ===== Bulletin deletion =====
-  // Open the confirmation dialog for a specific bulletin. Triggered from
-  // either the card's delete button or the detail dialog's delete button.
-  const handleDeleteClick = (bulletin: Bulletin) => {
-    setDeleteTarget(bulletin);
-  };
-
-  // Confirmed deletion — calls DELETE /api/bulletins/[id] and refreshes the
-  // list on success. We also close the detail dialog if it was open for the
-  // same bulletin.
-  const handleConfirmDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      const res = await fetch(`/api/bulletins/${deleteTarget.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `Erreur ${res.status}`);
-      }
-      // If the detail dialog is showing the bulletin we just deleted, close it.
-      if (detailBulletin?.id === deleteTarget.id) {
-        setDetailDialogOpen(false);
-        setDetailBulletin(null);
-        setDetailGrades([]);
-      }
+      const ext = format === 'xlsx' ? 'xlsx' : format === 'pdf' ? 'pdf' : 'docx';
+      const safeName = `${previewStudent.lastName || 'eleve'}_${previewStudent.firstName || ''}_${schoolYear}`.replace(/\s+/g, '-');
+      await triggerDownload(buildExportUrl(format), `bulletin_${safeName}.${ext}`);
       addToast(
         'success',
-        'Bulletin supprimé',
-        deleteTarget.student
-          ? `Le bulletin de ${deleteTarget.student.firstName} ${deleteTarget.student.lastName} (${TRIMESTER_LABELS[deleteTarget.trimester] || deleteTarget.trimester}) a été supprimé.`
-          : 'Le bulletin a été supprimé.'
+        `Export ${format.toUpperCase()}`,
+        `Le bulletin de ${previewStudent.firstName} ${previewStudent.lastName} a été exporté (${format.toUpperCase()})`
       );
-      setDeleteTarget(null);
-      fetchBulletins();
     } catch (error) {
-      addToast('error', 'Erreur', error instanceof Error ? error.message : 'Impossible de supprimer le bulletin');
+      addToast('error', 'Erreur', error instanceof Error ? error.message : `Export ${format.toUpperCase()} impossible`);
     } finally {
-      setDeleting(false);
+      setExporting(null);
     }
   };
 
-  // ===== Proclamation list handlers =====
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // ============================================================================
+  // Proclamation handlers (sous-module conservé en compacté)
+  // ============================================================================
 
   const buildProcUrl = (endpoint: 'list' | 'pdf' | 'excel' | 'word') => {
     const params = new URLSearchParams();
@@ -419,9 +419,6 @@ export default function BulletinsModule() {
     if (procClassId && procClassId !== 'all') params.set('classId', procClassId);
     if (procPeriod === 'trimester') params.set('trimester', procTrimester);
     if (procPeriod === 'semester') params.set('semester', procSemester);
-    // When the admin has moved specific students into the destination zone
-    // via "Passer à la proclamation", send their IDs so the proclamation +
-    // exports only include those students.
     if (procConfirmedStudents.length > 0) {
       params.set('studentIds', procConfirmedStudents.map((s) => s.id).join(','));
     }
@@ -432,9 +429,6 @@ export default function BulletinsModule() {
     return `${base}?${params.toString()}`;
   };
 
-  // ===== Load candidate students for the selected class =====
-  // Fetches all active students in the class (NO solvency filter — the user
-  // decides who to include by checking boxes).
   const handleLoadProcCandidates = async () => {
     if (!procClassId || procClassId === 'all') {
       addToast('error', 'Classe requise', 'Veuillez sélectionner une classe spécifique');
@@ -447,14 +441,13 @@ export default function BulletinsModule() {
       );
       if (!res.ok) throw new Error('Échec du chargement des élèves');
       const data = await res.json();
-      const students: Array<{ id: string; firstName: string; lastName: string; className: string }> = (data.students || []).map((s: { id: string; firstName: string; lastName: string; className: string; solvent?: boolean }) => ({
+      const students: Array<{ id: string; firstName: string; lastName: string; className: string }> = (data.students || []).map((s: { id: string; firstName: string; lastName: string; className: string }) => ({
         id: s.id,
         firstName: s.firstName,
         lastName: s.lastName,
         className: s.className,
       }));
       setProcCandidates(students);
-      // Start with nothing checked — the user picks who to include.
       setProcSelectedIds(new Set());
     } catch (error) {
       addToast('error', 'Erreur', error instanceof Error ? error.message : 'Erreur inconnue');
@@ -465,7 +458,6 @@ export default function BulletinsModule() {
     }
   };
 
-  // Toggle a single student's checkbox in the source list.
   const toggleProcStudent = (id: string) => {
     setProcSelectedIds((prev) => {
       const next = new Set(prev);
@@ -475,29 +467,23 @@ export default function BulletinsModule() {
     });
   };
 
-  // Move the checked students from the source list into the destination zone.
-  // Only students in the destination zone will appear in the proclamation.
   const handleConfirmProcSelection = () => {
     if (procSelectedIds.size === 0) {
       addToast('error', 'Aucun élève sélectionné', 'Cochez au moins un élève');
       return;
     }
-    // Build the list of students to move (those checked and not already in destination)
     const existingIds = new Set(procConfirmedStudents.map((s) => s.id));
     const toMove = procCandidates.filter((s) => procSelectedIds.has(s.id) && !existingIds.has(s.id));
     if (toMove.length === 0) {
       addToast('info', 'Déjà ajoutés', 'Tous les élèves cochés sont déjà dans la zone de proclamation');
-      // Still clear the checkboxes
       setProcSelectedIds(new Set());
       return;
     }
     setProcConfirmedStudents((prev) => [...prev, ...toMove]);
-    // Clear the checkboxes (students stay in the source list, un-checked)
     setProcSelectedIds(new Set());
     addToast('success', 'Élèves passés', `${toMove.length} élève(s) ajouté(s) à la zone de proclamation`);
   };
 
-  // Remove a student from the destination zone.
   const removeFromProcConfirmed = (id: string) => {
     setProcConfirmedStudents((prev) => prev.filter((s) => s.id !== id));
   };
@@ -515,7 +501,7 @@ export default function BulletinsModule() {
       const data: ProcResult = await res.json();
       setProcResult(data);
       if (data.entries.length === 0) {
-        setProcError('Aucune note trouvée pour ces critères. Vérifiez que des bulletins/notes existent pour la période et la classe sélectionnées.');
+        setProcError('Aucune note trouvée pour ces critères. Vérifiez que des notes existent pour la période et la classe sélectionnées.');
       }
     } catch (error) {
       setProcError(error instanceof Error ? error.message : 'Impossible de générer la proclamation');
@@ -560,39 +546,24 @@ export default function BulletinsModule() {
     return 'bg-muted text-muted-foreground';
   };
 
-  const getAppreciationColor = (appreciation: string | null) => {
-    if (!appreciation) return 'text-muted-foreground';
-    if (appreciation.includes('Très bien')) return 'text-emerald-700';
-    if (appreciation.includes('Bien')) return 'text-emerald-600';
-    if (appreciation.includes('Assez bien')) return 'text-teal-600';
-    if (appreciation.includes('Passable')) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const getAverageColor = (avg: number | null) => {
-    if (avg === null) return 'bg-gray-100 text-gray-600 dark:bg-muted dark:text-muted-foreground';
-    if (avg >= 16) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
-    if (avg >= 14) return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400';
-    if (avg >= 12) return 'bg-teal-50 text-teal-600 dark:bg-teal-950/30 dark:text-teal-400';
-    if (avg >= 10) return 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-400';
-    return 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400';
-  };
-
-  // Group grades by subject for detail view
-  const gradesBySubject = detailGrades.reduce<Record<string, Grade[]>>((acc, grade) => {
-    const key = grade.subjectId;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(grade);
-    return acc;
-  }, {});
+  // ============================================================================
+  // Render
+  // ============================================================================
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Bulletins scolaires</h2>
-          <p className="text-sm text-muted-foreground mt-1">Génération et consultation des bulletins de notes</p>
+          <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <ClipboardList className="w-6 h-6 text-emerald-600" />
+            Bulletins scolaires
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Bulletins générés à partir des templates Excel uploadés par promotion
+            (Paramètres → Institution). Sélectionnez une classe puis un élève pour
+            visualiser et exporter son bulletin.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -604,54 +575,95 @@ export default function BulletinsModule() {
             <Trophy className="w-4 h-4 mr-2" />
             Liste de proclamation
           </Button>
-          <Button
-            onClick={() => {
-              setGenClassId('');
-              setGenStudentId('');
-              setGenClassStudents([]);
-              setGenTrimester('1er');
-              setGenerateDialogOpen(true);
-            }}
-            className="bg-emerald-600 hover:bg-emerald-700"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Générer un bulletin
-          </Button>
         </div>
       </div>
 
-      {/* Filter Bar */}
+      {/* Bandeau d'info sur les templates disponibles */}
+      {!loadingTemplates && templates.length > 0 && (
+        <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/40 dark:bg-emerald-950/10">
+          <CardContent className="p-3 flex flex-wrap items-center gap-2 text-xs">
+            <Info className="w-4 h-4 text-emerald-600" />
+            <span className="font-semibold text-emerald-800 dark:text-emerald-300">
+              {templates.length} template{templates.length > 1 ? 's' : ''} disponible{templates.length > 1 ? 's' : ''} :
+            </span>
+            {templates.map((t) => (
+              <Badge key={t.id} variant="outline" className="bg-background border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-400">
+                {t.name || levelLabelClient(t.level)}
+              </Badge>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+      {!loadingTemplates && templates.length === 0 && effectiveInstitutionId && (
+        <Card className="border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20">
+          <CardContent className="p-4 flex items-start gap-3 text-sm">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-amber-800 dark:text-amber-300">
+              <p className="font-semibold">Aucun template de bulletin uploadé pour cette institution</p>
+              <p className="mt-1">
+                Uploadez au moins un fichier Excel de bulletin par promotion dans
+                <strong> Paramètres → Institution → Modèles de bulletins</strong> pour
+                activer la génération de bulletins sur cette page.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Filtres : classe + recherche */}
       <Card>
         <CardContent className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Select value={filterClassId} onValueChange={setFilterClassId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filtrer par classe" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes les classes</SelectItem>
-                {classes.map((cls) => (
-                  <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={filterTrimester} onValueChange={setFilterTrimester}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filtrer par trimestre" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les trimestres</SelectItem>
-                {TRIMESTERS.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+            <div className="grid gap-2">
+              <Label className="text-xs font-medium text-muted-foreground">Classe</Label>
+              <Select value={filterClassId} onValueChange={setFilterClassId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner une classe" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes les classes</SelectItem>
+                  {classes.map((cls) => {
+                    const info = classInfoMap.get(cls.id);
+                    const hasTpl = info?.hasTemplate;
+                    return (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.name}
+                        {cls.level ? ` — ${cls.level}` : ''}
+                        {hasTpl === false && info?.level ? ' (⚠ pas de template)' : ''}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            {filterClassId && filterClassId !== 'all' && (
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  value={studentSearch}
+                  onChange={(e) => setStudentSearch(e.target.value)}
+                  placeholder="Rechercher un élève…"
+                  className="pl-8"
+                />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Bulletins List */}
-      {loading ? (
+      {/* Liste des élèves de la classe sélectionnée */}
+      {filterClassId === 'all' ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Users className="w-14 h-14 text-muted-foreground/40 mx-auto mb-3" />
+            <p className="text-muted-foreground font-medium">Sélectionnez une classe</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Choisissez une classe ci-dessus pour lister ses élèves et générer leurs bulletins
+              à partir du template Excel de leur promotion.
+            </p>
+          </CardContent>
+        </Card>
+      ) : classStudentsLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <Card key={i}>
@@ -663,476 +675,238 @@ export default function BulletinsModule() {
             </Card>
           ))}
         </div>
-      ) : bulletins.length === 0 ? (
+      ) : filteredStudents.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">
             <ClipboardList className="w-12 h-12 text-muted-foreground/50 mx-auto mb-3" />
-            <p className="text-muted-foreground">Aucun bulletin trouvé</p>
-            <p className="text-sm text-muted-foreground mt-1">Générez un bulletin pour commencer</p>
+            <p className="text-muted-foreground">
+              {studentSearch ? 'Aucun élève ne correspond à votre recherche' : 'Aucun élève dans cette classe'}
+            </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {bulletins.map((bulletin) => (
-            <motion.div
-              key={bulletin.id}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => openDetail(bulletin)}>
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="font-semibold text-foreground">
-                        {bulletin.student ? `${bulletin.student.firstName} ${bulletin.student.lastName}` : 'Élève'}
-                      </h3>
-                      <p className="text-sm text-muted-foreground mt-0.5">
-                        {TRIMESTER_LABELS[bulletin.trimester] || bulletin.trimester}
-                      </p>
-                    </div>
-                    {bulletin.average !== null && (
-                      <span className={`inline-flex items-center justify-center px-3 py-1.5 rounded-lg font-bold text-lg ${getAverageColor(bulletin.average)}`}>
-                        {bulletin.average.toFixed(1)}
-                      </span>
-                    )}
-                  </div>
+        <>
+          {/* Légende + stats classe */}
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <Badge variant="outline" className="bg-background">
+              <Users className="w-3 h-3 mr-1" />
+              {filteredStudents.length} élève{filteredStudents.length > 1 ? 's' : ''}
+            </Badge>
+            {(() => {
+              const cls = classes.find((c) => c.id === filterClassId);
+              const info = cls ? classInfoMap.get(cls.id) : undefined;
+              if (!cls || !info) return null;
+              return (
+                <>
+                  {info.level > 0 && (
+                    <Badge variant="outline" className="bg-background">
+                      <GraduationCap className="w-3 h-3 mr-1" />
+                      {levelLabelClient(info.level)}
+                    </Badge>
+                  )}
+                  {info.hasTemplate ? (
+                    <Badge variant="outline" className="bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400">
+                      <FileSpreadsheet className="w-3 h-3 mr-1" />
+                      Template : {info.templateName || levelLabelClient(info.level)}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400">
+                      <AlertTriangle className="w-3 h-3 mr-1" />
+                      Pas de template pour le niveau {info.level}
+                    </Badge>
+                  )}
+                </>
+              );
+            })()}
+          </div>
 
-                  <Separator className="my-3" />
-
-                  <div className="space-y-2">
-                    {bulletin.rank && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground flex items-center gap-1">
-                          <Award className="w-3.5 h-3.5" /> Rang
-                        </span>
-                        <span className="font-semibold">{bulletin.rank}ème</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredStudents.map((student) => {
+              const cls = classes.find((c) => c.id === student.classId);
+              const info = student.classId ? classInfoMap.get(student.classId) : undefined;
+              const hasTpl = !!info?.hasTemplate;
+              const userCode = (student as Student & { user?: { userCode?: string } }).user?.userCode;
+              return (
+                <motion.div
+                  key={student.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <Card className="hover:shadow-md transition-shadow h-full">
+                    <CardContent className="p-5 flex flex-col gap-3 h-full">
+                      {/* En-tête carte : initiales + nom */}
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                          {(student.firstName?.[0] || '')}{(student.lastName?.[0] || '')}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-semibold text-foreground truncate">
+                            {student.lastName} {student.firstName}
+                          </h3>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {cls?.name || '—'}
+                          </p>
+                        </div>
+                        {hasTpl ? (
+                          <Badge variant="outline" className="shrink-0 bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400 text-[10px]">
+                            <Check2 />
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="shrink-0 bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400 text-[10px]">
+                            ⚠
+                          </Badge>
+                        )}
                       </div>
-                    )}
-                    {bulletin.appreciation && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground flex items-center gap-1">
-                          <Star className="w-3.5 h-3.5" /> Appréciation
-                        </span>
-                        <span className={`font-semibold ${getAppreciationColor(bulletin.appreciation)}`}>
-                          {bulletin.appreciation}
-                        </span>
-                      </div>
-                    )}
-                    {bulletin.generatedAt && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Généré le {bulletin.generatedAt}
-                      </p>
-                    )}
-                  </div>
 
-                  <div className="flex gap-2 mt-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={(e) => { e.stopPropagation(); openDetail(bulletin); }}
-                    >
-                      <Eye className="w-4 h-4 mr-2" /> Voir le bulletin
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(bulletin); }}
-                      title="Supprimer ce bulletin"
-                      aria-label={`Supprimer le bulletin de ${bulletin.student?.firstName || ''} ${bulletin.student?.lastName || ''}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
+                      {/* Identité : N° ID + sexe + date naiss */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Hash className="w-3 h-3 text-muted-foreground shrink-0" />
+                          <span className="text-muted-foreground">N° ID :</span>
+                          <span className="font-mono font-semibold truncate">{userCode || '—'}</span>
+                        </div>
+                        <div className="text-muted-foreground truncate">
+                          {student.gender || '—'} · {student.dateOfBirth || '—'}
+                        </div>
+                      </div>
+
+                      {info && info.level > 0 && (
+                        <div className="text-[11px] text-muted-foreground">
+                          Promotion : <span className="font-medium text-foreground">{levelLabelClient(info.level)}</span>
+                        </div>
+                      )}
+
+                      <Separator />
+
+                      {/* Bouton visualiser */}
+                      <Button
+                        onClick={() => handlePreview(student)}
+                        disabled={!hasTpl}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700"
+                        title={
+                          hasTpl
+                            ? 'Générer et visualiser le bulletin à partir du template Excel'
+                            : `Aucun template uploadé pour le niveau ${info?.level || '?'} — allez dans Paramètres → Institution`
+                        }
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Visualiser le bulletin
+                      </Button>
+                      {!hasTpl && (
+                        <p className="text-[10px] text-amber-700 dark:text-amber-400 text-center -mt-1">
+                          Template manquant pour cette promotion
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      {/* ===== Delete confirmation dialog =====
-          The user must confirm before a bulletin is destroyed. The dialog
-          shows the student name + trimester so there is no ambiguity about
-          which bulletin is being removed. The notes themselves are NOT
-          affected by this deletion — only the bulletin record. */}
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
-        <AlertDialogContent className="sm:max-w-[440px]">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400">
-                <AlertTriangle className="w-4 h-4" />
-              </span>
-              Supprimer ce bulletin ?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget ? (
-                <>
-                  Vous êtes sur le point de supprimer le bulletin de{' '}
-                  <strong className="text-foreground">
-                    {deleteTarget.student ? `${deleteTarget.student.firstName} ${deleteTarget.student.lastName}` : 'cet élève'}
-                  </strong>{' '}
-                  pour le{' '}
-                  <strong className="text-foreground">
-                    {TRIMESTER_LABELS[deleteTarget.trimester] || deleteTarget.trimester}
-                  </strong>{' '}
-                  (année {deleteTarget.schoolYear || schoolYear}).
-                  <br /><br />
-                  Les notes de l'élève ne sont pas affectées — seul le bulletin édité est supprimé. Vous pourrez le regénérer à tout moment.
-                  <br /><br />
-                  Cette action est <strong className="text-red-600 dark:text-red-400">irréversible</strong>.
-                </>
+      {/* ====================================================================
+          Dialog : prévisualisation du bulletin
+          - Affiche le HTML de la feuille LISTE remplie pour l'élève.
+          - Boutons d'export : Excel (template original rempli), PDF
+            (conversion via LibreOffice → conforme à la mise en page), Word
+            (idem).
+         ==================================================================== */}
+      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+        <DialogContent className="sm:max-w-[1100px] max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden gap-0 p-0">
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-3 border-b">
+            <DialogTitle className="flex flex-wrap items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-emerald-600" />
+              {previewStudent ? (
+                <span>Bulletin — {previewStudent.lastName} {previewStudent.firstName}</span>
               ) : (
-                'Ce bulletin sera supprimé.'
+                <span>Bulletin</span>
               )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => { e.preventDefault(); handleConfirmDelete(); }}
-              disabled={deleting}
-              className="bg-red-600 hover:bg-red-700 text-white focus-visible:ring-red-600"
-            >
-              {deleting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Suppression…
-                </>
-              ) : (
-                <>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Supprimer le bulletin
-                </>
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Generate Bulletin Dialog */}
-      <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
-        <DialogContent className="sm:max-w-[450px]">
-          <DialogHeader>
-            <DialogTitle>Générer un bulletin</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            {/* Classe — choix en premier, filtrée par année scolaire courante */}
-            <div className="grid gap-2">
-              <Label>Classe *</Label>
-              <Select
-                value={genClassId}
-                onValueChange={(v) => {
-                  setGenClassId(v);
-                  // La liste des élèves est rechargée automatiquement par le
-                  // useEffect quand genClassId change. On reset aussi l'élève
-                  // sélectionné car il n'appartient peut-être plus à la nouvelle
-                  // classe.
-                  setGenStudentId('');
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une classe" />
-                </SelectTrigger>
-                <SelectContent>
-                  {classes.length === 0 ? (
-                    <SelectItem value="_none" disabled>
-                      Aucune classe pour {schoolYear}
-                    </SelectItem>
-                  ) : (
-                    classes.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.id}>
-                        {cls.name}
-                        {cls.level ? ` — ${cls.level}` : ''}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {classes.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {classes.length} classe{classes.length > 1 ? 's' : ''} disponible{classes.length > 1 ? 's' : ''} pour l'année {schoolYear}
-                </p>
-              )}
-            </div>
-
-            {/* Élève — ne s'affiche qu'après le choix d'une classe ; la liste
-                est filtrée pour ne contenir que les élèves de cette classe. */}
-            <div className="grid gap-2">
-              <Label>
-                Élève *
-                {!genClassId && <span className="text-xs text-muted-foreground ml-1">(sélectionnez d'abord une classe)</span>}
-              </Label>
-              <Select
-                value={genStudentId}
-                onValueChange={setGenStudentId}
-                disabled={!genClassId || genClassStudentsLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      !genClassId
-                        ? "Sélectionner une classe d'abord"
-                        : genClassStudentsLoading
-                        ? 'Chargement des élèves...'
-                        : genClassStudents.length === 0
-                        ? 'Aucun élève dans cette classe'
-                        : 'Sélectionner un élève'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {genClassStudents.length === 0 ? (
-                    <SelectItem value="_none" disabled>
-                      {genClassId ? 'Aucun élève dans cette classe' : '—'}
-                    </SelectItem>
-                  ) : (
-                    genClassStudents.map((student) => (
-                      <SelectItem key={student.id} value={student.id}>
-                        {student.firstName} {student.lastName}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {genClassId && !genClassStudentsLoading && (
-                <p className="text-xs text-muted-foreground">
-                  {genClassStudents.length} élève{genClassStudents.length > 1 ? 's' : ''} dans cette classe
-                </p>
-              )}
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Trimestre *</Label>
-              <Select value={genTrimester} onValueChange={(v) => setGenTrimester(v as typeof genTrimester)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TRIMESTERS.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setGenerateDialogOpen(false)}>Annuler</Button>
-            <Button
-              onClick={handleGenerate}
-              disabled={generating || !genClassId || !genStudentId}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              {generating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Générer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Bulletin Detail Dialog */}
-      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="sm:max-w-[700px] print:max-w-none max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden gap-0 p-0">
-          <DialogHeader className="print:hidden shrink-0 px-6 pt-6 pb-3">
-            <DialogTitle>Bulletin de notes</DialogTitle>
+            </DialogTitle>
+            {previewStudent && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Classe : {classes.find((c) => c.id === previewStudent.classId)?.name || '—'}
+                {' · '}Année scolaire {schoolYear}
+                {(() => {
+                  const info = previewStudent.classId ? classInfoMap.get(previewStudent.classId) : undefined;
+                  if (info?.level) return ` · Promotion : ${levelLabelClient(info.level)}`;
+                  return '';
+                })()}
+              </p>
+            )}
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto px-6 print:overflow-visible print:max-h-none min-h-0">
-          {detailLoading ? (
-            <div className="space-y-4 py-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-8 w-full" />
-              ))}
+          {/* Métadonnées du rendu */}
+          {previewMeta && (
+            <div className="shrink-0 px-6 py-2 bg-muted/40 border-b text-xs flex flex-wrap items-center gap-3 text-muted-foreground">
+              <span><strong className="text-foreground">Template :</strong> {previewMeta.templateName}</span>
+              <span><strong className="text-foreground">Feuille :</strong> {previewMeta.sheetName}</span>
+              <span><strong className="text-foreground">Matières :</strong> {previewMeta.subjectsCount}</span>
+              <span><strong className="text-foreground">Notes insérées :</strong> {previewMeta.gradesInserted}</span>
             </div>
-          ) : detailBulletin ? (
-            <div className="space-y-4 print:space-y-2 min-w-0 pb-4" id="bulletin-print">
-              {/* Header */}
-              <div className="text-center border-b pb-4 print:border-gray-400">
-                <h2 className="text-xl font-bold text-foreground">BULLETIN DE NOTES</h2>
-                <p className="text-emerald-700 font-semibold mt-1">
-                  {TRIMESTER_LABELS[detailBulletin.trimester] || detailBulletin.trimester}
+          )}
+
+          {/* Corps : HTML du bulletin */}
+          <div className="flex-1 overflow-auto min-h-0 bg-slate-100 dark:bg-slate-900/40 print:overflow-visible print:bg-white">
+            {previewLoading ? (
+              <div className="flex flex-col items-center justify-center h-full p-8 gap-3">
+                <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
+                <p className="text-sm text-muted-foreground">
+                  Génération du bulletin à partir du template Excel…
                 </p>
-                <p className="text-sm text-muted-foreground">Année scolaire {detailBulletin.schoolYear}</p>
+                <p className="text-xs text-muted-foreground max-w-md text-center">
+                  Le backend charge le template de la promotion, efface les lignes
+                  d'élèves existantes dans la feuille LISTE, insère la ligne de
+                  l'élève avec son N° ID et ses notes placées selon les en-têtes
+                  de cours, puis renvoie le HTML de la feuille remplie.
+                </p>
               </div>
-
-              {/* Student Info */}
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Nom :</span>{' '}
-                  <span className="font-semibold">
-                    {detailBulletin.student ? `${detailBulletin.student.lastName}` : '—'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Prénom :</span>{' '}
-                  <span className="font-semibold">
-                    {detailBulletin.student ? detailBulletin.student.firstName : '—'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Classe :</span>{' '}
-                  <span className="font-semibold">
-                    {detailBulletin.student?.class?.name || '—'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Date de génération :</span>{' '}
-                  <span className="font-semibold">{detailBulletin.generatedAt || '—'}</span>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Grades Table */}
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Matière</TableHead>
-                      <TableHead className="text-center">Coef.</TableHead>
-                      <TableHead className="text-center">Notes</TableHead>
-                      <TableHead className="text-center">Période</TableHead>
-                      <TableHead className="text-center">Moy./20</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Commentaire</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {Object.entries(gradesBySubject).map(([subjectId, grades]) => {
-                      const subject = grades[0]?.subject;
-                      // Per-subject average: normalized to /20 for ranking
-                      // and comparison across subjects with different maxValues.
-                      const avgSubject = grades.length > 0
-                        ? grades.reduce((s, g) => s + (g.value / g.maxValue) * 20, 0) / grades.length
-                        : 0;
-                      return (
-                        <TableRow key={subjectId}>
-                          <TableCell className="font-medium">{subject?.name || '—'}</TableCell>
-                          <TableCell className="text-center">{subject?.coefficient || 1}</TableCell>
-                          <TableCell className="text-center">
-                            {/* Show each grade with its ACTUAL maxValue (not forced to /20).
-                                E.g. "15/20", "8/10", "32/40" */}
-                            <div className="flex flex-wrap items-center justify-center gap-1">
-                              {grades.map((g, idx) => (
-                                <span
-                                  key={idx}
-                                  className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-medium ${
-                                    (g.value / g.maxValue) >= 0.5
-                                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
-                                      : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
-                                  }`}
-                                >
-                                  {g.value}/{g.maxValue}
-                                </span>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="outline" className="text-[10px] shrink-0">
-                              {detailBulletin.trimester || grades[0]?.trimester || '—'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className={`font-bold ${avgSubject >= 10 ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {avgSubject.toFixed(1)}
-                            </span>
-                            <span className="text-xs text-muted-foreground block">/20</span>
-                          </TableCell>
-                          <TableCell>
-                            {grades.map((g) => GRADE_TYPE_LABELS[g.type]).join(', ')}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                            {grades.map((g) => g.comment).filter(Boolean).join('; ') || '—'}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <Separator />
-
-              {/* Summary */}
-              <div className="grid grid-cols-3 gap-4">
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    <p className="text-sm text-muted-foreground mb-1">Moyenne</p>
-                    <p className={`text-2xl font-bold ${detailBulletin.average !== null && detailBulletin.average >= 10 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {detailBulletin.average?.toFixed(2) || '—'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">/20</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    <p className="text-sm text-muted-foreground mb-1">Rang</p>
-                    <p className="text-2xl font-bold text-foreground">
-                      {detailBulletin.rank ? `${detailBulletin.rank}ème` : '—'}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4 text-center">
-                    <p className="text-sm text-muted-foreground mb-1">Appréciation</p>
-                    <p className={`text-lg font-bold ${getAppreciationColor(detailBulletin.appreciation)}`}>
-                      {detailBulletin.appreciation || '—'}
-                    </p>
+            ) : previewError ? (
+              <div className="p-6 max-w-2xl mx-auto">
+                <Card className="border-red-200 dark:border-red-900/40 bg-red-50/60 dark:bg-red-950/20">
+                  <CardContent className="p-4 flex items-start gap-3 text-sm">
+                    <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                    <div className="text-red-800 dark:text-red-300">
+                      <p className="font-semibold">Impossible de générer le bulletin</p>
+                      <p className="mt-1 text-sm">{previewError}</p>
+                      {previewError.includes('template') && (
+                        <p className="mt-2 text-xs">
+                          Allez dans <strong>Paramètres → Institution → Modèles de bulletins</strong> pour
+                          uploader un template Excel pour cette promotion.
+                        </p>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               </div>
-
-              {/* Signature area */}
-              <div className="grid grid-cols-2 gap-8 mt-8 pt-4 border-t">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground mb-12">Le Directeur</p>
-                  <Separator />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground mb-12">Parent / Tuteur</p>
-                  <Separator />
-                </div>
+            ) : previewHtml ? (
+              /* Le HTML renvoyé par le backend est un fragment de <table>
+                 reproduisant fidèlement la feuille LISTE du template. On
+                 l'injecte dans un conteneur scrollable. */
+              <div
+                className="p-4 print:p-0 overflow-x-auto"
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full p-8 text-muted-foreground text-sm">
+                Aperçu non disponible.
               </div>
-            </div>
-          ) : null}
+            )}
           </div>
 
+          {/* Footer : export Excel / PDF / Word + Imprimer + Fermer */}
           <DialogFooter className="print:hidden shrink-0 border-t bg-background px-6 py-3 mt-0">
             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2 w-full">
               <Button
-                onClick={() => { if (detailBulletin) handleDeleteClick(detailBulletin); }}
-                disabled={!detailBulletin || deleting}
-                variant="outline"
-                className="w-full sm:w-auto sm:mr-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
-                title="Supprimer ce bulletin édité"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Supprimer
-              </Button>
-              <Button
-                onClick={handleExportPdf}
-                disabled={exportingPdf || !detailBulletin}
-                variant="outline"
-                className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
-                title="Exporter ce bulletin au format PDF"
-              >
-                {exportingPdf ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <FileDown className="w-4 h-4 mr-2" />
-                )}
-                PDF
-              </Button>
-              <Button
-                onClick={handleExportExcel}
-                disabled={exportingExcel || !detailBulletin}
+                onClick={() => handleExport('xlsx')}
+                disabled={!previewStudent || exporting !== null || !!previewError}
                 variant="outline"
                 className="w-full sm:w-auto border-emerald-300 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:border-emerald-900/50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-                title="Exporter ce bulletin au format Excel"
+                title="Exporter le bulletin rempli au format Excel (conforme au template uploadé)"
               >
-                {exportingExcel ? (
+                {exporting === 'xlsx' ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 ) : (
                   <FileSpreadsheet className="w-4 h-4 mr-2" />
@@ -1140,7 +914,36 @@ export default function BulletinsModule() {
                 Excel
               </Button>
               <Button
+                onClick={() => handleExport('pdf')}
+                disabled={!previewStudent || exporting !== null || !!previewError}
+                variant="outline"
+                className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
+                title="Exporter en PDF via LibreOffice — conforme à la mise en page du template"
+              >
+                {exporting === 'pdf' ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <FileDown className="w-4 h-4 mr-2" />
+                )}
+                PDF
+              </Button>
+              <Button
+                onClick={() => handleExport('word')}
+                disabled={!previewStudent || exporting !== null || !!previewError}
+                variant="outline"
+                className="w-full sm:w-auto border-sky-300 text-sky-600 hover:bg-sky-50 hover:text-sky-700 dark:border-sky-900/50 dark:text-sky-400 dark:hover:bg-sky-950/30"
+                title="Exporter en Word via LibreOffice — conforme à la mise en page du template"
+              >
+                {exporting === 'word' ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <FileType2 className="w-4 h-4 mr-2" />
+                )}
+                Word
+              </Button>
+              <Button
                 onClick={handlePrint}
+                disabled={!previewStudent || !!previewError}
                 className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700"
               >
                 <Printer className="w-4 h-4 mr-2" />
@@ -1148,7 +951,7 @@ export default function BulletinsModule() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setDetailDialogOpen(false)}
+                onClick={() => setPreviewDialogOpen(false)}
                 className="w-full sm:w-auto"
               >
                 Fermer
@@ -1158,7 +961,9 @@ export default function BulletinsModule() {
         </DialogContent>
       </Dialog>
 
-      {/* ===== Proclamation List Dialog ===== */}
+      {/* ====================================================================
+          Dialog : Liste de proclamation (sous-module conservé)
+         ==================================================================== */}
       <Dialog open={procDialogOpen} onOpenChange={setProcDialogOpen}>
         <DialogContent className="sm:max-w-[900px] max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden gap-0 p-0">
           <DialogHeader className="shrink-0 px-6 pt-6 pb-3 border-b">
@@ -1171,432 +976,360 @@ export default function BulletinsModule() {
             </p>
           </DialogHeader>
 
-          {/* Filters + Results (scrollable together on mobile so the
-              selection panel + export buttons stay reachable) */}
           <div className="flex-1 overflow-y-auto min-h-0">
             {/* Filters */}
             <div className="px-6 py-3 border-b bg-muted/30">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* Classe */}
-              <div className="grid gap-1.5">
-                <Label className="text-xs">Classe</Label>
-                <Select
-                  value={procClassId}
-                  onValueChange={(v) => {
-                    setProcClassId(v);
-                    // Clear candidates when the class changes so stale data
-                    // from a previous class doesn't persist.
-                    setProcCandidates([]);
-                    setProcSelectedIds(new Set());
-                    setProcConfirmedStudents([]);
-                  }}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Toutes les classes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Toutes les classes</SelectItem>
-                    {classes.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.id}>
-                        {cls.name}
-                        {cls.level ? ` — ${cls.level}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Période */}
-              <div className="grid gap-1.5">
-                <Label className="text-xs">Période</Label>
-                <Select
-                  value={procPeriod}
-                  onValueChange={(v) => setProcPeriod(v as Period)}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="trimester">Trimestre</SelectItem>
-                    <SelectItem value="semester">Semestre</SelectItem>
-                    <SelectItem value="annual">Annuel</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Trimester (conditional) */}
-              {procPeriod === 'trimester' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="grid gap-1.5">
-                  <Label className="text-xs">Trimestre</Label>
-                  <Select value={procTrimester} onValueChange={setProcTrimester}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Label className="text-xs">Classe</Label>
+                  <Select
+                    value={procClassId}
+                    onValueChange={(v) => {
+                      setProcClassId(v);
+                      setProcCandidates([]);
+                      setProcSelectedIds(new Set());
+                      setProcConfirmedStudents([]);
+                    }}
+                  >
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Toutes les classes" /></SelectTrigger>
                     <SelectContent>
-                      {TRIMESTERS.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      <SelectItem value="all">Toutes les classes</SelectItem>
+                      {classes.map((cls) => (
+                        <SelectItem key={cls.id} value={cls.id}>
+                          {cls.name}{cls.level ? ` — ${cls.level}` : ''}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
 
-              {/* Semester (conditional) */}
-              {procPeriod === 'semester' && (
                 <div className="grid gap-1.5">
-                  <Label className="text-xs">Semestre</Label>
-                  <Select value={procSemester} onValueChange={setProcSemester}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Label className="text-xs">Période</Label>
+                  <Select value={procPeriod} onValueChange={(v) => setProcPeriod(v as Period)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">1er Semestre (T1 + T2)</SelectItem>
-                      <SelectItem value="2">2ème Semestre (T3)</SelectItem>
+                      <SelectItem value="trimester">Trimestre</SelectItem>
+                      <SelectItem value="semester">Semestre</SelectItem>
+                      <SelectItem value="annual">Annuel</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              )}
 
-              {/* Annual hint or spacer */}
-              {procPeriod === 'annual' && (
-                <div className="grid gap-1.5">
-                  <Label className="text-xs">Période couverte</Label>
-                  <div className="h-9 flex items-center px-3 rounded-md border border-dashed border-muted-foreground/30 text-xs text-muted-foreground">
-                    Année scolaire complète (T1 + T2 + T3)
+                {procPeriod === 'trimester' && (
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Trimestre</Label>
+                    <Select value={procTrimester} onValueChange={setProcTrimester}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {TRIMESTERS.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Generate button */}
-              <div className="grid gap-1.5">
-                <Label className="text-xs invisible">Générer</Label>
-                <Button
-                  onClick={handleGenerateProclamation}
-                  disabled={procLoading}
-                  className="h-9 bg-amber-600 hover:bg-amber-700 text-white"
-                >
-                  {procLoading ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Trophy className="w-4 h-4 mr-2" />
-                  )}
-                  Générer la liste
-                </Button>
-              </div>
-            </div>
+                {procPeriod === 'semester' && (
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Semestre</Label>
+                    <Select value={procSemester} onValueChange={setProcSemester}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1er Semestre (T1 + T2)</SelectItem>
+                        <SelectItem value="2">2ème Semestre (T3)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
-            {/* Student selection panel — two zones side by side:
-                LEFT  = source list (all students in the class, checkboxes)
-                RIGHT = destination zone (students passed via the button)
-                Only students in the RIGHT zone appear in the proclamation.
-                No solvency filter — the user picks who to include. */}
-            {procClassId && procClassId !== 'all' && (
-              <div className="mt-3 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/10 p-3">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <Label className="text-xs flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-300">
-                    <Users className="w-3.5 h-3.5" />
-                    Sélection des élèves à proclamer
-                  </Label>
+                {procPeriod === 'annual' && (
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs">Période couverte</Label>
+                    <div className="h-9 flex items-center px-3 rounded-md border border-dashed border-muted-foreground/30 text-xs text-muted-foreground">
+                      Année scolaire complète (T1 + T2 + T3)
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-1.5">
+                  <Label className="text-xs invisible">Générer</Label>
                   <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={handleLoadProcCandidates}
-                    disabled={procCandidatesLoading}
-                    title="Charger la liste des élèves de la classe sélectionnée"
+                    onClick={handleGenerateProclamation}
+                    disabled={procLoading}
+                    className="h-9 bg-amber-600 hover:bg-amber-700 text-white"
                   >
-                    {procCandidatesLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    {procLoading ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
-                      <Users className="w-3.5 h-3.5 mr-1" />
+                      <Trophy className="w-4 h-4 mr-2" />
                     )}
-                    {procCandidates.length > 0 ? 'Recharger' : 'Charger les élèves'}
+                    Générer la liste
                   </Button>
                 </div>
-
-                {procCandidates.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* ---- LEFT: source list (checkboxes) ---- */}
-                    <div className="rounded-md border border-amber-200/50 dark:border-amber-900/30 bg-background overflow-hidden flex flex-col">
-                      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-muted/40">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          Élèves de la classe
-                        </span>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            className="text-xs text-emerald-600 hover:text-emerald-700 hover:underline"
-                            onClick={() => setProcSelectedIds(new Set(procCandidates.map((c) => c.id)))}
-                          >
-                            Tout cocher
-                          </button>
-                          <span className="text-muted-foreground">|</span>
-                          <button
-                            type="button"
-                            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
-                            onClick={() => setProcSelectedIds(new Set())}
-                          >
-                            Décocher
-                          </button>
-                        </div>
-                      </div>
-                      <div className="max-h-56 overflow-y-auto divide-y divide-border">
-                        {procCandidates.map((student) => {
-                          const checked = procSelectedIds.has(student.id);
-                          const alreadyMoved = procConfirmedStudents.some((s) => s.id === student.id);
-                          return (
-                            <label
-                              key={student.id}
-                              className={`flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 transition-colors ${alreadyMoved ? 'opacity-40' : ''}`}
-                            >
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={() => toggleProcStudent(student.id)}
-                              />
-                              <span className="flex-1 truncate font-medium">
-                                {student.lastName} {student.firstName}
-                              </span>
-                              {alreadyMoved && (
-                                <Badge variant="outline" className="text-[9px] h-4 px-1 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900">
-                                  Ajouté
-                                </Badge>
-                              )}
-                            </label>
-                          );
-                        })}
-                      </div>
-                      {/* "Passer à la proclamation" button — moves the checked
-                          students into the destination zone on the RIGHT. */}
-                      <div className="px-3 py-2 border-t bg-muted/40">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="w-full h-8 bg-amber-600 hover:bg-amber-700 text-white text-xs"
-                          onClick={handleConfirmProcSelection}
-                          disabled={procSelectedIds.size === 0}
-                          title="Passer les élèves cochés dans la zone de proclamation (à droite)"
-                        >
-                          <Trophy className="w-3.5 h-3.5 mr-1" />
-                          Passer à la proclamation ({procSelectedIds.size})
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* ---- RIGHT: destination zone (students passed to proclamation) ---- */}
-                    <div className="rounded-md border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/30 dark:bg-emerald-950/10 overflow-hidden flex flex-col">
-                      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-emerald-100/40 dark:bg-emerald-950/20">
-                        <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
-                          <Trophy className="w-3.5 h-3.5" />
-                          Élèves à proclamer
-                        </span>
-                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900">
-                          {procConfirmedStudents.length}
-                        </Badge>
-                      </div>
-                      <div className="max-h-56 overflow-y-auto divide-y divide-border">
-                        {procConfirmedStudents.length === 0 ? (
-                          <p className="text-xs text-muted-foreground text-center py-6 px-3">
-                            Cochez des élèves à gauche, puis cliquez « Passer à la proclamation » pour les ajouter ici. Seuls les élèves de cette zone apparaîtront dans la proclamation.
-                          </p>
-                        ) : (
-                          procConfirmedStudents.map((student) => (
-                            <div
-                              key={student.id}
-                              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
-                            >
-                              <span className="flex-1 truncate font-medium">
-                                {student.lastName} {student.firstName}
-                              </span>
-                              <button
-                                type="button"
-                                className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded p-1 transition-colors"
-                                onClick={() => removeFromProcConfirmed(student.id)}
-                                title="Retirer de la proclamation"
-                                aria-label={`Retirer ${student.firstName} ${student.lastName}`}
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                      {procConfirmedStudents.length > 0 && (
-                        <div className="px-3 py-2 border-t bg-emerald-100/40 dark:bg-emerald-950/20">
-                          <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                            <Trophy className="w-3 h-3" />
-                            {procConfirmedStudents.length} élève(s) — seuls eux apparaîtront dans la proclamation.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {procCandidates.length === 0 && !procCandidatesLoading && (
-                  <p className="text-xs text-muted-foreground text-center py-3">
-                    Cliquez sur « Charger les élèves » pour afficher la liste des élèves de la classe à cocher.
-                  </p>
-                )}
               </div>
-            )}
+
+              {procClassId && procClassId !== 'all' && (
+                <div className="mt-3 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/10 p-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <Label className="text-xs flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-300">
+                      <Users className="w-3.5 h-3.5" />
+                      Sélection des élèves à proclamer
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={handleLoadProcCandidates}
+                      disabled={procCandidatesLoading}
+                    >
+                      {procCandidatesLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Users className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      {procCandidates.length > 0 ? 'Recharger' : 'Charger les élèves'}
+                    </Button>
+                  </div>
+
+                  {procCandidates.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="rounded-md border border-amber-200/50 dark:border-amber-900/30 bg-background overflow-hidden flex flex-col">
+                        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-muted/40">
+                          <span className="text-xs font-medium text-muted-foreground">Élèves de la classe</span>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className="text-xs text-emerald-600 hover:text-emerald-700 hover:underline"
+                              onClick={() => setProcSelectedIds(new Set(procCandidates.map((c) => c.id)))}
+                            >
+                              Tout cocher
+                            </button>
+                            <span className="text-muted-foreground">|</span>
+                            <button
+                              type="button"
+                              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                              onClick={() => setProcSelectedIds(new Set())}
+                            >
+                              Décocher
+                            </button>
+                          </div>
+                        </div>
+                        <div className="max-h-56 overflow-y-auto divide-y divide-border">
+                          {procCandidates.map((student) => {
+                            const checked = procSelectedIds.has(student.id);
+                            const alreadyMoved = procConfirmedStudents.some((s) => s.id === student.id);
+                            return (
+                              <label
+                                key={student.id}
+                                className={`flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 transition-colors ${alreadyMoved ? 'opacity-40' : ''}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleProcStudent(student.id)}
+                                  className="w-4 h-4 accent-emerald-600"
+                                />
+                                <span className="flex-1 truncate font-medium">
+                                  {student.lastName} {student.firstName}
+                                </span>
+                                {alreadyMoved && (
+                                  <Badge variant="outline" className="text-[9px] h-4 px-1 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900">
+                                    Ajouté
+                                  </Badge>
+                                )}
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div className="px-3 py-2 border-t bg-muted/40">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="w-full h-8 bg-amber-600 hover:bg-amber-700 text-white text-xs"
+                            onClick={handleConfirmProcSelection}
+                            disabled={procSelectedIds.size === 0}
+                          >
+                            <Trophy className="w-3.5 h-3.5 mr-1" />
+                            Passer à la proclamation ({procSelectedIds.size})
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-md border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/30 dark:bg-emerald-950/10 overflow-hidden flex flex-col">
+                        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-emerald-100/40 dark:bg-emerald-950/20">
+                          <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                            <Trophy className="w-3.5 h-3.5" />
+                            Élèves à proclamer
+                          </span>
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900">
+                            {procConfirmedStudents.length}
+                          </Badge>
+                        </div>
+                        <div className="max-h-56 overflow-y-auto divide-y divide-border">
+                          {procConfirmedStudents.length === 0 ? (
+                            <p className="text-xs text-muted-foreground text-center py-6 px-3">
+                              Cochez des élèves à gauche, puis cliquez « Passer à la proclamation » pour les ajouter ici.
+                            </p>
+                          ) : (
+                            procConfirmedStudents.map((student) => (
+                              <div
+                                key={student.id}
+                                className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                              >
+                                <span className="flex-1 truncate font-medium">
+                                  {student.lastName} {student.firstName}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded p-1 transition-colors"
+                                  onClick={() => removeFromProcConfirmed(student.id)}
+                                  title="Retirer de la proclamation"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {procCandidates.length === 0 && !procCandidatesLoading && (
+                    <p className="text-xs text-muted-foreground text-center py-3">
+                      Cliquez sur « Charger les élèves » pour afficher la liste des élèves de la classe à cocher.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Results */}
             <div className="px-6 py-4">
-            {procError && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-4 text-sm text-amber-800 dark:text-amber-300 mb-4">
-                {procError}
-              </div>
-            )}
-
-            {procResult && procResult.entries.length > 0 ? (
-              <div className="space-y-4">
-                {/* Stats summary */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded-lg border p-3 bg-card">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Effectif</p>
-                    <p className="text-xl font-bold text-foreground">{procResult.stats.totalStudents}</p>
-                  </div>
-                  <div className="rounded-lg border p-3 bg-card">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Réussite</p>
-                    <p className="text-xl font-bold text-emerald-600">
-                      {procResult.stats.passedCount}
-                      <span className="text-xs text-muted-foreground ml-1">({procResult.stats.successRate}%)</span>
-                    </p>
-                  </div>
-                  <div className="rounded-lg border p-3 bg-card">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Moy. classe</p>
-                    <p className="text-xl font-bold text-foreground">
-                      {procResult.stats.classAverage.toFixed(2)}
-                      <span className="text-xs text-muted-foreground ml-1">/20</span>
-                    </p>
-                  </div>
-                  <div className="rounded-lg border p-3 bg-card">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Meilleure moy.</p>
-                    <p className="text-xl font-bold text-amber-600">
-                      {procResult.stats.highestAverage.toFixed(2)}
-                      <span className="text-xs text-muted-foreground ml-1">/20</span>
-                    </p>
-                  </div>
+              {procError && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-4 text-sm text-amber-800 dark:text-amber-300 mb-4">
+                  {procError}
                 </div>
+              )}
 
-                {/* Proclamation table (desktop) — sorted by rank ascending (1 = best) */}
-                <div className="hidden sm:block rounded-lg border overflow-hidden">
-                  <div className="overflow-x-auto max-h-[40vh] overflow-y-auto">
-                    <Table>
-                      <TableHeader className="sticky top-0 z-10 bg-card">
-                        <TableRow>
-                          <TableHead className="w-16 text-center">Rang</TableHead>
-                          <TableHead>Nom</TableHead>
-                          <TableHead>Prénom</TableHead>
-                          <TableHead className="text-center">Classe</TableHead>
-                          <TableHead className="text-center">Moyenne</TableHead>
-                          <TableHead className="text-center">Pourcentage</TableHead>
-                          <TableHead className="text-center">Mention</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {procResult.entries.map((e) => (
-                          <TableRow
-                            key={e.studentId}
-                            className={e.rank <= 3 ? 'font-medium' : ''}
-                          >
-                            <TableCell className="text-center">
-                              <span
-                                className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${getProcRankBadge(e.rank)}`}
-                              >
-                                {e.rank}
-                              </span>
-                            </TableCell>
-                            <TableCell className="font-semibold">{e.lastName}</TableCell>
-                            <TableCell>{e.firstName}</TableCell>
-                            <TableCell className="text-center text-sm text-muted-foreground">{e.className}</TableCell>
-                            <TableCell className="text-center">
-                              <span className={`font-bold ${e.average >= 10 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                {e.average.toFixed(2)}
-                              </span>
-                              <span className="text-xs text-muted-foreground">/20</span>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                <div className="w-16 h-2 rounded-full bg-muted overflow-hidden">
-                                  <div
-                                    className={`h-full ${e.percentage >= 50 ? 'bg-emerald-500' : 'bg-red-500'}`}
-                                    style={{ width: `${Math.min(e.percentage, 100)}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs font-medium text-muted-foreground w-12 text-right">
-                                  {e.percentage.toFixed(1)}%
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge
-                                variant="outline"
-                                className={
-                                  e.average >= 16
-                                    ? 'border-emerald-400 text-emerald-700 dark:text-emerald-400'
-                                    : e.average >= 14
-                                    ? 'border-teal-400 text-teal-700 dark:text-teal-400'
-                                    : e.average >= 12
-                                    ? 'border-sky-400 text-sky-700 dark:text-sky-400'
-                                    : e.average >= 10
-                                    ? 'border-yellow-400 text-yellow-700 dark:text-yellow-400'
-                                    : 'border-red-400 text-red-700 dark:text-red-400'
-                                }
-                              >
-                                {e.mention}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-
-                {/* Proclamation cards (mobile) — same data as the desktop table
-                    but laid out as cards so it fits on small screens. */}
-                <div className="sm:hidden space-y-2 max-h-[40vh] overflow-y-auto">
-                  {procResult.entries.map((e) => (
-                    <div key={e.studentId} className="rounded-lg border p-3 bg-card flex items-center gap-3">
-                      <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold shrink-0 ${getProcRankBadge(e.rank)}`}>
-                        {e.rank}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm truncate">{e.lastName} {e.firstName}</p>
-                        <p className="text-xs text-muted-foreground truncate">{e.className}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className={`font-bold text-sm ${e.average >= 10 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {e.average.toFixed(2)}
-                          <span className="text-xs text-muted-foreground">/20</span>
-                        </p>
-                        <Badge variant="outline" className={`text-[9px] h-4 px-1 mt-0.5 ${e.average >= 16 ? 'border-emerald-400 text-emerald-700' : e.average >= 14 ? 'border-teal-400 text-teal-700' : e.average >= 12 ? 'border-sky-400 text-sky-700' : e.average >= 10 ? 'border-yellow-400 text-yellow-700' : 'border-red-400 text-red-700'}`}>
-                          {e.mention}
-                        </Badge>
-                      </div>
+              {procResult && procResult.entries.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="rounded-lg border p-3 bg-card">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Effectif</p>
+                      <p className="text-xl font-bold text-foreground">{procResult.stats.totalStudents}</p>
                     </div>
-                  ))}
-                </div>
+                    <div className="rounded-lg border p-3 bg-card">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Réussite</p>
+                      <p className="text-xl font-bold text-emerald-600">
+                        {procResult.stats.passedCount}
+                        <span className="text-xs text-muted-foreground ml-1">({procResult.stats.successRate}%)</span>
+                      </p>
+                    </div>
+                    <div className="rounded-lg border p-3 bg-card">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Moy. classe</p>
+                      <p className="text-xl font-bold text-foreground">
+                        {procResult.stats.classAverage.toFixed(2)}
+                        <span className="text-xs text-muted-foreground ml-1">/20</span>
+                      </p>
+                    </div>
+                    <div className="rounded-lg border p-3 bg-card">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Meilleure moy.</p>
+                      <p className="text-xl font-bold text-amber-600">
+                        {procResult.stats.highestAverage.toFixed(2)}
+                        <span className="text-xs text-muted-foreground ml-1">/20</span>
+                      </p>
+                    </div>
+                  </div>
 
-                {/* Context line */}
-                <p className="text-xs text-muted-foreground text-center">
-                  {procResult.params.periodLabel} — Classe : {procResult.params.classLabel} — Année scolaire {procResult.params.schoolYear}
-                  {' — '}
-                  Tri par rang croissant (meilleur élève en premier)
-                </p>
-              </div>
-            ) : !procError && !procLoading ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Trophy className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p>Sélectionnez vos critères ci-dessus puis cliquez sur « Générer la liste ».</p>
-              </div>
-            ) : null}
+                  <div className="hidden sm:block rounded-lg border overflow-hidden">
+                    <div className="overflow-x-auto max-h-[40vh] overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 z-10 bg-card">
+                          <tr className="border-b">
+                            <th className="w-16 text-center p-2 font-medium">Rang</th>
+                            <th className="text-left p-2 font-medium">Nom</th>
+                            <th className="text-left p-2 font-medium">Prénom</th>
+                            <th className="text-center p-2 font-medium">Classe</th>
+                            <th className="text-center p-2 font-medium">Moyenne</th>
+                            <th className="text-center p-2 font-medium">Mention</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {procResult.entries.map((e) => (
+                            <tr key={e.studentId} className={`border-b ${e.rank <= 3 ? 'font-medium bg-amber-50/30 dark:bg-amber-950/10' : ''}`}>
+                              <td className="text-center p-2">
+                                <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${getProcRankBadge(e.rank)}`}>
+                                  {e.rank}
+                                </span>
+                              </td>
+                              <td className="text-left p-2 font-semibold">{e.lastName}</td>
+                              <td className="text-left p-2">{e.firstName}</td>
+                              <td className="text-center p-2 text-xs text-muted-foreground">{e.className}</td>
+                              <td className="text-center p-2">
+                                <span className={`font-bold ${e.average >= 10 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                  {e.average.toFixed(2)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">/20</span>
+                              </td>
+                              <td className="text-center p-2">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    e.average >= 16 ? 'border-emerald-400 text-emerald-700 dark:text-emerald-400' :
+                                    e.average >= 14 ? 'border-teal-400 text-teal-700 dark:text-teal-400' :
+                                    e.average >= 12 ? 'border-sky-400 text-sky-700 dark:text-sky-400' :
+                                    e.average >= 10 ? 'border-yellow-400 text-yellow-700 dark:text-yellow-400' :
+                                    'border-red-400 text-red-700 dark:text-red-400'
+                                  }
+                                >
+                                  {e.mention}
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="sm:hidden space-y-2 max-h-[40vh] overflow-y-auto">
+                    {procResult.entries.map((e) => (
+                      <div key={e.studentId} className="rounded-lg border p-3 bg-card flex items-center gap-3">
+                        <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold shrink-0 ${getProcRankBadge(e.rank)}`}>
+                          {e.rank}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm truncate">{e.lastName} {e.firstName}</p>
+                          <p className="text-xs text-muted-foreground truncate">{e.className}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`font-bold text-sm ${e.average >= 10 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {e.average.toFixed(2)}
+                            <span className="text-xs text-muted-foreground">/20</span>
+                          </p>
+                          <Badge variant="outline" className={`text-[9px] h-4 px-1 mt-0.5 ${e.average >= 16 ? 'border-emerald-400 text-emerald-700' : e.average >= 14 ? 'border-teal-400 text-teal-700' : e.average >= 12 ? 'border-sky-400 text-sky-700' : e.average >= 10 ? 'border-yellow-400 text-yellow-700' : 'border-red-400 text-red-700'}`}>
+                            {e.mention}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-muted-foreground text-center">
+                    {procResult.params.periodLabel} — Classe : {procResult.params.classLabel} — Année scolaire {procResult.params.schoolYear}
+                    {' — '}Tri par rang croissant (meilleur élève en premier)
+                  </p>
+                </div>
+              ) : !procError && !procLoading ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Trophy className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>Sélectionnez vos critères ci-dessus puis cliquez sur « Générer la liste ».</p>
+                </div>
+              ) : null}
             </div>
           </div>
 
-          {/* Footer with export buttons */}
           <DialogFooter className="shrink-0 border-t bg-background px-6 py-3 mt-0">
             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2 w-full">
               <Button
@@ -1604,13 +1337,8 @@ export default function BulletinsModule() {
                 disabled={!procResult || procResult.entries.length === 0 || procExporting !== null}
                 variant="outline"
                 className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
-                title="Exporter la proclamation en PDF"
               >
-                {procExporting === 'pdf' ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <FileDown className="w-4 h-4 mr-2" />
-                )}
+                {procExporting === 'pdf' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
                 PDF
               </Button>
               <Button
@@ -1618,13 +1346,8 @@ export default function BulletinsModule() {
                 disabled={!procResult || procResult.entries.length === 0 || procExporting !== null}
                 variant="outline"
                 className="w-full sm:w-auto border-emerald-300 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:border-emerald-900/50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-                title="Exporter la proclamation en Excel"
               >
-                {procExporting === 'excel' ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <FileSpreadsheet className="w-4 h-4 mr-2" />
-                )}
+                {procExporting === 'excel' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
                 Excel
               </Button>
               <Button
@@ -1632,13 +1355,8 @@ export default function BulletinsModule() {
                 disabled={!procResult || procResult.entries.length === 0 || procExporting !== null}
                 variant="outline"
                 className="w-full sm:w-auto border-sky-300 text-sky-600 hover:bg-sky-50 hover:text-sky-700 dark:border-sky-900/50 dark:text-sky-400 dark:hover:bg-sky-950/30"
-                title="Exporter la proclamation en Word"
               >
-                {procExporting === 'word' ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <FileType2 className="w-4 h-4 mr-2" />
-                )}
+                {procExporting === 'word' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileType2 className="w-4 h-4 mr-2" />}
                 Word
               </Button>
               <Button
@@ -1653,5 +1371,17 @@ export default function BulletinsModule() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ============================================================================
+// Petit composant inline : icône "tick" pour la carte élève (template OK)
+// ============================================================================
+
+function Check2() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
   );
 }
