@@ -31,6 +31,7 @@
  */
 
 import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import JSZip from 'jszip'
 import { db } from '@/lib/db'
 import { detectLevel, levelLabel } from '@/lib/bulletin-parser'
@@ -592,106 +593,120 @@ export async function renderBulletinFromTemplate(params: {
     }
   }
 
-  // 12. Modifier la feuille : effacer toutes les lignes à partir de row 3
-  //     et insérer la ligne de l'élève à row 3.
-  // SheetJS : on reconstruit la feuille en gardant rows 0-1 (headers) + row 2 (élève).
-  // En réalité row 2 = labels période (headers aussi), donc on garde rows 0+1 et
-  // on remplace row 2 par la ligne élève.
+  // 12. ⚠ CRITIQUE — Utiliser ExcelJS pour modifier le template (pas SheetJS).
+  //     SheetJS community perd 89% du formatage (styles, bordures, fusions,
+  //     largeurs de colonnes) pendant le round-trip lecture→écriture.
+  //     ExcelJS préserve ces éléments car il modifie le XML existant au lieu
+  //     de le reconstruire from scratch.
+  //
+  //     Approche :
+  //       a. Charger le template original avec ExcelJS (préserve tout le formatage)
+  //       b. Effacer les données des rows 3+ dans la feuille LISTE
+  //       c. Insérer la ligne de l'élève à row 3
+  //       d. Mettre à jour BULLETIN!I3 avec le nom de l'élève
+  //       e. Écrire le buffer (le formatage original est préservé)
+  //       f. Post-traiter avec JSZip pour ajouter fullCalcOnLoad
+  console.log('[BULLETIN_RENDER] Loading template with ExcelJS for style-preserving modification...')
 
-  // Range actuel de la feuille
-  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
-  // Effacer toutes les cellules à partir de row 3 (index 2)
-  for (let r = 2; r <= range.e.r; r++) {
-    for (let c = 0; c <= range.e.c; c++) {
-      const addr = XLSX.utils.encode_cell({ r, c })
-      if (ws[addr]) delete ws[addr]
+  const exceljsWb = new ExcelJS.Workbook()
+  await exceljsWb.xlsx.load(xlsxBuffer as unknown as ArrayBuffer)
+
+  // 12a. Trouver la feuille LISTE dans ExcelJS (par nom)
+  const listeWs = exceljsWb.getWorksheet(sheetName)
+  if (!listeWs) {
+    return { error: `Feuille "${sheetName}" introuvable après chargement ExcelJS`, code: 'NO_LISTE_SHEET' }
+  }
+
+  // 12b. Effacer toutes les lignes à partir de row 3 (row 1 et 2 = headers).
+  //      On parcourt chaque ligne de row 3 jusqu'à la dernière, et on met
+  //      chaque cellule à null. On préserve les styles de la ligne (pour
+  //      que la ligne élève hérite du bon formatage).
+  const lastRow = listeWs.rowCount
+  console.log(`[BULLETIN_RENDER] Clearing LISTE rows 3 to ${lastRow}...`)
+  for (let rowNum = 3; rowNum <= lastRow; rowNum++) {
+    const row = listeWs.getRow(rowNum)
+    // Mettre chaque cellule à null tout en préservant le style
+    const lastCol = (headerRow1 as unknown[]).length || listeWs.columnCount
+    for (let colNum = 1; colNum <= lastCol; colNum++) {
+      const cell = row.getCell(colNum)
+      // On efface la valeur mais on garde le style (cell.style reste intact)
+      cell.value = null
+    }
+    // Marquer la ligne comme modifiée pour qu'ExcelJS la réécrive
+    row.commit()
+  }
+
+  // 12c. Insérer la ligne élève à row 3.
+  //      ExcelJS utilise 1-based indexing pour les rows ET les columns.
+  //      studentRow est 0-based (index 0 = colonne A), donc on décale de +1.
+  console.log(`[BULLETIN_RENDER] Inserting student data at LISTE row 3...`)
+  const studentRowData = listeWs.getRow(3)
+  // Identité (colonnes A à E = 1 à 5)
+  // A3 = NOMS, B3 = N° ID, C3 = SEXE, D3 = DATE DE NAISS, E3 = CLASSE
+  studentRowData.getCell(1).value = `${student.lastName || ''} ${student.firstName || ''}`.trim() // NOMS
+  studentRowData.getCell(2).value = student.user.userCode || '' // N° ID
+  studentRowData.getCell(3).value = student.gender || '' // SEXE
+  // dateOfBirth : ExcelJS gère les dates comme objets Date
+  if (student.dateOfBirth) {
+    try {
+      const dob = new Date(student.dateOfBirth)
+      if (!isNaN(dob.getTime())) {
+        studentRowData.getCell(4).value = dob
+      } else {
+        studentRowData.getCell(4).value = student.dateOfBirth
+      }
+    } catch {
+      studentRowData.getCell(4).value = student.dateOfBirth
+    }
+  } else {
+    studentRowData.getCell(4).value = null
+  }
+  studentRowData.getCell(5).value = student.class.name // CLASSE
+
+  // Notes : pour chaque matière, placer les 9 valeurs dans les colonnes correspondantes
+  // studentRow était préparé avec les valeurs aux bons index (0-based)
+  // On réutilise les valeurs déjà calculées dans studentRow[]
+  for (let colIdx = 0; colIdx < studentRow.length; colIdx++) {
+    const val = studentRow[colIdx]
+    if (val === null || val === undefined) continue
+    // Sauter les 5 premières colonnes (identité, déjà remplies ci-dessus)
+    if (colIdx < 5) continue
+    // ExcelJS : colonne = colIdx + 1 (1-based), row = 3
+    const cell = studentRowData.getCell(colIdx + 1)
+    if (typeof val === 'number') {
+      cell.value = val
+    } else {
+      cell.value = String(val)
     }
   }
-  // Insérer la ligne élève à row 3 (index 2)
-  for (let c = 0; c < studentRow.length; c++) {
-    if (studentRow[c] === null || studentRow[c] === undefined) continue
-    const addr = XLSX.utils.encode_cell({ r: 2, c })
-    ws[addr] = { t: typeof studentRow[c] === 'number' ? 'n' : 's', v: studentRow[c] }
-  }
-  // Ajuster le range : row 3 (index 2) est la dernière ligne utilisée
-  const newRange = { ...range, e: { r: 2, c: range.e.c } }
-  ws['!ref'] = XLSX.utils.encode_range(newRange)
+  studentRowData.commit()
+  console.log(`[BULLETIN_RENDER] Student row inserted: ${gradesInserted} grades placed`)
 
-  // 12b. ⚠ CRITIQUE — Mettre à jour BULLETIN!I3 avec le nom de l'élève
+  // 12d. ⚠ CRITIQUE — Mettre à jour BULLETIN!I3 avec le nom de l'élève.
   //      La feuille BULLETIN contient 247 formules VLOOKUP qui utilisent
   //      la cellule I3 comme clé de recherche pour puller les données de
-  //      l'élève depuis LISTE. Sans cette mise à jour, les VLOOKUP cherchent
-  //      l'ancien élève (du template original) et la feuille BULLETIN reste
-  //      vide ou affiche des valeurs stale.
-  //
-  //      Formule type : =IF(I3<>"",VLOOKUP(I3,LISTE!A3:HP72,N,FALSE),"")
-  //      → I3 doit contenir le NOM de l'élève (pas le N° ID) car la colonne
-  //        A de LISTE contient les noms (pas les N° ID).
-  const bulletinWs = wb.Sheets['BULLETIN']
-  if (bulletinWs) {
+  //      l'élève depuis LISTE.
+  const bulletinWsExceljs = exceljsWb.getWorksheet('BULLETIN')
+  if (bulletinWsExceljs) {
     const studentName = `${student.lastName || ''} ${student.firstName || ''}`.trim()
-    // I3 = colonne I (index 8), row 3 (index 2)
-    const i3Addr = XLSX.utils.encode_cell({ r: 2, c: 8 }) // → "I3"
-    if (!bulletinWs[i3Addr]) {
-      bulletinWs[i3Addr] = { t: 's', v: studentName }
-    } else {
-      bulletinWs[i3Addr].v = studentName
-      bulletinWs[i3Addr].t = 's'
-      // Si la cellule avait une formule, on la supprime (on veut une valeur
-      // littérale, pas une formule — c'est la cellule d'entrée).
-      delete bulletinWs[i3Addr].f
-    }
+    // I3 = colonne I (9ème colonne, 1-based), row 3
+    const i3Cell = bulletinWsExceljs.getCell('I3')
+    i3Cell.value = studentName
     console.log('[BULLETIN_RENDER] BULLETIN!I3 mis à jour avec le nom élève:', studentName)
   } else {
     console.log('[BULLETIN_RENDER] Pas de feuille BULLETIN dans le template — skip I3 update')
   }
 
-  // 12c. ⚠ CRITIQUE — Activer fullCalcOnLoad pour forcer le recalcul des
-  //      formules à l'ouverture du fichier.
-  //      SheetJS ne calcule PAS les formules — il garde les valeurs cachées
-  //      (.v) telles quelles. Après modification de LISTE + BULLETIN!I3, les
-  //      247 formules VLOOKUP ont des valeurs cachées STALE (elles reflètent
-  //      l'ancien élève du template original).
-  //
-  //      En activant fullCalcOnLoad, on dit à Excel/LibreOffice de recalculer
-  //      toutes les formules quand le fichier est ouvert — ce qui met à jour
-  //      les VLOOKUP avec les nouvelles données de LISTE.
-  //
-  //      Cela affecte :
-  //        - L'aperçu HTML (renderExcelToHtml) — affiche les valeurs recalculées
-  //        - L'export PDF (LibreOffice recalcule au chargement)
-  //        - L'export Word (html-to-docx utilise les valeurs recalculées)
-  //        - L'utilisateur qui ouvre le fichier dans Excel
-  if (!wb.Workbook) (wb as unknown as { Workbook: Record<string, unknown> }).Workbook = {}
-  // CalcPr n'est pas dans les types SheetJS publics mais est bien écrit
-  // dans le XML calcPr du workbook. On caste en any pour passer le type check.
-  const wbAny = wb as unknown as {
-    Workbook: { CalcPr?: { fullCalcOnLoad?: boolean } }
-  }
-  if (!wbAny.Workbook.CalcPr) wbAny.Workbook.CalcPr = {}
-  wbAny.Workbook.CalcPr.fullCalcOnLoad = true
-  console.log('[BULLETIN_RENDER] fullCalcOnLoad activé — les formules seront recalculées à l\'ouverture')
-
-  // 13. Écrire le workbook modifié en buffer
-  //    cellFormula: true — préserver les formules dans le fichier de sortie.
-  const writeOpts: Record<string, unknown> = {
-    type: 'array',
-    bookType: 'xlsx',
-    cellStyles: true,
-    cellFormula: true,
-  }
-  const rawBuffer = Buffer.from(
-    XLSX.write(wb, writeOpts as Parameters<typeof XLSX.write>[1]) as ArrayBuffer
-  )
-
-  // 14. Post-traiter le buffer pour ajouter `<calcPr fullCalcOnLoad="1"/>`
-  //     dans workbook.xml. SheetJS community n'écrit PAS cet attribut.
-  //     Sans lui, Excel/LibreOffice peuvent afficher des valeurs stale
-  //     (de l'ancien élève du template) jusqu'à un F9 manuel.
-  //     Avec lui, TOUTES les formules sont recalculées à l'ouverture → les
-  //     247 VLOOKUP de la feuille BULLETIN récupèrent les bonnes données.
-  const outBuffer = await addFullCalcOnLoad(rawBuffer)
+  // 12e. Écrire le workbook modifié en buffer avec ExcelJS.
+  //      ExcelJS préserve les styles, bordures, fusions, largeurs de colonnes
+  //      du template original — contrairement à SheetJS qui les perd.
+  console.log('[BULLETIN_RENDER] Writing modified workbook with ExcelJS (preserves styles)...')
+  const exceljsBuffer = await exceljsWb.xlsx.writeBuffer({
+    filename: 'bulletin.xlsx',
+  })
+  const outBuffer = await addFullCalcOnLoad(Buffer.from(exceljsBuffer as ArrayBuffer))
   console.log('[BULLETIN_RENDER] addFullCalcOnLoad appliqué au buffer de sortie')
+  console.log('[BULLETIN_RENDER] Taille du buffer final:', outBuffer.length, 'octets (template original:', xlsxBuffer.length, 'octets)')
 
   return {
     buffer: outBuffer,
