@@ -31,6 +31,7 @@
  */
 
 import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
 import { db } from '@/lib/db'
 import { detectLevel, levelLabel } from '@/lib/bulletin-parser'
 
@@ -58,6 +59,63 @@ export interface RenderError {
 }
 
 // ---- Helpers ----
+
+/** Post-traite un buffer xlsx pour ajouter `<calcPr fullCalcOnLoad="1"/>`
+ *  dans workbook.xml. SheetJS (community) n'écrit PAS cet attribut — il faut
+ *  le faire à la main en dézippant le xlsx, modifiant le XML, puis re-zippant.
+ *
+ *  Pourquoi c'est critique :
+ *    - SheetJS ne calcule PAS les formules — il garde les valeurs cachées (.v)
+ *      telles quelles.
+ *    - Après modification de LISTE + BULLETIN!I3, les 247 formules VLOOKUP ont
+ *      des valeurs cachées STALE (de l'ancien élève).
+ *    - Sans fullCalcOnLoad, Excel peut afficher les valeurs stale jusqu'à ce
+ *      que l'utilisateur appuie sur F9.
+ *    - Avec fullCalcOnLoad, Excel ET LibreOffice recalculent toutes les
+ *      formules à l'ouverture du fichier → valeurs correctes immédiatement.
+ */
+async function addFullCalcOnLoad(xlsxBuffer: Buffer): Promise<Buffer> {
+  try {
+    const zip = await JSZip.loadAsync(xlsxBuffer)
+    const wbXmlFile = zip.file('xl/workbook.xml')
+    if (!wbXmlFile) return xlsxBuffer
+
+    let xml = await wbXmlFile.async('string')
+
+    // Si calcPr est déjà présent, on le remplace
+    if (/<calcPr[^>]*\/>/.test(xml)) {
+      xml = xml.replace(/<calcPr[^>]*\/>/, '<calcPr fullCalcOnLoad="1" calcMode="auto"/>')
+    } else if (/<calcPr[^>]*>.*?<\/calcPr>/.test(xml)) {
+      xml = xml.replace(/<calcPr[^>]*>.*?<\/calcPr>/, '<calcPr fullCalcOnLoad="1" calcMode="auto"/>')
+    } else {
+      // Pas de calcPr — on l'insère avant </workbook>
+      // On l'insère après <sheets>...</sheets> pour être sûr d'être au bon endroit
+      const sheetsClose = '</sheets>'
+      if (xml.includes(sheetsClose)) {
+        xml = xml.replace(
+          sheetsClose,
+          sheetsClose + '<calcPr fullCalcOnLoad="1" calcMode="auto"/>'
+        )
+      } else {
+        // Fallback : avant </workbook>
+        xml = xml.replace(/<\/workbook>/, '<calcPr fullCalcOnLoad="1" calcMode="auto"/></workbook>')
+      }
+    }
+
+    zip.file('xl/workbook.xml', xml)
+    const outBuf = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    })
+    return Buffer.from(outBuf)
+  } catch (err) {
+    console.warn('[BULLETIN_RENDER] addFullCalcOnLoad failed:', err instanceof Error ? err.message : err)
+    // En cas d'erreur, on retourne le buffer original — le fichier reste
+    // utilisable, juste sans recalcul auto.
+    return xlsxBuffer
+  }
+}
 
 /** Détecte le numéro de niveau (1-12) à partir du nom de classe. */
 function detectClassLevel(className: string, classLevel?: string | null): number {
@@ -413,8 +471,10 @@ export async function renderBulletinFromTemplate(params: {
   }
 
   // 4. Décoder le xlsx
+  //    cellFormula: true — PRÉSERVER les formules (VLOOKUP etc.) lors de la lecture.
+  //    Sans cette option, SheetJS peut perdre les formules pendant le round-trip.
   const xlsxBuffer = Buffer.from(mediaFile.data, 'base64')
-  const wb = XLSX.read(xlsxBuffer, { type: 'buffer', cellStyles: true, cellDates: true })
+  const wb = XLSX.read(xlsxBuffer, { type: 'buffer', cellStyles: true, cellDates: true, cellFormula: true })
 
   // 5. Trouver la feuille LISTE pour ce niveau
   const sheetName = findListeSheet(wb.SheetNames, level)
@@ -557,10 +617,81 @@ export async function renderBulletinFromTemplate(params: {
   const newRange = { ...range, e: { r: 2, c: range.e.c } }
   ws['!ref'] = XLSX.utils.encode_range(newRange)
 
+  // 12b. ⚠ CRITIQUE — Mettre à jour BULLETIN!I3 avec le nom de l'élève
+  //      La feuille BULLETIN contient 247 formules VLOOKUP qui utilisent
+  //      la cellule I3 comme clé de recherche pour puller les données de
+  //      l'élève depuis LISTE. Sans cette mise à jour, les VLOOKUP cherchent
+  //      l'ancien élève (du template original) et la feuille BULLETIN reste
+  //      vide ou affiche des valeurs stale.
+  //
+  //      Formule type : =IF(I3<>"",VLOOKUP(I3,LISTE!A3:HP72,N,FALSE),"")
+  //      → I3 doit contenir le NOM de l'élève (pas le N° ID) car la colonne
+  //        A de LISTE contient les noms (pas les N° ID).
+  const bulletinWs = wb.Sheets['BULLETIN']
+  if (bulletinWs) {
+    const studentName = `${student.lastName || ''} ${student.firstName || ''}`.trim()
+    // I3 = colonne I (index 8), row 3 (index 2)
+    const i3Addr = XLSX.utils.encode_cell({ r: 2, c: 8 }) // → "I3"
+    if (!bulletinWs[i3Addr]) {
+      bulletinWs[i3Addr] = { t: 's', v: studentName }
+    } else {
+      bulletinWs[i3Addr].v = studentName
+      bulletinWs[i3Addr].t = 's'
+      // Si la cellule avait une formule, on la supprime (on veut une valeur
+      // littérale, pas une formule — c'est la cellule d'entrée).
+      delete bulletinWs[i3Addr].f
+    }
+    console.log('[BULLETIN_RENDER] BULLETIN!I3 mis à jour avec le nom élève:', studentName)
+  } else {
+    console.log('[BULLETIN_RENDER] Pas de feuille BULLETIN dans le template — skip I3 update')
+  }
+
+  // 12c. ⚠ CRITIQUE — Activer fullCalcOnLoad pour forcer le recalcul des
+  //      formules à l'ouverture du fichier.
+  //      SheetJS ne calcule PAS les formules — il garde les valeurs cachées
+  //      (.v) telles quelles. Après modification de LISTE + BULLETIN!I3, les
+  //      247 formules VLOOKUP ont des valeurs cachées STALE (elles reflètent
+  //      l'ancien élève du template original).
+  //
+  //      En activant fullCalcOnLoad, on dit à Excel/LibreOffice de recalculer
+  //      toutes les formules quand le fichier est ouvert — ce qui met à jour
+  //      les VLOOKUP avec les nouvelles données de LISTE.
+  //
+  //      Cela affecte :
+  //        - L'aperçu HTML (renderExcelToHtml) — affiche les valeurs recalculées
+  //        - L'export PDF (LibreOffice recalcule au chargement)
+  //        - L'export Word (html-to-docx utilise les valeurs recalculées)
+  //        - L'utilisateur qui ouvre le fichier dans Excel
+  if (!wb.Workbook) (wb as unknown as { Workbook: Record<string, unknown> }).Workbook = {}
+  // CalcPr n'est pas dans les types SheetJS publics mais est bien écrit
+  // dans le XML calcPr du workbook. On caste en any pour passer le type check.
+  const wbAny = wb as unknown as {
+    Workbook: { CalcPr?: { fullCalcOnLoad?: boolean } }
+  }
+  if (!wbAny.Workbook.CalcPr) wbAny.Workbook.CalcPr = {}
+  wbAny.Workbook.CalcPr.fullCalcOnLoad = true
+  console.log('[BULLETIN_RENDER] fullCalcOnLoad activé — les formules seront recalculées à l\'ouverture')
+
   // 13. Écrire le workbook modifié en buffer
-  const outBuffer = Buffer.from(
-    XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: true }) as ArrayBuffer
+  //    cellFormula: true — préserver les formules dans le fichier de sortie.
+  const writeOpts: Record<string, unknown> = {
+    type: 'array',
+    bookType: 'xlsx',
+    cellStyles: true,
+    cellFormula: true,
+  }
+  const rawBuffer = Buffer.from(
+    XLSX.write(wb, writeOpts as Parameters<typeof XLSX.write>[1]) as ArrayBuffer
   )
+
+  // 14. Post-traiter le buffer pour ajouter `<calcPr fullCalcOnLoad="1"/>`
+  //     dans workbook.xml. SheetJS community n'écrit PAS cet attribut.
+  //     Sans lui, Excel/LibreOffice peuvent afficher des valeurs stale
+  //     (de l'ancien élève du template) jusqu'à un F9 manuel.
+  //     Avec lui, TOUTES les formules sont recalculées à l'ouverture → les
+  //     247 VLOOKUP de la feuille BULLETIN récupèrent les bonnes données.
+  const outBuffer = await addFullCalcOnLoad(rawBuffer)
+  console.log('[BULLETIN_RENDER] addFullCalcOnLoad appliqué au buffer de sortie')
 
   return {
     buffer: outBuffer,
