@@ -220,14 +220,22 @@ export default function BulletinsModule() {
   }, [addToast, schoolYear]);
 
   const fetchTemplates = useCallback(async () => {
-    if (!effectiveInstitutionId) {
-      setTemplates([]);
-      setLoadingTemplates(false);
-      return;
-    }
+    // On envoie les mêmes headers que la page Paramètres → Institution
+    // (bulletin-templates-section.tsx) pour que l'API puisse résoudre
+    // l'institutionId via x-institution-id ou x-user-id, même quand
+    // effectiveInstitutionId est null (super_admin sans institution
+    // active, ou currentUser pas encore chargé).
+    const headers: Record<string, string> = {
+      'x-user-role': currentUser?.role || '',
+      'x-user-id': currentUser?.id || '',
+      'x-institution-id': effectiveInstitutionId || '',
+    };
     setLoadingTemplates(true);
     try {
-      const res = await fetch(`/api/bulletins/templates-by-level?institutionId=${effectiveInstitutionId}`);
+      const url = effectiveInstitutionId
+        ? `/api/bulletins/templates-by-level?institutionId=${effectiveInstitutionId}`
+        : `/api/bulletins/templates-by-level`;
+      const res = await fetch(url, { headers });
       const data = await res.json();
       setTemplates(data.templates || []);
     } catch {
@@ -236,7 +244,7 @@ export default function BulletinsModule() {
     } finally {
       setLoadingTemplates(false);
     }
-  }, [effectiveInstitutionId]);
+  }, [effectiveInstitutionId, currentUser]);
 
   const fetchClassStudents = useCallback(async (classId: string) => {
     if (!classId) {
@@ -594,16 +602,21 @@ export default function BulletinsModule() {
           </CardContent>
         </Card>
       )}
-      {!loadingTemplates && templates.length === 0 && effectiveInstitutionId && (
+      {!loadingTemplates && templates.length === 0 && (
         <Card className="border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20">
           <CardContent className="p-4 flex items-start gap-3 text-sm">
             <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div className="text-amber-800 dark:text-amber-300">
-              <p className="font-semibold">Aucun template de bulletin uploadé pour cette institution</p>
+              <p className="font-semibold">Aucun template de bulletin trouvé pour cette institution</p>
               <p className="mt-1">
                 Uploadez au moins un fichier Excel de bulletin par promotion dans
                 <strong> Paramètres → Institution → Modèles de bulletins</strong> pour
                 activer la génération de bulletins sur cette page.
+              </p>
+              <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-400/80">
+                Si vous avez déjà uploadé des templates et voyez ce message,
+                vérifiez que vous êtes connecté avec le bon compte (super_admin
+                doit avoir une institution active sélectionnée).
               </p>
             </div>
           </CardContent>
