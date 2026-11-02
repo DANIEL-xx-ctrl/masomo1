@@ -118,6 +118,148 @@ async function addFullCalcOnLoad(xlsxBuffer: Buffer): Promise<Buffer> {
   }
 }
 
+/** Convertit un numéro de colonne (1-based) en lettre Excel (A, B, ..., Z, AA, ...). */
+function colNumberToLetter(num: number): string {
+  let result = ''
+  let n = num
+  while (n > 0) {
+    const rem = (n - 1) % 26
+    result = String.fromCharCode(65 + rem) + result
+    n = Math.floor((n - 1) / 26)
+  }
+  return result
+}
+
+/** Convertit une lettre de colonne Excel en numéro (1-based). */
+function colLetterToNumber(letter: string): number {
+  let result = 0
+  for (let i = 0; i < letter.length; i++) {
+    result = result * 26 + (letter.charCodeAt(i) - 64)
+  }
+  return result
+}
+
+/** Recalcule les formules VLOOKUP de la feuille BULLETIN en utilisant les
+ *  données fraîchement insérées dans la feuille LISTE.
+ *
+ *  Pourquoi : ni ExcelJS ni SheetJS ne calculent les formules. Après avoir
+ *  modifié LISTE + BULLETIN!I3, les valeurs cachées des 247 formules VLOOKUP
+ *  sont STALE (elles reflètent l'ancien élève du template). Cette fonction
+ *  parcourt chaque cellule de BULLETIN, détecte les formules VLOOKUP,
+ *  recherche la valeur dans LISTE, et met à jour le `.result` de la cellule.
+ *
+ *  Pattern géré :
+ *    =IF(I3<>"",VLOOKUP(I3,LISTE!A3:HP72,N,FALSE),"")
+ *    =IF(I3<>"",VLOOKUP(I3,LISTE!$A$3:$HP$72,N,FALSE),"")
+ *
+ *  Sans cette fonction :
+ *    - L'aperçu HTML (ExcelJS) affiche des valeurs stale
+ *    - L'export Word (html-to-docx) affiche des valeurs stale
+ *    - Sur Vercel (pas de LibreOffice), l'aperçu et le PDF sont cassés
+ */
+function recalculateBulletinFormulas(
+  wb: ExcelJS.Workbook,
+  listeSheetName: string,
+  bulletinSheetName: string,
+): void {
+  const listeWs = wb.getWorksheet(listeSheetName)
+  const bulletinWs = wb.getWorksheet(bulletinSheetName)
+  if (!listeWs || !bulletinWs) {
+    console.warn('[RECALC] LISTE or BULLETIN worksheet not found')
+    return
+  }
+
+  // Récupérer la clé de recherche (BULLETIN!I3 = nom de l'élève)
+  const i3Cell = bulletinWs.getCell('I3')
+  let lookupValue: string
+  if (i3Cell.value === null || i3Cell.value === undefined) {
+    console.warn('[RECALC] BULLETIN!I3 is empty — no lookup value')
+    return
+  }
+  if (typeof i3Cell.value === 'object' && 'formula' in i3Cell.value) {
+    // I3 a une formule (ne devrait pas, on l'a remplacée par une valeur)
+    lookupValue = String((i3Cell.value as { result?: unknown }).result || '')
+  } else {
+    lookupValue = String(i3Cell.value)
+  }
+  if (!lookupValue) {
+    console.warn('[RECALC] BULLETIN!I3 lookup value is empty string')
+    return
+  }
+  console.log(`[RECALC] Lookup value (I3): "${lookupValue}"`)
+
+  // Regex pour parser VLOOKUP(I3,LISTE!A3:HP72,N,FALSE) ou avec $ absolus
+  // Groupes : 1=startCol, 2=startRow, 3=endCol, 4=endRow, 5=colIndex
+  const vlookupRegex = /VLOOKUP\([^,]+,\s*LISTE!\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\s*,\s*(\d+)\s*,\s*(?:FALSE|0|true|1)\s*\)/i
+
+  let recalculated = 0
+  let totalFormulas = 0
+
+  // Parcourir chaque cellule de BULLETIN
+  bulletinWs.eachRow({ includeEmpty: false }, (row) => {
+    row.eachCell({ includeEmpty: false }, (cell) => {
+      if (
+        cell.value !== null &&
+        cell.value !== undefined &&
+        typeof cell.value === 'object' &&
+        'formula' in cell.value
+      ) {
+        totalFormulas++
+        const formulaObj = cell.value as { formula: string; result?: unknown }
+        const formula = formulaObj.formula || ''
+
+        // Vérifier si c'est un IF avec VLOOKUP
+        const match = formula.match(vlookupRegex)
+        if (!match) return
+
+        const startCol = match[1] // ex: "A"
+        const startRow = parseInt(match[2], 10) // ex: 3
+        const colIndex = parseInt(match[5], 10) // ex: 8 (1-based, relatif au début de la plage)
+
+        // Calculer la colonne de retour :
+        // La plage commence à startCol, le VLOOKUP retourne la colonne à
+        // l'offset colIndex-1 depuis startCol.
+        const startColNum = colLetterToNumber(startCol)
+        const returnColNum = startColNum + colIndex - 1
+        const returnColLetter = colNumberToLetter(returnColNum)
+
+        // Chercher lookupValue dans la colonne startCol de LISTE (rows startRow → endRow)
+        let result: unknown = ''
+        for (let r = startRow; r <= listeWs.rowCount; r++) {
+          const lookupCell = listeWs.getCell(`${startCol}${r}`)
+          let cellValue: string
+          if (lookupCell.value === null || lookupCell.value === undefined) {
+            continue
+          }
+          if (typeof lookupCell.value === 'object' && 'formula' in lookupCell.value) {
+            cellValue = String((lookupCell.value as { result?: unknown }).result || '')
+          } else {
+            cellValue = String(lookupCell.value)
+          }
+          if (cellValue.trim() === lookupValue.trim()) {
+            // Trouvé ! Récupérer la valeur de retour
+            const returnCell = listeWs.getCell(`${returnColLetter}${r}`)
+            if (returnCell.value === null || returnCell.value === undefined) {
+              result = ''
+            } else if (typeof returnCell.value === 'object' && 'formula' in returnCell.value) {
+              result = (returnCell.value as { result?: unknown }).result || ''
+            } else {
+              result = returnCell.value
+            }
+            break
+          }
+        }
+
+        // Mettre à jour le résultat caché de la cellule
+        formulaObj.result = result
+        recalculated++
+      }
+    })
+  })
+
+  console.log(`[RECALC] Recalculated ${recalculated} VLOOKUP formulas out of ${totalFormulas} total formulas in BULLETIN`)
+}
+
 /** Détecte le numéro de niveau (1-12) à partir du nom de classe. */
 function detectClassLevel(className: string, classLevel?: string | null): number {
   // Priorité au nom de classe (ex: "4ème ANNEE")
@@ -697,7 +839,30 @@ export async function renderBulletinFromTemplate(params: {
     console.log('[BULLETIN_RENDER] Pas de feuille BULLETIN dans le template — skip I3 update')
   }
 
-  // 12e. Écrire le workbook modifié en buffer avec ExcelJS.
+  // 12e. ⚠ CRITIQUE — Recalculer les formules VLOOKUP de la feuille BULLETIN
+  //      en JavaScript (sans LibreOffice).
+  //
+  //      Ni ExcelJS ni SheetJS ne calculent les formules — ils gardent les
+  //      valeurs cachées (.result) telles quelles. Après modification de
+  //      LISTE + BULLETIN!I3, les 247 formules VLOOKUP ont des valeurs
+  //      cachées STALE (de l'ancien élève du template original).
+  //
+  //      Sur Vercel, LibreOffice (soffice) n'est PAS disponible — on ne peut
+  //      pas convertir le xlsx en HTML via soffice. Il faut donc recalculer
+  //      les VLOOKUP nous-mêmes pour que l'aperçu ExcelJS affiche les bonnes
+  //      valeurs.
+  //
+  //      Le pattern de formule est :
+  //        =IF(I3<>"",VLOOKUP(I3,LISTE!A3:HP72,N,FALSE),"")
+  //      On parse N (l'index de colonne à retourner), on cherche le nom de
+  //      l'élève dans LISTE colonne A (rows 3+), et on récupère la valeur à
+  //      la colonne N (offset depuis A).
+  console.log('[BULLETIN_RENDER] Recalculating VLOOKUP formulas in BULLETIN sheet (no LibreOffice needed)...')
+  if (bulletinWsExceljs) {
+    recalculateBulletinFormulas(exceljsWb, sheetName, 'BULLETIN')
+  }
+
+  // 12f. Écrire le workbook modifié en buffer avec ExcelJS.
   //      ExcelJS préserve les styles, bordures, fusions, largeurs de colonnes
   //      du template original — contrairement à SheetJS qui les perd.
   console.log('[BULLETIN_RENDER] Writing modified workbook with ExcelJS (preserves styles)...')
