@@ -522,11 +522,24 @@ export default function BulletinsModule() {
     if (!procResult || procResult.entries.length === 0) return;
     setProcExporting(format);
     try {
+      // Utiliser la nouvelle route template-export qui charge le template
+      // Excel uploadé (feuille LISTE), insère tous les élèves sur des lignes
+      // différentes, ajoute des formules SUM et RANK, cache les colonnes
+      // périodes/examens, et ne montre que : Nom, Promotion, Totaux par
+      // matière, Total obtenu, Total max, Rang.
+      const params = new URLSearchParams();
+      params.set('schoolYear', schoolYear);
+      if (procClassId && procClassId !== 'all') params.set('classId', procClassId);
+      if (procConfirmedStudents.length > 0) {
+        params.set('studentIds', procConfirmedStudents.map((s) => s.id).join(','));
+      }
+      params.set('format', format);
+      const templateUrl = `/api/bulletins/proclamation/template-export?${params.toString()}`;
       await triggerDownload(
-        buildProcUrl(format),
+        templateUrl,
         `proclamation_${procPeriod}_${schoolYear}.${format === 'excel' ? 'xlsx' : format === 'word' ? 'docx' : 'pdf'}`
       );
-      addToast('success', `Export ${format.toUpperCase()}`, 'La proclamation a été exportée');
+      addToast('success', `Export ${format.toUpperCase()}`, 'La proclamation a été exportée depuis le template');
     } catch (error) {
       addToast('error', 'Erreur', error instanceof Error ? error.message : `Export ${format.toUpperCase()} impossible`);
     } finally {
