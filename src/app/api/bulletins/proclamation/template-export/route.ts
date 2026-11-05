@@ -50,7 +50,9 @@ export async function GET(request: Request) {
     const schoolYear = searchParams.get('schoolYear') || '2024-2025'
     const classId = searchParams.get('classId')
     const studentIdsParam = searchParams.get('studentIds')
-    const format = (searchParams.get('format') || 'xlsx').toLowerCase() as 'xlsx' | 'pdf' | 'word'
+    const rawFormat = (searchParams.get('format') || 'xlsx').toLowerCase()
+    // Accepter 'excel' comme alias pour 'xlsx' (le frontend envoie 'excel')
+    const format = (rawFormat === 'excel' ? 'xlsx' : rawFormat) as 'xlsx' | 'pdf' | 'word'
 
     if (!classId) {
       return NextResponse.json({ error: 'Paramètre classId requis' }, { status: 400 })
