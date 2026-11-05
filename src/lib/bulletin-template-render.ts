@@ -726,21 +726,26 @@ export async function renderBulletinFromTemplate(params: {
     for (let i = 0; i < 9; i++) {
       const { trimester, type } = cellTypeMap[i]
       const key = `${trimester}|${type}`
-      // Collecte toutes les valeurs pour cette cellule depuis toutes les matières matchées
-      const values: number[] = []
+      // ⚠ IMPORTANT : On prend la PREMIÈRE matière matchée qui a une note
+      // pour ce (trimester, type). On NE SOMME PAS.
+      //
+      // Raison : "Expression Orale" existe dans la DB sous plusieurs
+      // subtitles (Langues Congolaises, Français, etc.). Sommer les notes
+      // de toutes ces matières donne des valeurs fausses (ex: 6+5=11 au
+      // lieu de 6). Chaque colonne du template correspond à UNE seule
+      // matière — on prend la première qui a des notes.
+      let cellValue: number | null = null
       for (const dbSub of dbSubjects) {
         const subjGrades = gradesBySubject.get(dbSub.id)
         if (!subjGrades) continue
         const cellValues = subjGrades.get(key)
         if (cellValues && cellValues.length > 0) {
-          // Pour plusieurs notes de la même matière/trimester/type, on prend la dernière
-          values.push(cellValues[cellValues.length - 1])
+          // Prendre la dernière note (si plusieurs, la plus récente)
+          cellValue = cellValues[cellValues.length - 1]
+          break // ⚠ BREAK : première matière avec notes = stop
         }
       }
-      if (values.length > 0) {
-        // Si une seule valeur → on la met directement
-        // Si plusieurs (header composé) → on les somme
-        const cellValue = values.length === 1 ? values[0] : values.reduce((a, b) => a + b, 0)
+      if (cellValue !== null) {
         studentRow[column.startCol + i] = cellValue
         gradesInserted++
       }
