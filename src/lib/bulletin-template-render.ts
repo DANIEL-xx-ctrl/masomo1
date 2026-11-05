@@ -252,6 +252,18 @@ function recalculateBulletinFormulas(
 
         // Mettre à jour le résultat caché de la cellule
         formulaObj.result = result
+
+        // ⚠ CRITIQUE : Remplacer la formule par sa valeur calculée.
+        // ExcelJS ne préserve pas toujours le `.result` quand on écrit le
+        // buffer — le rendu HTML (renderExcelToHtmlFragment) peut alors
+        // afficher les valeurs STALE du template original au lieu des
+        // valeurs recalculées.
+        // En remplaçant la cellule par une valeur simple (sans formule),
+        // on garantit que le preview HTML affiche les bonnes données.
+        // L'utilisateur qui ouvre le fichier dans Excel verra les valeurs
+        // directement (pas besoin de F9).
+        cell.value = result as string | number | boolean | null
+
         recalculated++
       }
     })
