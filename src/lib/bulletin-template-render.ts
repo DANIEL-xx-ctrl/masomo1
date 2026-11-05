@@ -872,6 +872,43 @@ export async function renderBulletinFromTemplate(params: {
   console.log('[BULLETIN_RENDER] Recalculating VLOOKUP formulas in BULLETIN sheet (no LibreOffice needed)...')
   if (bulletinWsExceljs) {
     recalculateBulletinFormulas(exceljsWb, sheetName, 'BULLETIN')
+
+    // 12e2. ⚠ CRITIQUE — Remplacer TOUTES les formules restantes par leurs
+    //       valeurs calculées (pas seulement VLOOKUP).
+    //
+    //       Sur Windows, Excel propose un bouton "Activer le contenu" qui
+    //       recalcule les formules à l'ouverture. Mais sur Android, iOS,
+    //       macOS et Ubuntu, ce bouton n'existe pas — les formules affichent
+    //       leurs valeurs CACHÉES STALE (du template original).
+    //
+    //       En remplaçant TOUTES les cellules formule par leur valeur
+    //       calculée (ou vide si pas de valeur), on garantit que le fichier
+    //       Excel affiche les bonnes données sur TOUS les navigateurs
+    //       (Windows, Mac, Linux, Android, iOS) — sans besoin de recalc.
+    console.log('[BULLETIN_RENDER] Replacing ALL remaining formulas with their cached values...')
+    let replacedCount = 0
+    bulletinWsExceljs.eachRow({ includeEmpty: false }, (row) => {
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        if (
+          cell.value !== null &&
+          cell.value !== undefined &&
+          typeof cell.value === 'object'
+        ) {
+          const cellVal = cell.value as unknown as Record<string, unknown>
+          // Gérer les cellules avec formule propre ET les cellules avec
+          // formule partagée (sharedFormula). Les deux causent l'erreur
+          // "Shared Formula master must exist" si on remplace le master
+          // sans aussi remplacer les cells qui le référencent.
+          if ('formula' in cellVal || 'sharedFormula' in cellVal) {
+            const result = cellVal.result
+            // Si le résultat est null/undefined, on met une chaîne vide
+            cell.value = (result === null || result === undefined ? '' : result) as string | number | boolean | null
+            replacedCount++
+          }
+        }
+      })
+    })
+    console.log(`[BULLETIN_RENDER] Replaced ${replacedCount} remaining formula cells (including shared formulas) with their values`)
   }
 
   // 12f. Écrire le workbook modifié en buffer avec ExcelJS.
