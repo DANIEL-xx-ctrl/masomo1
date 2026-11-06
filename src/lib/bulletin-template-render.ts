@@ -423,9 +423,18 @@ async function matchSubjectsToDb(
   }
 
   // Helper : normalise en remplaçant 0 → o (typo "Expression 0rale")
+  // ⚠ CASE-SENSITIVE : ne PAS lowercaser. On normalise seulement les
+  // accents et la ponctuation. Ainsi "Expression orale" (o minuscule)
+  // et "Expression Orale" (O majuscule) sont traités comme DIFFÉRENTS.
   const norm = (s: string | null | undefined) => {
     if (!s) return ''
-    return normalizeName(s).replace(/0/g, 'o')
+    return String(s)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // strip accents
+      .replace(/\s+/g, ' ')
+      .replace(/[.'',]/g, '') // strip punctuation
+      .replace(/0/g, 'o') // typo fix
+      .trim()
   }
 
   /** Match TOUTES les matières DB correspondantes (ex: deux "Expression Orale"). */
@@ -682,11 +691,15 @@ export async function renderBulletinFromTemplate(params: {
     },
   })
   // Index : subjectId → Map<key=`${trimester}|${type}`, number[]>
-  // (plusieurs notes possibles pour le même subjectId+trimester+type — on garde tout)
+  // ⚠ IMPORTANT : On normalise les clés en NFC (composed Unicode form) pour
+  // éviter les problèmes de matching entre '3ème période' (composed) et
+  // '3ème période' (decomposed). Sans cette normalisation, les notes de
+  // T2 et T3 peuvent ne pas être trouvées si la DB stocke les types avec
+  // une forme Unicode différente du cellTypeMap.
   const gradesBySubject = new Map<string, Map<string, number[]>>()
   for (const g of grades) {
     if (!gradesBySubject.has(g.subjectId)) gradesBySubject.set(g.subjectId, new Map())
-    const key = `${g.trimester}|${g.type}`
+    const key = `${g.trimester}|${g.type}`.normalize('NFC').trim()
     if (!gradesBySubject.get(g.subjectId)!.has(key)) {
       gradesBySubject.get(g.subjectId)!.set(key, [])
     }
@@ -699,11 +712,11 @@ export async function renderBulletinFromTemplate(params: {
     { trimester: '1er', type: '1ère période' },
     { trimester: '1er', type: '2ème période' },
     { trimester: '1er', type: 'examen' },
-    { trimester: '2eme', type: '1ère période' },
-    { trimester: '2eme', type: '2ème période' },
+    { trimester: '2eme', type: '3ème période' },
+    { trimester: '2eme', type: '4ème période' },
     { trimester: '2eme', type: 'examen' },
-    { trimester: '3eme', type: '1ère période' },
-    { trimester: '3eme', type: '2ème période' },
+    { trimester: '3eme', type: '5ème période' },
+    { trimester: '3eme', type: '6ème période' },
     { trimester: '3eme', type: 'examen' },
   ]
 
@@ -718,31 +731,38 @@ export async function renderBulletinFromTemplate(params: {
   // Cols 5-10 (N° PERM, PROVINCE, VILLE, COMMUNE, ECOLE, CODE) : laisser vide
 
   // Notes : pour chaque matière du template, placer les 9 valeurs
-  // Pour chaque cellule (trimester, type) : somme des grades de toutes les
-  // matières DB matchées (header composé "A & B" → somme des notes de A et B).
+  // ⚠ IMPORTANT : On suit les matières déjà utilisées pour éviter que
+  // deux colonnes "Exp. Orale" (une pour Français, une pour Langues
+  // congolaises) ne pointent vers la MÊME matière DB. Chaque colonne
+  // doit utiliser une matière DIFFÉRENTE.
   let gradesInserted = 0
+  const usedSubjectIds = new Set<string>() // Track les matières déjà assignées
   for (const { column, dbSubjects } of matchedSubjects) {
     if (dbSubjects.length === 0) continue
+
+    // ⚠ Trouver la première matière NON ENCORE UTILISÉE qui A DES NOTES.
+    // On ne prend pas juste la première non-utilisée — on veut celle qui
+    // a des grades pour cet élève, sinon la colonne sera vide.
+    let bestDbSub = dbSubjects.find(s =>
+      !usedSubjectIds.has(s.id) && gradesBySubject.has(s.id)
+    )
+    // Si aucune non-utilisée avec notes, fallback : première avec notes
+    if (!bestDbSub) {
+      bestDbSub = dbSubjects.find(s => gradesBySubject.has(s.id)) || dbSubjects[0]
+    }
+    // Marquer cette matière comme utilisée
+    usedSubjectIds.add(bestDbSub.id)
+
     for (let i = 0; i < 9; i++) {
       const { trimester, type } = cellTypeMap[i]
-      const key = `${trimester}|${type}`
-      // ⚠ IMPORTANT : On prend la PREMIÈRE matière matchée qui a une note
-      // pour ce (trimester, type). On NE SOMME PAS.
-      //
-      // Raison : "Expression Orale" existe dans la DB sous plusieurs
-      // subtitles (Langues Congolaises, Français, etc.). Sommer les notes
-      // de toutes ces matières donne des valeurs fausses (ex: 6+5=11 au
-      // lieu de 6). Chaque colonne du template correspond à UNE seule
-      // matière — on prend la première qui a des notes.
+      const key = `${trimester}|${type}`.normalize('NFC').trim()
+      // ⚠ IMPORTANT : On utilise UNIQUEMENT la matière choisie (bestDbSub).
       let cellValue: number | null = null
-      for (const dbSub of dbSubjects) {
-        const subjGrades = gradesBySubject.get(dbSub.id)
-        if (!subjGrades) continue
+      const subjGrades = gradesBySubject.get(bestDbSub.id)
+      if (subjGrades) {
         const cellValues = subjGrades.get(key)
         if (cellValues && cellValues.length > 0) {
-          // Prendre la dernière note (si plusieurs, la plus récente)
           cellValue = cellValues[cellValues.length - 1]
-          break // ⚠ BREAK : première matière avec notes = stop
         }
       }
       if (cellValue !== null) {
