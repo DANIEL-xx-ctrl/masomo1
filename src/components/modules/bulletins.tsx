@@ -186,6 +186,9 @@ export default function BulletinsModule() {
   const [previewMeta, setPreviewMeta] = useState<PreviewMeta | null>(null);
   const [previewError, setPreviewError] = useState<string>('');
   const [exporting, setExporting] = useState<'xlsx' | 'pdf' | 'word' | null>(null);
+  // Sélection de période pour le bulletin : 'all', '1er', '2eme', '3eme',
+  // 'p1'..'p6', 'examen'
+  const [previewSelection, setPreviewSelection] = useState<string>('all');
 
   // ----- State : proclamation (sous-module compacté) -----
   const [procDialogOpen, setProcDialogOpen] = useState(false);
@@ -328,7 +331,8 @@ export default function BulletinsModule() {
    *       T2=P,P,EX puis T3=P,P,EX).
    *    5. Renvoie le HTML de la feuille remplie (tableau fidèle au template).
    */
-  const handlePreview = async (student: Student) => {
+  const handlePreview = async (student: Student, selection?: string) => {
+    const sel = selection || previewSelection;
     setPreviewStudent(student);
     setPreviewDialogOpen(true);
     setPreviewLoading(true);
@@ -339,6 +343,7 @@ export default function BulletinsModule() {
       const params = new URLSearchParams();
       params.set('studentId', student.id);
       params.set('schoolYear', schoolYear);
+      params.set('selection', sel);
       if (filterClassId && filterClassId !== 'all') params.set('classId', filterClassId);
       const res = await fetch(`/api/bulletins/template-rendered/preview?${params.toString()}`);
       if (!res.ok) {
@@ -389,6 +394,7 @@ export default function BulletinsModule() {
     params.set('studentId', previewStudent!.id);
     params.set('schoolYear', schoolYear);
     params.set('format', format);
+    params.set('selection', previewSelection);
     if (filterClassId && filterClassId !== 'all') params.set('classId', filterClassId);
     return `/api/bulletins/template-rendered?${params.toString()}`;
   };
@@ -852,15 +858,43 @@ export default function BulletinsModule() {
               )}
             </DialogTitle>
             {previewStudent && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Classe : {classes.find((c) => c.id === previewStudent.classId)?.name || '—'}
-                {' · '}Année scolaire {schoolYear}
-                {(() => {
-                  const info = previewStudent.classId ? classInfoMap.get(previewStudent.classId) : undefined;
-                  if (info?.level) return ` · Promotion : ${levelLabelClient(info.level)}`;
-                  return '';
-                })()}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <p className="text-xs text-muted-foreground">
+                  Classe : {classes.find((c) => c.id === previewStudent.classId)?.name || '—'}
+                  {' · '}Année scolaire {schoolYear}
+                  {(() => {
+                    const info = previewStudent.classId ? classInfoMap.get(previewStudent.classId) : undefined;
+                    if (info?.level) return ` · Promotion : ${levelLabelClient(info.level)}`;
+                    return '';
+                  })()}
+                </p>
+                {/* Sélecteur de période — détermine quelles colonnes du
+                    bulletin sont remplies : all, 1er, 2eme, 3eme, p1-p6, examen */}
+                <Select
+                  value={previewSelection}
+                  onValueChange={(v) => {
+                    setPreviewSelection(v);
+                    if (previewStudent) handlePreview(previewStudent, v);
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-auto text-xs min-w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les trimestres</SelectItem>
+                    <SelectItem value="1er">1er trimestre</SelectItem>
+                    <SelectItem value="2eme">2ème trimestre</SelectItem>
+                    <SelectItem value="3eme">3ème trimestre</SelectItem>
+                    <SelectItem value="p1">1ère période</SelectItem>
+                    <SelectItem value="p2">2ème période</SelectItem>
+                    <SelectItem value="p3">3ème période</SelectItem>
+                    <SelectItem value="p4">4ème période</SelectItem>
+                    <SelectItem value="p5">5ème période</SelectItem>
+                    <SelectItem value="p6">6ème période</SelectItem>
+                    <SelectItem value="examen">Examens seulement</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </DialogHeader>
 
