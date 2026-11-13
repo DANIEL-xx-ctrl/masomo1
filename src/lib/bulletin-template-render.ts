@@ -757,15 +757,39 @@ async function fillBulletinSheetDirectly(
       const maxTRIM = bestSubj.maxTRIM || (maxTJ * 2 + maxEX)
       const maxAnnuel = bestSubj.maxAnnuel || (maxTRIM * 3)
 
-      // Remplir les colonnes MAX (B, E, G, K, M, Q, S, U)
-      row.getCell(2).value = maxTJ    // B = MAX per
-      row.getCell(5).value = maxEX    // E = MAX EX T1
-      row.getCell(7).value = maxTRIM  // G = MAX TRIM T1
-      row.getCell(11).value = maxEX   // K = MAX EX T2
-      row.getCell(13).value = maxTRIM // M = MAX TRIM T2
-      row.getCell(17).value = maxEX   // Q = MAX EX T3
-      row.getCell(19).value = maxTRIM // S = MAX TRIM T3
-      row.getCell(21).value = maxAnnuel // U = MAX ANNUEL
+      // Remplir les colonnes MAX selon la sélection
+      // B (MAX per) = toujours (c'est le max par période)
+      row.getCell(2).value = maxTJ
+      // T1 MAX (E, G) — seulement si T1 est sélectionné
+      if (selection === 'all' || selection === '1er' || selection.startsWith('p1') || selection.startsWith('p2') || (selection === 'examen' && true)) {
+        row.getCell(5).value = maxEX    // E = MAX EX T1
+        row.getCell(7).value = maxTRIM  // G = MAX TRIM T1
+      } else {
+        row.getCell(5).value = null
+        row.getCell(7).value = null
+      }
+      // T2 MAX (K, M)
+      if (selection === 'all' || selection === '2eme' || selection.startsWith('p3') || selection.startsWith('p4')) {
+        row.getCell(11).value = maxEX   // K
+        row.getCell(13).value = maxTRIM // M
+      } else {
+        row.getCell(11).value = null
+        row.getCell(13).value = null
+      }
+      // T3 MAX (Q, S)
+      if (selection === 'all' || selection === '3eme' || selection.startsWith('p5') || selection.startsWith('p6')) {
+        row.getCell(17).value = maxEX   // Q
+        row.getCell(19).value = maxTRIM // S
+      } else {
+        row.getCell(17).value = null
+        row.getCell(19).value = null
+      }
+      // U (MAX ANNUEL) — seulement si all
+      if (selection === 'all') {
+        row.getCell(21).value = maxAnnuel
+      } else {
+        row.getCell(21).value = null
+      }
 
       // Remplir les notes selon la sélection
       const trimValues: { [key: string]: number } = { '1er': 0, '2eme': 0, '3eme': 0 }
@@ -856,23 +880,34 @@ async function fillBulletinSheetDirectly(
 
   // 3. PUIS recalculer les sous-totaux (maintenant que les H, N, T, V des
   //    lignes cours ont leurs valeurs finales)
+  // ⚠ IMPORTANT : Si aucune ligne cours n'a de valeur NUMÉRIQUE pour une
+  //    colonne, on VIDE la cellule sous-total (null) — pas 0.
   for (const st of sousTotalsToRecalc) {
     const row = bulletinWs.getRow(st.rowNum)
     for (let col = 2; col <= 22; col++) {
       let sum = 0
-      let hasAny = false
+      let hasValue = false // true si au moins une cellule a une valeur numérique
       for (const courseRowNum of st.courseRows) {
         const cell = bulletinWs.getRow(courseRowNum).getCell(col)
         const cellVal = cell.value
         let numVal = 0
-        if (typeof cellVal === 'number') numVal = cellVal
-        else if (typeof cellVal === 'string') numVal = parseFloat(cellVal) || 0
-        else if (cellVal !== null && cellVal !== undefined && typeof cellVal === 'object') {
-          if ('result' in cellVal) numVal = Number((cellVal as { result?: unknown }).result) || 0
+        if (typeof cellVal === 'number') {
+          numVal = cellVal
+          hasValue = true // Une vraie valeur numérique
+        } else if (typeof cellVal === 'string') {
+          numVal = parseFloat(cellVal) || 0
+          if (numVal !== 0) hasValue = true
+        } else if (cellVal !== null && cellVal !== undefined && typeof cellVal === 'object') {
+          if ('result' in cellVal) {
+            numVal = Number((cellVal as { result?: unknown }).result) || 0
+            if (numVal !== 0) hasValue = true
+          }
         }
-        if (numVal !== 0 || cellVal !== null) { sum += numVal; hasAny = true }
+        sum += numVal
       }
-      if (hasAny) row.getCell(col).value = sum
+      // Si au moins une valeur numérique → écrire la somme
+      // Sinon → null (cellule vide, pas 0)
+      row.getCell(col).value = hasValue ? sum : null
     }
     row.commit()
     console.log(`[BULLETIN_FILL] Sous-Total row ${st.rowNum}: recalculated with ${st.courseRows.length} course rows`)
