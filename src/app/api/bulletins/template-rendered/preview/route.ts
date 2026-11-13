@@ -36,6 +36,7 @@ export async function GET(request: Request) {
     const classId = searchParams.get('classId') || undefined
     const full = searchParams.get('full') === '1'
     const sheetName = searchParams.get('sheet') || 'BULLETIN'
+    const selection = searchParams.get('selection') || 'all'
 
     if (!studentId) {
       return NextResponse.json(
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
       )
     }
 
-    const result = await renderBulletinFromTemplate({ studentId, classId, schoolYear })
+    const result = await renderBulletinFromTemplate({ studentId, classId, schoolYear, selection })
     if ('error' in result) {
       const status =
         result.code === 'NO_STUDENT' ? 404 :
