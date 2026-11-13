@@ -672,6 +672,8 @@ async function fillBulletinSheetDirectly(
 
   // Tracker les matières déjà utilisées (évite duplication)
   const usedSubjectIds = new Set<string>()
+  // Tracker les noms de matières déjà vus (évite les doublons de VLOOKUP cachés)
+  const seenCourseNames = new Set<string>()
   // Stocker les valeurs calculées (H, N, T, V) pour application différée
   const cellOverrides: { rowNum: number; col: number; value: number }[] = []
   // Stocker les sous-totaux pour recalcul après application différée
@@ -697,7 +699,9 @@ async function fillBulletinSheetDirectly(
     }
     colAStr = colAStr.trim()
 
-    if (!colAStr) continue // ligne vide
+    // NOTE : On NE skip PAS les lignes vides ici — la détection de
+    // continuation ci-dessous peut récupérer le nom de la matière depuis
+    // la row précédente. Le skip se fait après la détection de continuation.
 
     // Détecter "Sous-Total"
     if (colAStr.toLowerCase().includes('sous-total') || colAStr.toLowerCase().includes('sous total')) {
@@ -719,19 +723,43 @@ async function fillBulletinSheetDirectly(
     }
 
     // Détecter les en-têtes de domaine (DOMAINE DES LANGUES, MATHEMATIQUES, etc.)
-    if (colAStr.toUpperCase().includes('DOMAINE') || colAStr.toUpperCase().includes('MATHEMATIQUE') ||
-        colAStr.toUpperCase().includes('SCIENCE') || colAStr.toUpperCase().includes('TECHNOLOGIE') ||
-        colAStr.toUpperCase().includes('ART') || colAStr.toUpperCase().includes('DEVELOPPEMENT') ||
-        colAStr.toUpperCase().includes('UNIVERS') || colAStr.toUpperCase().includes('LANGUES') ||
-        colAStr.toUpperCase().includes('FRANCAIS') || colAStr.toUpperCase().includes('CONGOLAISE')) {
+    // ⚠ IMPORTANT : Ne PAS matcher sur "CONGOLAISE" seul car "LECT. - ECRITURE
+    // EN LANGUES CONGOLAISES" est une MATIÈRE, pas un domaine. On ne matche
+    // que sur "DOMAINE", "MATHEMATIQUE", "SCIENCE", etc. Les sous-titres
+    // comme "LANGUES CONGOLAISES" ou "FRANCAIS" sont aussi des domaines
+    // MAIS seulement si ils sont courts (< 25 chars) — sinon c'est une matière.
+    const upperColA = colAStr.toUpperCase()
+    const isShortHeader = colAStr.length < 25
+    if (upperColA.includes('DOMAINE') ||
+        (upperColA.includes('MATHEMATIQUE') && isShortHeader) ||
+        (upperColA.includes('SCIENCE') && isShortHeader && !upperColA.includes('EVEIL')) ||
+        (upperColA === 'TECHNOLOGIE') ||
+        (upperColA.includes('ART') && isShortHeader && !upperColA.includes('DRAMATIQUE') && !upperColA.includes('PLASTIQUE')) ||
+        (upperColA.includes('DEVELOPPEMENT') && isShortHeader) ||
+        (upperColA.includes('UNIVERS') && isShortHeader) ||
+        (upperColA === 'LANGUES CONGOLAISES') ||
+        (upperColA === 'FRANCAIS' || upperColA === 'FRANCAIS ')) {
       currentDomain = colAStr
-      courseRowsForSousTotal.length = 0 // reset pour le nouveau domaine
+      courseRowsForSousTotal.length = 0
       continue
     }
 
+    // ⚠ Si col A est vide, on skip la ligne. Tous les cours du template
+    // ont leur nom ET leurs données sur la MÊME ligne. Il n'y a pas de
+    // continuation (nom sur une ligne, données sur la suivante).
+    // Les lignes sans nom sont soit des lignes vides, soit des cours
+    // sans nom qu'on ne peut pas matcher.
+    if (!colAStr) continue
+
     // C'est une ligne de matière (course row)
-    // Essayer de matcher avec une matière DB
     const normColA = normalize(colAStr)
+    // ⚠ Skip si le nom de matière a déjà été traité (doublon — Row 21 peut
+    // avoir le même nom que Row 20 à cause d'une formule VLOOKUP cachée)
+    if (seenCourseNames.has(normColA)) {
+      continue
+    }
+    seenCourseNames.add(normColA)
+    // Essayer de matcher avec une matière DB
     // Trouver la matière DB correspondante (non encore utilisée, avec notes)
     let bestSubj = allDbSubjects.find(s => {
       const ns = normalize(s.name)
@@ -913,45 +941,66 @@ async function fillBulletinSheetDirectly(
     console.log(`[BULLETIN_FILL] Sous-Total row ${st.rowNum}: recalculated with ${st.courseRows.length} course rows`)
   }
   try {
+    // ⚠ IMPORTANT : Le rang et le pourcentage sont calculés sur la PÉRIODE
+    // SÉLECTIONNÉE, pas sur toutes les notes.
+    const gradeFilter: { trimester?: string; type?: string } = {}
+    if (selection === '1er') gradeFilter.trimester = '1er'
+    else if (selection === '2eme') gradeFilter.trimester = '2eme'
+    else if (selection === '3eme') gradeFilter.trimester = '3eme'
+    else if (selection === 'p1') { gradeFilter.trimester = '1er'; gradeFilter.type = '1ère période' }
+    else if (selection === 'p2') { gradeFilter.trimester = '1er'; gradeFilter.type = '2ème période' }
+    else if (selection === 'p3') { gradeFilter.trimester = '2eme'; gradeFilter.type = '3ème période' }
+    else if (selection === 'p4') { gradeFilter.trimester = '2eme'; gradeFilter.type = '4ème période' }
+    else if (selection === 'p5') { gradeFilter.trimester = '3eme'; gradeFilter.type = '5ème période' }
+    else if (selection === 'p6') { gradeFilter.trimester = '3eme'; gradeFilter.type = '6ème période' }
+    else if (selection === 'examen') { gradeFilter.type = 'examen' }
+
     const classmates = await db.student.findMany({
       where: { classId: student.class?.id || '' },
       select: { id: true },
     })
-    const classmateIds = classmates.map(s => s.id)
 
-    // Calculer le total annuel de chaque camarade (somme de toutes leurs notes)
     const totals: { studentId: string; total: number }[] = []
     for (const cm of classmates) {
-      const cmGrades = await db.grade.findMany({
-        where: { studentId: cm.id, schoolYear },
-        select: { value: true },
-      })
+      const where: Record<string, unknown> = { studentId: cm.id, schoolYear }
+      if (gradeFilter.trimester) where.trimester = gradeFilter.trimester
+      if (gradeFilter.type) where.type = gradeFilter.type
+      const cmGrades = await db.grade.findMany({ where, select: { value: true } })
       const total = cmGrades.reduce((sum, g) => sum + g.value, 0)
       totals.push({ studentId: cm.id, total })
     }
     totals.sort((a, b) => b.total - a.total)
+    const studentTotal = totals.find(t => t.studentId === student.id)?.total || 0
     const rank = totals.findIndex(t => t.studentId === student.id) + 1
-    console.log(`[BULLETIN_FILL] Rank: ${rank}/${totals.length} (total: ${totals.find(t => t.studentId === student.id)?.total})`)
 
-    // Trouver la cellule "RANG" dans le BULLETIN et la remplir
+    // Pourcentage = total élève / max possible pour la période sélectionnée
+    const maxWhere: Record<string, unknown> = { studentId: student.id, schoolYear }
+    if (gradeFilter.trimester) maxWhere.trimester = gradeFilter.trimester
+    if (gradeFilter.type) maxWhere.type = gradeFilter.type
+    const maxGrades = await db.grade.findMany({ where: maxWhere, select: { maxValue: true } })
+    const maxTotal = maxGrades.reduce((sum, g) => sum + g.maxValue, 0)
+    const pourcentage = maxTotal > 0 ? Math.round((studentTotal / maxTotal) * 1000) / 10 : 0
+
+    console.log(`[BULLETIN_FILL] Rank: ${rank}/${totals.length} | total: ${studentTotal}/${maxTotal} | ${pourcentage}% | sel: ${selection}`)
+
+    // Trouver et remplir RANG et POURCENTAGE dans le BULLETIN
     for (let rowNum = 1; rowNum <= bulletinWs.rowCount; rowNum++) {
-      const row = bulletinWs.getRow(rowNum)
+      const prow = bulletinWs.getRow(rowNum)
       for (let colNum = 1; colNum <= 25; colNum++) {
-        const cell = row.getCell(colNum)
+        const cell = prow.getCell(colNum)
         const val = cell.value
         let valStr = ''
         if (val !== null && val !== undefined) {
-          if (typeof val === 'object' && 'result' in val) valStr = String(val.result ?? '')
-          else if (typeof val === 'object' && 'formula' in val) valStr = String(val.result ?? '')
+          if (typeof val === 'object' && 'result' in val) valStr = String((val as { result?: unknown }).result ?? '')
           else valStr = String(val)
         }
-        if (valStr.toUpperCase().includes('RANG') || valStr.toUpperCase().includes('RANK')) {
-          // La cellule RANG est trouvée — remplir la cellule adjacente (à droite)
-          const rankCell = row.getCell(colNum + 1)
-          if (rank > 0) {
-            rankCell.value = `${rank}er` // ou `${rank}ème` pour > 1
-          }
-          console.log(`[BULLETIN_FILL] Rang cell found at row ${rowNum} col ${colNum}, filled: ${rank}er`)
+        if (valStr.toUpperCase().includes('RANG')) {
+          prow.getCell(colNum + 1).value = rank > 0 ? `${rank}${rank === 1 ? 'er' : 'ème'}` : ''
+          console.log(`[BULLETIN_FILL] Rang at row ${rowNum} col ${colNum + 1}: ${rank}`)
+        }
+        if (valStr.toUpperCase().includes('POURC') || valStr === '%') {
+          prow.getCell(colNum + 1).value = pourcentage
+          console.log(`[BULLETIN_FILL] Pourcentage at row ${rowNum} col ${colNum + 1}: ${pourcentage}%`)
         }
       }
     }
