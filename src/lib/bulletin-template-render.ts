@@ -581,6 +581,315 @@ export async function findTemplateForStudent(studentId: string) {
 }
 
 /**
+ * Remplit DIRECTEMENT la feuille BULLETIN avec les notes de l'élève.
+ *
+ * On parcourt chaque ligne du BULLETIN à partir de la row 11 (après les
+ * headers en rows 8-10). Pour chaque ligne :
+ *   - Si col A contient un nom de matière → on remplit les notes
+ *   - Si col A = "Sous-Total" → on calcule la somme des lignes au-dessus
+ *   - Si col A = "MAXIMA" ou similaire → on calcule le total général
+ *
+ * Colonnes du BULLETIN (layout standard) :
+ *   A = matière | B = MAX per | C = 1èP | D = 2èP | E = MAX EX | F = PTS OBT EX
+ *   G = MAX TRIM | H = PTS OBT TRIM | I = 3èP | J = 4èP | K = MAX EX | L = PTS OBT EX
+ *   M = MAX TRIM | N = PTS OBT TRIM | O = 5èP | P = 6èP | Q = MAX EX | R = PTS OBT EX
+ *   S = MAX TRIM | T = PTS OBT TRIM | U = MAX ANNUEL | V = PTS OBT ANNUEL
+ *
+ * La sélection détermine quelles colonnes sont remplies :
+ *   "all" → toutes les colonnes
+ *   "1er" → T1 seulement (C, D, F, H)
+ *   "2eme" → T2 seulement (I, J, L, N)
+ *   "3eme" → T3 seulement (O, P, R, T)
+ *   "p1".."p6" → une seule période
+ *   "examen" → examens seulement
+ */
+async function fillBulletinSheetDirectly(
+  bulletinWs: ExcelJS.Worksheet,
+  listeWs: ExcelJS.Worksheet,
+  matchedSubjects: unknown[],
+  gradesBySubject: Map<string, Map<string, number[]>>,
+  student: { id: string; lastName: string; firstName: string; gender: string | null; dateOfBirth: string | null; user: { userCode: string | null }; class: { id: string; name: string; level: string; promotion: string | null; institutionId: string } | null },
+  selection: string,
+  db: typeof import('@/lib/db').db,
+  schoolYear: string,
+): Promise<void> {
+  console.log(`[BULLETIN_FILL] Starting direct fill, selection: ${selection}`)
+
+  // Mapping des types DB → colonnes BULLETIN (1-based)
+  // T1: C=1èP(3), D=2èP(4), F=EX(6), H=TRIM(8)
+  // T2: I=3èP(9), J=4èP(10), L=EX(12), N=TRIM(14)
+  // T3: O=5èP(15), P=6èP(16), R=EX(18), T=TRIM(20)
+  // Annuel: V=PTS(22)
+  const gradeColMap: { type: string; trimester: string; col: number; isExam: boolean }[] = [
+    { type: '1ère période', trimester: '1er', col: 3, isExam: false },   // C
+    { type: '2ème période', trimester: '1er', col: 4, isExam: false },   // D
+    { type: 'examen', trimester: '1er', col: 6, isExam: true },          // F
+    { type: '3ème période', trimester: '2eme', col: 9, isExam: false },  // I
+    { type: '4ème période', trimester: '2eme', col: 10, isExam: false }, // J
+    { type: 'examen', trimester: '2eme', col: 12, isExam: true },        // L
+    { type: '5ème période', trimester: '3eme', col: 15, isExam: false }, // O
+    { type: '6ème période', trimester: '3eme', col: 16, isExam: false }, // P
+    { type: 'examen', trimester: '3eme', col: 18, isExam: true },        // R
+  ]
+
+  // Déterminer quelles colonnes remplir selon la sélection
+  const shouldFill = (entry: { type: string; trimester: string; isExam: boolean }): boolean => {
+    if (selection === 'all') return true
+    if (selection === '1er' && entry.trimester === '1er') return true
+    if (selection === '2eme' && entry.trimester === '2eme') return true
+    if (selection === '3eme' && entry.trimester === '3eme') return true
+    if (selection === 'examen' && entry.isExam) return true
+    if (selection === 'p1' && entry.type === '1ère période') return true
+    if (selection === 'p2' && entry.type === '2ème période') return true
+    if (selection === 'p3' && entry.type === '3ème période') return true
+    if (selection === 'p4' && entry.type === '4ème période') return true
+    if (selection === 'p5' && entry.type === '5ème période') return true
+    if (selection === 'p6' && entry.type === '6ème période') return true
+    return false
+  }
+
+  // Colonnes PTS OBT TRIM à calculer selon la sélection
+  const trimColMap = [
+    { trim: '1er', ptsCol: 8, periodCols: [3, 4], examCol: 6 },  // H = C + D + F
+    { trim: '2eme', ptsCol: 14, periodCols: [9, 10], examCol: 12 }, // N = I + J + L
+    { trim: '3eme', ptsCol: 20, periodCols: [15, 16], examCol: 18 }, // T = O + P + R
+  ]
+  const shouldCalcTrim = (trim: string): boolean => {
+    if (selection === 'all') return true
+    if (selection === '1er' && trim === '1er') return true
+    if (selection === '2eme' && trim === '2eme') return true
+    if (selection === '3eme' && trim === '3eme') return true
+    if (selection.startsWith('p') || selection === 'examen') return false // Single period/exam → no trim calc
+    return false
+  }
+
+  // Préparer le cache des matières DB pour le matching
+  const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').replace(/[.'',]/g, '').trim()
+  const allDbSubjects = await db.subject.findMany({
+    where: { OR: [{ level: 'primaire' }, { level: null }] },
+    select: { id: true, name: true, title: true, subtitle: true, maxTJ: true, maxEX: true, maxTRIM: true, maxAnnuel: true },
+  })
+
+  // Tracker les matières déjà utilisées (évite duplication)
+  const usedSubjectIds = new Set<string>()
+
+  // Parcourir les lignes du BULLETIN à partir de row 11
+  let currentDomain = ''
+  let sousTotalStartRow = -1 // première ligne cours du sous-total en cours
+  const courseRowsForSousTotal: number[] = [] // lignes cours depuis le dernier sous-total/domaine
+
+  for (let rowNum = 11; rowNum <= bulletinWs.rowCount; rowNum++) {
+    const row = bulletinWs.getRow(rowNum)
+    const colA = row.getCell(1).value
+    let colAStr = ''
+    if (colA !== null && colA !== undefined) {
+      if (typeof colA === 'object' && 'formula' in colA) {
+        colAStr = String((colA as { result?: unknown }).result ?? '')
+      } else if (typeof colA === 'object' && 'richText' in colA) {
+        colAStr = (colA as { richText: { text: string }[] }).richText.map(rt => rt.text).join('')
+      } else {
+        colAStr = String(colA)
+      }
+    }
+    colAStr = colAStr.trim()
+
+    if (!colAStr) continue // ligne vide
+
+    // Détecter "Sous-Total"
+    if (colAStr.toLowerCase().includes('sous-total') || colAStr.toLowerCase().includes('sous total')) {
+      // Calculer la somme des lignes cours au-dessus
+      if (courseRowsForSousTotal.length > 0) {
+        for (let col = 2; col <= 22; col++) {
+          let sum = 0
+          let hasAny = false
+          for (const courseRowNum of courseRowsForSousTotal) {
+            const cell = bulletinWs.getRow(courseRowNum).getCell(col)
+            const cellVal = cell.value; const val = typeof cellVal === 'number' ? cellVal : (typeof cellVal === 'object' && cellVal !== null && 'result' in cellVal ? Number((cellVal as { result?: unknown }).result) || 0 : 0)
+            if (val > 0 || cell.value !== null && cell.value !== undefined) { sum += val; hasAny = true }
+          }
+          if (hasAny) {
+            row.getCell(col).value = sum
+          }
+        }
+        row.commit()
+        console.log(`[BULLETIN_FILL] Sous-Total row ${rowNum}: summed ${courseRowsForSousTotal.length} course rows`)
+      }
+      courseRowsForSousTotal.length = 0 // reset
+      continue
+    }
+
+    // Détecter "MAXIMA" ou "TOTAL GENERAL"
+    if (colAStr.toUpperCase().includes('MAXIMA') || colAStr.toUpperCase().includes('TOTAL')) {
+      // Sommer tous les sous-totaux ou toutes les lignes cours
+      // Pour simplifier, on somme toutes les lignes cours depuis le début
+      courseRowsForSousTotal.length = 0
+      continue
+    }
+
+    // Détecter les en-têtes de domaine (DOMAINE DES LANGUES, MATHEMATIQUES, etc.)
+    if (colAStr.toUpperCase().includes('DOMAINE') || colAStr.toUpperCase().includes('MATHEMATIQUE') ||
+        colAStr.toUpperCase().includes('SCIENCE') || colAStr.toUpperCase().includes('TECHNOLOGIE') ||
+        colAStr.toUpperCase().includes('ART') || colAStr.toUpperCase().includes('DEVELOPPEMENT') ||
+        colAStr.toUpperCase().includes('UNIVERS') || colAStr.toUpperCase().includes('LANGUES') ||
+        colAStr.toUpperCase().includes('FRANCAIS') || colAStr.toUpperCase().includes('CONGOLAISE')) {
+      currentDomain = colAStr
+      courseRowsForSousTotal.length = 0 // reset pour le nouveau domaine
+      continue
+    }
+
+    // C'est une ligne de matière (course row)
+    // Essayer de matcher avec une matière DB
+    const normColA = normalize(colAStr)
+    // Trouver la matière DB correspondante (non encore utilisée, avec notes)
+    let bestSubj = allDbSubjects.find(s => {
+      const ns = normalize(s.name)
+      return !usedSubjectIds.has(s.id) && ns === normColA && gradesBySubject.has(s.id)
+    })
+    if (!bestSubj) {
+      // Fuzzy match : préfixe ou inclusion
+      bestSubj = allDbSubjects.find(s => {
+        const ns = normalize(s.name)
+        return !usedSubjectIds.has(s.id) && ns.length > 3 && (normColA.includes(ns) || ns.includes(normColA)) && gradesBySubject.has(s.id)
+      })
+    }
+    if (!bestSubj) {
+      // Dernier fallback : première matière avec notes non utilisée
+      bestSubj = allDbSubjects.find(s => !usedSubjectIds.has(s.id) && gradesBySubject.has(s.id))
+    }
+
+    if (bestSubj) {
+      usedSubjectIds.add(bestSubj.id)
+      const subjGrades = gradesBySubject.get(bestSubj.id)
+      const maxTJ = bestSubj.maxTJ || 20
+      const maxEX = bestSubj.maxEX || 40
+      const maxTRIM = bestSubj.maxTRIM || (maxTJ * 2 + maxEX)
+      const maxAnnuel = bestSubj.maxAnnuel || (maxTRIM * 3)
+
+      // Remplir les colonnes MAX (B, E, G, K, M, Q, S, U)
+      row.getCell(2).value = maxTJ    // B = MAX per
+      row.getCell(5).value = maxEX    // E = MAX EX T1
+      row.getCell(7).value = maxTRIM  // G = MAX TRIM T1
+      row.getCell(11).value = maxEX   // K = MAX EX T2
+      row.getCell(13).value = maxTRIM // M = MAX TRIM T2
+      row.getCell(17).value = maxEX   // Q = MAX EX T3
+      row.getCell(19).value = maxTRIM // S = MAX TRIM T3
+      row.getCell(21).value = maxAnnuel // U = MAX ANNUEL
+
+      // Remplir les notes selon la sélection
+      const trimValues: { [key: string]: number } = { '1er': 0, '2eme': 0, '3eme': 0 }
+      for (const entry of gradeColMap) {
+        if (!shouldFill(entry)) continue
+        const key = `${entry.trimester}|${entry.type}`.normalize('NFC').trim()
+        const cellValues = subjGrades?.get(key)
+        if (cellValues && cellValues.length > 0) {
+          const val = cellValues[cellValues.length - 1]
+          row.getCell(entry.col).value = val
+          trimValues[entry.trimester] += val
+        }
+      }
+
+      // Calculer PTS OBT TRIM (H, N, T) selon la sélection
+      let totalAnnuel = 0
+      for (const tc of trimColMap) {
+        if (shouldCalcTrim(tc.trim)) {
+          // PTS OBT TRIM = somme des périodes + examen
+          let trimSum = 0
+          for (const pCol of tc.periodCols) {
+            const v = row.getCell(pCol).value
+            trimSum += typeof v === 'number' ? v : 0
+          }
+          const exVal = row.getCell(tc.examCol).value
+          trimSum += typeof exVal === 'number' ? exVal : 0
+          row.getCell(tc.ptsCol).value = trimSum
+          totalAnnuel += trimSum
+        }
+      }
+
+      // Calculer PTS OBT ANNUEL (V) si tous les trimestres sont remplis
+      if (selection === 'all') {
+        row.getCell(22).value = totalAnnuel
+      } else if (selection === '1er') {
+        row.getCell(22).value = trimValues['1er']
+      } else if (selection === '2eme') {
+        row.getCell(22).value = trimValues['2eme']
+      } else if (selection === '3eme') {
+        row.getCell(22).value = trimValues['3eme']
+      }
+
+      row.commit()
+      courseRowsForSousTotal.push(rowNum)
+      console.log(`[BULLETIN_FILL] Row ${rowNum}: "${colAStr}" → matched "${bestSubj.name}"`)
+    } else {
+      console.log(`[BULLETIN_FILL] Row ${rowNum}: "${colAStr}" → NO MATCH`)
+    }
+  }
+
+  // Calculer le rang de l'élève parmi ses camarades
+  try {
+    const classmates = await db.student.findMany({
+      where: { classId: student.class?.id || '' },
+      select: { id: true },
+    })
+    const classmateIds = classmates.map(s => s.id)
+
+    // Calculer le total annuel de chaque camarade (somme de toutes leurs notes)
+    const totals: { studentId: string; total: number }[] = []
+    for (const cm of classmates) {
+      const cmGrades = await db.grade.findMany({
+        where: { studentId: cm.id, schoolYear },
+        select: { value: true },
+      })
+      const total = cmGrades.reduce((sum, g) => sum + g.value, 0)
+      totals.push({ studentId: cm.id, total })
+    }
+    totals.sort((a, b) => b.total - a.total)
+    const rank = totals.findIndex(t => t.studentId === student.id) + 1
+    console.log(`[BULLETIN_FILL] Rank: ${rank}/${totals.length} (total: ${totals.find(t => t.studentId === student.id)?.total})`)
+
+    // Trouver la cellule "RANG" dans le BULLETIN et la remplir
+    for (let rowNum = 1; rowNum <= bulletinWs.rowCount; rowNum++) {
+      const row = bulletinWs.getRow(rowNum)
+      for (let colNum = 1; colNum <= 25; colNum++) {
+        const cell = row.getCell(colNum)
+        const val = cell.value
+        let valStr = ''
+        if (val !== null && val !== undefined) {
+          if (typeof val === 'object' && 'result' in val) valStr = String(val.result ?? '')
+          else if (typeof val === 'object' && 'formula' in val) valStr = String(val.result ?? '')
+          else valStr = String(val)
+        }
+        if (valStr.toUpperCase().includes('RANG') || valStr.toUpperCase().includes('RANK')) {
+          // La cellule RANG est trouvée — remplir la cellule adjacente (à droite)
+          const rankCell = row.getCell(colNum + 1)
+          if (rank > 0) {
+            rankCell.value = `${rank}er` // ou `${rank}ème` pour > 1
+          }
+          console.log(`[BULLETIN_FILL] Rang cell found at row ${rowNum} col ${colNum}, filled: ${rank}er`)
+        }
+      }
+    }
+  } catch (rankErr) {
+    console.warn('[BULLETIN_FILL] Rank calculation failed:', rankErr instanceof Error ? rankErr.message : rankErr)
+  }
+
+  // Remplacer TOUTES les formules restantes par leurs valeurs (déjà fait
+  // dans l'étape 12e2, mais on le refait ici pour être sûr)
+  bulletinWs.eachRow({ includeEmpty: false }, (row) => {
+    row.eachCell({ includeEmpty: false }, (cell) => {
+      if (cell.value !== null && cell.value !== undefined && typeof cell.value === 'object') {
+        const cv = cell.value as unknown as Record<string, unknown>
+        if ('formula' in cv || 'sharedFormula' in cv) {
+          const result = cv.result
+          cell.value = (result === null || result === undefined ? '' : result) as string | number | boolean | null
+        }
+      }
+    })
+  })
+
+  console.log('[BULLETIN_FILL] Done')
+}
+
+/**
  * Rend un bulletin rempli pour un élève à partir du template Excel
  * de sa promotion. Retourne le buffer xlsx modifié + métadonnées.
  */
@@ -588,9 +897,11 @@ export async function renderBulletinFromTemplate(params: {
   studentId: string
   classId?: string
   schoolYear: string
+  selection?: string // 'all' | '1er' | '2eme' | '3eme' | 'p1'..'p6' | 'examen'
 }): Promise<RenderResult | RenderError> {
   const { studentId, schoolYear } = params
-  console.log('[BULLETIN_RENDER] starting for student', studentId, '| year', schoolYear)
+  const selection = params.selection || 'all'
+  console.log('[BULLETIN_RENDER] starting for student', studentId, '| year', schoolYear, '| selection:', selection)
 
   // 1. Charger l'élève + classe
   const student = await db.student.findUnique({
@@ -934,6 +1245,23 @@ export async function renderBulletinFromTemplate(params: {
       })
     })
     console.log(`[BULLETIN_RENDER] Replaced ${replacedCount} remaining formula cells (including shared formulas) with their values`)
+  }
+
+  // 12e3. ⚠ CRITIQUE — Remplir DIRECTEMENT la feuille BULLETIN avec les notes
+  //       de l'élève, les PTS OBT calculés, les sous-totaux et le rang.
+  //       On ne depend plus des VLOOKUP — on remplit chaque ligne du BULLETIN
+  //       ligne par ligne, en respectant la sélection (trimestre/période).
+  if (bulletinWsExceljs) {
+    fillBulletinSheetDirectly(
+      bulletinWsExceljs,
+      listeWs,
+      matchedSubjects,
+      gradesBySubject,
+      student as unknown as { id: string; lastName: string; firstName: string; gender: string | null; dateOfBirth: string | null; user: { userCode: string | null }; class: { id: string; name: string; level: string; promotion: string | null; institutionId: string } | null },
+      selection,
+      db,
+      schoolYear,
+    )
   }
 
   // 12f. Écrire le workbook modifié en buffer avec ExcelJS.
