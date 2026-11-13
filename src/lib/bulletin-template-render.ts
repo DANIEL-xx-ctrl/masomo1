@@ -672,6 +672,10 @@ async function fillBulletinSheetDirectly(
 
   // Tracker les matières déjà utilisées (évite duplication)
   const usedSubjectIds = new Set<string>()
+  // Stocker les valeurs calculées (H, N, T, V) pour application différée
+  const cellOverrides: { rowNum: number; col: number; value: number }[] = []
+  // Stocker les sous-totaux pour recalcul après application différée
+  const sousTotalsToRecalc: { rowNum: number; courseRows: number[] }[] = []
 
   // Parcourir les lignes du BULLETIN à partir de row 11
   let currentDomain = ''
@@ -697,24 +701,12 @@ async function fillBulletinSheetDirectly(
 
     // Détecter "Sous-Total"
     if (colAStr.toLowerCase().includes('sous-total') || colAStr.toLowerCase().includes('sous total')) {
-      // Calculer la somme des lignes cours au-dessus
+      // Stocker pour recalcul APRÈS l'application différée des H, N, T, V
+      // (sinon on lirait les anciennes valeurs de H avant qu'elles soient mises à jour)
       if (courseRowsForSousTotal.length > 0) {
-        for (let col = 2; col <= 22; col++) {
-          let sum = 0
-          let hasAny = false
-          for (const courseRowNum of courseRowsForSousTotal) {
-            const cell = bulletinWs.getRow(courseRowNum).getCell(col)
-            const cellVal = cell.value; const val = typeof cellVal === 'number' ? cellVal : (typeof cellVal === 'object' && cellVal !== null && 'result' in cellVal ? Number((cellVal as { result?: unknown }).result) || 0 : 0)
-            if (val > 0 || cell.value !== null && cell.value !== undefined) { sum += val; hasAny = true }
-          }
-          if (hasAny) {
-            row.getCell(col).value = sum
-          }
-        }
-        row.commit()
-        console.log(`[BULLETIN_FILL] Sous-Total row ${rowNum}: summed ${courseRowsForSousTotal.length} course rows`)
+        sousTotalsToRecalc.push({ rowNum, courseRows: [...courseRowsForSousTotal] })
       }
-      courseRowsForSousTotal.length = 0 // reset
+      courseRowsForSousTotal.length = 0
       continue
     }
 
@@ -789,31 +781,31 @@ async function fillBulletinSheetDirectly(
       }
 
       // Calculer PTS OBT TRIM (H, N, T) selon la sélection
+      // ⚠ IMPORTANT : On utilise trimValues (déjà calculé ci-dessus).
+      // On stocke les valeurs dans cellOverrides pour les appliquer après
+      // avoir nettoyé les sharedFormula (qui empêchent la modification
+      // directe des cellules).
       let totalAnnuel = 0
+      const ptsColMap: { [key: string]: number } = { '1er': 8, '2eme': 14, '3eme': 20 }
       for (const tc of trimColMap) {
         if (shouldCalcTrim(tc.trim)) {
-          // PTS OBT TRIM = somme des périodes + examen
-          let trimSum = 0
-          for (const pCol of tc.periodCols) {
-            const v = row.getCell(pCol).value
-            trimSum += typeof v === 'number' ? v : 0
-          }
-          const exVal = row.getCell(tc.examCol).value
-          trimSum += typeof exVal === 'number' ? exVal : 0
-          row.getCell(tc.ptsCol).value = trimSum
+          const trimSum = trimValues[tc.trim] || 0
+          const col = ptsColMap[tc.trim]
+          // Stocker pour application différée
+          cellOverrides.push({ rowNum, col, value: trimSum })
           totalAnnuel += trimSum
         }
       }
 
       // Calculer PTS OBT ANNUEL (V) si tous les trimestres sont remplis
       if (selection === 'all') {
-        row.getCell(22).value = totalAnnuel
+        cellOverrides.push({ rowNum, col: 22, value: totalAnnuel })
       } else if (selection === '1er') {
-        row.getCell(22).value = trimValues['1er']
+        cellOverrides.push({ rowNum, col: 22, value: trimValues['1er'] })
       } else if (selection === '2eme') {
-        row.getCell(22).value = trimValues['2eme']
+        cellOverrides.push({ rowNum, col: 22, value: trimValues['2eme'] })
       } else if (selection === '3eme') {
-        row.getCell(22).value = trimValues['3eme']
+        cellOverrides.push({ rowNum, col: 22, value: trimValues['3eme'] })
       }
 
       row.commit()
@@ -824,7 +816,56 @@ async function fillBulletinSheetDirectly(
     }
   }
 
-  // Calculer le rang de l'élève parmi ses camarades
+  // ⚠ CRITIQUE — Appliquer les valeurs différées (H, N, T, V) après avoir
+  // nettoyé les sharedFormula. Les cellules avec sharedFormula résistent à
+  // la modification directe — on doit d'abord remplacer TOUTES les formules
+  // par leurs valeurs, PUIS écrire nos valeurs calculées.
+  console.log(`[BULLETIN_FILL] Applying ${cellOverrides.length} deferred cell values...`)
+
+  // 1. D'abord, remplacer toutes les formules par leurs valeurs cachées
+  bulletinWs.eachRow({ includeEmpty: false }, (row) => {
+    row.eachCell({ includeEmpty: false }, (cell) => {
+      if (cell.value !== null && cell.value !== undefined && typeof cell.value === 'object') {
+        const cv = cell.value as unknown as Record<string, unknown>
+        if ('formula' in cv || 'sharedFormula' in cv) {
+          const result = cv.result
+          cell.value = (result === null || result === undefined ? '' : result) as string | number | boolean | null
+        }
+      }
+    })
+  })
+
+  // 2. PUIS écrire nos valeurs calculées (maintenant que les sharedFormula
+  //    sont nettoyées, les cellules acceptent les nouvelles valeurs)
+  for (const override of cellOverrides) {
+    const row = bulletinWs.getRow(override.rowNum)
+    row.getCell(override.col).value = override.value
+  }
+  console.log('[BULLETIN_FILL] Deferred values applied')
+
+  // 3. PUIS recalculer les sous-totaux (maintenant que les H, N, T, V des
+  //    lignes cours ont leurs valeurs finales)
+  for (const st of sousTotalsToRecalc) {
+    const row = bulletinWs.getRow(st.rowNum)
+    for (let col = 2; col <= 22; col++) {
+      let sum = 0
+      let hasAny = false
+      for (const courseRowNum of st.courseRows) {
+        const cell = bulletinWs.getRow(courseRowNum).getCell(col)
+        const cellVal = cell.value
+        let numVal = 0
+        if (typeof cellVal === 'number') numVal = cellVal
+        else if (typeof cellVal === 'string') numVal = parseFloat(cellVal) || 0
+        else if (cellVal !== null && cellVal !== undefined && typeof cellVal === 'object') {
+          if ('result' in cellVal) numVal = Number((cellVal as { result?: unknown }).result) || 0
+        }
+        if (numVal !== 0 || cellVal !== null) { sum += numVal; hasAny = true }
+      }
+      if (hasAny) row.getCell(col).value = sum
+    }
+    row.commit()
+    console.log(`[BULLETIN_FILL] Sous-Total row ${st.rowNum}: recalculated with ${st.courseRows.length} course rows`)
+  }
   try {
     const classmates = await db.student.findMany({
       where: { classId: student.class?.id || '' },
@@ -1252,7 +1293,7 @@ export async function renderBulletinFromTemplate(params: {
   //       On ne depend plus des VLOOKUP — on remplit chaque ligne du BULLETIN
   //       ligne par ligne, en respectant la sélection (trimestre/période).
   if (bulletinWsExceljs) {
-    fillBulletinSheetDirectly(
+    await fillBulletinSheetDirectly(
       bulletinWsExceljs,
       listeWs,
       matchedSubjects,
