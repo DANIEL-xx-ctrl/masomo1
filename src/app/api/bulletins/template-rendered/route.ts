@@ -38,6 +38,7 @@ export async function GET(request: Request) {
     const schoolYear = searchParams.get('schoolYear') || '2024-2025'
     const format = (searchParams.get('format') || 'xlsx').toLowerCase() as 'xlsx' | 'pdf' | 'word'
     const classId = searchParams.get('classId') || undefined
+    const selection = searchParams.get('selection') || 'all'
 
     if (!studentId) {
       return NextResponse.json(
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
     }
 
     // 1. Rendre le bulletin
-    const result = await renderBulletinFromTemplate({ studentId, classId, schoolYear })
+    const result = await renderBulletinFromTemplate({ studentId, classId, schoolYear, selection })
     if ('error' in result) {
       // Mappe le code d'erreur à un status HTTP
       const status =
