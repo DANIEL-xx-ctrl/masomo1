@@ -770,13 +770,19 @@ async function fillBulletinSheetDirectly(
       // Remplir les notes selon la sélection
       const trimValues: { [key: string]: number } = { '1er': 0, '2eme': 0, '3eme': 0 }
       for (const entry of gradeColMap) {
-        if (!shouldFill(entry)) continue
         const key = `${entry.trimester}|${entry.type}`.normalize('NFC').trim()
-        const cellValues = subjGrades?.get(key)
-        if (cellValues && cellValues.length > 0) {
-          const val = cellValues[cellValues.length - 1]
-          row.getCell(entry.col).value = val
-          trimValues[entry.trimester] += val
+        if (shouldFill(entry)) {
+          // Remplir la cellule sélectionnée
+          const cellValues = subjGrades?.get(key)
+          if (cellValues && cellValues.length > 0) {
+            const val = cellValues[cellValues.length - 1]
+            row.getCell(entry.col).value = val
+            trimValues[entry.trimester] += val
+          }
+        } else {
+          // ⚠ VIDER la cellule non-sélectionnée (sinon elle garde la
+          // valeur du template original)
+          row.getCell(entry.col).value = null
         }
       }
 
@@ -791,13 +797,15 @@ async function fillBulletinSheetDirectly(
         if (shouldCalcTrim(tc.trim)) {
           const trimSum = trimValues[tc.trim] || 0
           const col = ptsColMap[tc.trim]
-          // Stocker pour application différée
           cellOverrides.push({ rowNum, col, value: trimSum })
           totalAnnuel += trimSum
+        } else {
+          // Vider le PTS OBT TRIM non-sélectionné
+          row.getCell(ptsColMap[tc.trim]).value = null
         }
       }
 
-      // Calculer PTS OBT ANNUEL (V) si tous les trimestres sont remplis
+      // Calculer PTS OBT ANNUEL (V)
       if (selection === 'all') {
         cellOverrides.push({ rowNum, col: 22, value: totalAnnuel })
       } else if (selection === '1er') {
@@ -806,6 +814,9 @@ async function fillBulletinSheetDirectly(
         cellOverrides.push({ rowNum, col: 22, value: trimValues['2eme'] })
       } else if (selection === '3eme') {
         cellOverrides.push({ rowNum, col: 22, value: trimValues['3eme'] })
+      } else {
+        // Sélection d'une seule période ou examen → vider V
+        row.getCell(22).value = null
       }
 
       row.commit()
