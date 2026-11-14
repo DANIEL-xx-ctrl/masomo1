@@ -745,17 +745,31 @@ async function fillBulletinSheetDirectly(
     }
 
     // ⚠ Si col A est vide, on skip la ligne. Tous les cours du template
-    // ont leur nom ET leurs données sur la MÊME ligne. Il n'y a pas de
-    // continuation (nom sur une ligne, données sur la suivante).
-    // Les lignes sans nom sont soit des lignes vides, soit des cours
-    // sans nom qu'on ne peut pas matcher.
-    if (!colAStr) continue
+    // ont leur nom ET leurs données sur la MÊME ligne.
+    // ⚠ MAIS : on vide quand même les colonnes B-V de cette ligne pour
+    // éviter que les anciennes valeurs du template (formules VLOOKUP
+    // remplacées par leurs résultats cachés) apparaissent dans le bulletin.
+    if (!colAStr) {
+      // Vider toutes les colonnes B-V de cette ligne sans nom
+      for (let c = 2; c <= 22; c++) {
+        const cell = row.getCell(c)
+        if (cell.value !== null && cell.value !== undefined) {
+          cell.value = null
+        }
+      }
+      continue
+    }
 
     // C'est une ligne de matière (course row)
     const normColA = normalize(colAStr)
     // ⚠ Skip si le nom de matière a déjà été traité (doublon — Row 21 peut
     // avoir le même nom que Row 20 à cause d'une formule VLOOKUP cachée)
     if (seenCourseNames.has(normColA)) {
+      // ⚠ VIDER les colonnes B-V de cette ligne en doublon
+      for (let c = 2; c <= 22; c++) {
+        row.getCell(c).value = null
+      }
+      row.commit()
       continue
     }
     seenCourseNames.add(normColA)
@@ -995,12 +1009,24 @@ async function fillBulletinSheetDirectly(
           else valStr = String(val)
         }
         if (valStr.toUpperCase().includes('RANG') || valStr.toUpperCase().includes('PLACE') || valStr.toUpperCase().includes('RANK')) {
+          // Remplir B (col+1) avec le rang
           prow.getCell(colNum + 1).value = rank > 0 ? `${rank}${rank === 1 ? 'er' : 'ème'}` : ''
-          console.log(`[BULLETIN_FILL] Rang at row ${rowNum} col ${colNum + 1}: ${rank}`)
+          // ⚠ VIDER C-V dans cette ligne (sinon les anciens rangs "9e"
+          // restent dans toutes les colonnes du template)
+          for (let c = colNum + 2; c <= 22; c++) {
+            prow.getCell(c).value = null
+          }
+          console.log(`[BULLETIN_FILL] Rang at row ${rowNum} col ${colNum + 1}: ${rank}, cleared C-V`)
         }
         if (valStr.toUpperCase().includes('POURC') || valStr === '%') {
-          prow.getCell(colNum + 1).value = pourcentage
-          console.log(`[BULLETIN_FILL] Pourcentage at row ${rowNum} col ${colNum + 1}: ${pourcentage}%`)
+          // Remplir B avec le pourcentage arrondi à 1 décimale
+          prow.getCell(colNum + 1).value = Math.round(pourcentage * 10) / 10
+          // ⚠ VIDER C-V dans cette ligne (sinon les anciens pourcentages
+          // avec décimales non arrondies restent)
+          for (let c = colNum + 2; c <= 22; c++) {
+            prow.getCell(c).value = null
+          }
+          console.log(`[BULLETIN_FILL] Pourcentage at row ${rowNum} col ${colNum + 1}: ${pourcentage}%, cleared C-V`)
         }
       }
     }
