@@ -724,17 +724,17 @@ async function fillBulletinSheetDirectly(
 
     // Détecter les en-têtes de domaine (DOMAINE DES LANGUES, MATHEMATIQUES, etc.)
     // ⚠ IMPORTANT : Ne PAS matcher sur "CONGOLAISE" seul car "LECT. - ECRITURE
-    // EN LANGUES CONGOLAISES" est une MATIÈRE, pas un domaine. On ne matche
-    // que sur "DOMAINE", "MATHEMATIQUE", "SCIENCE", etc. Les sous-titres
-    // comme "LANGUES CONGOLAISES" ou "FRANCAIS" sont aussi des domaines
-    // MAIS seulement si ils sont courts (< 25 chars) — sinon c'est une matière.
+    // EN LANGUES CONGOLAISES" est une MATIÈRE, pas un domaine.
+    // ⚠ IMPORTANT : "Sciences d'éveil" contient "SCIENCE" mais c'est une
+    // MATIÈRE, pas un domaine. On ne matche "SCIENCE" que si c'est court.
+    // ⚠ IMPORTANT : "Technologie" est une MATIÈRE, pas juste un domaine.
     const upperColA = colAStr.toUpperCase()
-    const isShortHeader = colAStr.length < 25
+    const isShortHeader = colAStr.length < 20
     if (upperColA.includes('DOMAINE') ||
-        (upperColA.includes('MATHEMATIQUE') && isShortHeader) ||
-        (upperColA.includes('SCIENCE') && isShortHeader && !upperColA.includes('EVEIL')) ||
-        (upperColA === 'TECHNOLOGIE') ||
-        (upperColA.includes('ART') && isShortHeader && !upperColA.includes('DRAMATIQUE') && !upperColA.includes('PLASTIQUE')) ||
+        (upperColA === 'MATHEMATIQUES') ||
+        (upperColA === 'SCIENCES' && isShortHeader) ||
+        (upperColA === 'TECHNOLOGIE' && isShortHeader && colAStr.length <= 11) ||
+        (upperColA.includes('ART') && isShortHeader && !upperColA.includes('DRAMATIQUE') && !upperColA.includes('PLASTIQUE') && !upperColA.includes('PHYS')) ||
         (upperColA.includes('DEVELOPPEMENT') && isShortHeader) ||
         (upperColA.includes('UNIVERS') && isShortHeader) ||
         (upperColA === 'LANGUES CONGOLAISES') ||
@@ -994,7 +994,7 @@ async function fillBulletinSheetDirectly(
           if (typeof val === 'object' && 'result' in val) valStr = String((val as { result?: unknown }).result ?? '')
           else valStr = String(val)
         }
-        if (valStr.toUpperCase().includes('RANG')) {
+        if (valStr.toUpperCase().includes('RANG') || valStr.toUpperCase().includes('PLACE') || valStr.toUpperCase().includes('RANK')) {
           prow.getCell(colNum + 1).value = rank > 0 ? `${rank}${rank === 1 ? 'er' : 'ème'}` : ''
           console.log(`[BULLETIN_FILL] Rang at row ${rowNum} col ${colNum + 1}: ${rank}`)
         }
@@ -1020,6 +1020,65 @@ async function fillBulletinSheetDirectly(
         }
       }
     })
+  })
+
+  // ⚠ CRITIQUE — Nettoyage final : vider TOUTES les colonnes non-sélectionnées
+  // dans TOUTES les lignes du BULLETIN (pas seulement les lignes cours).
+  // Sans cette étape, les lignes MAXIMA GENERAUX, POURCETAGE, PLACE,
+  // les lignes sans nom (Row 21), et les matières non-matchées gardent
+  // les anciennes valeurs du template pour les périodes non-sélectionnées.
+  //
+  // Colonnes à vider selon la sélection :
+  //   C(3)=1èP, D(4)=2èP, F(6)=EX T1, H(8)=TRIM T1
+  //   I(9)=3èP, J(10)=4èP, L(12)=EX T2, N(14)=TRIM T2
+  //   O(15)=5èP, P(16)=6èP, R(18)=EX T3, T(20)=TRIM T3
+  //   V(22)=ANNUEL
+  // Et les MAX: E(5)=MAX EX T1, G(7)=MAX TRIM T1, K(11), M(13), Q(17), S(19), U(21)
+  const colsToClear = new Set<number>()
+  for (const entry of gradeColMap) {
+    if (!shouldFill(entry)) {
+      colsToClear.add(entry.col) // Vider la colonne grade
+    }
+  }
+  // Vider les colonnes TRIM non-calculées
+  for (const tc of trimColMap) {
+    if (!shouldCalcTrim(tc.trim)) {
+      colsToClear.add(tc.ptsCol) // H, N, ou T
+    }
+  }
+  // Vider les colonnes MAX pour les trimestres non-sélectionnés
+  if (!(selection === 'all' || selection === '1er' || selection.startsWith('p1') || selection.startsWith('p2') || selection === 'examen')) {
+    colsToClear.add(5); colsToClear.add(7) // E, G (T1 MAX)
+  }
+  if (!(selection === 'all' || selection === '2eme' || selection.startsWith('p3') || selection.startsWith('p4'))) {
+    colsToClear.add(11); colsToClear.add(13) // K, M (T2 MAX)
+  }
+  if (!(selection === 'all' || selection === '3eme' || selection.startsWith('p5') || selection.startsWith('p6'))) {
+    colsToClear.add(17); colsToClear.add(19) // Q, S (T3 MAX)
+  }
+  // Vider U (MAX ANNUEL) si pas all
+  if (selection !== 'all') {
+    colsToClear.add(21)
+  }
+  // Vider V (PTS ANNUEL) si pas all/trimester
+  if (selection !== 'all' && selection !== '1er' && selection !== '2eme' && selection !== '3eme') {
+    colsToClear.add(22)
+  }
+
+  // Track les cellules déjà définies par cellOverrides (ne pas les vider)
+  const overrideKeys = new Set(cellOverrides.map(o => `${o.rowNum}_${o.col}`))
+
+  console.log(`[BULLETIN_FILL] Final cleanup: clearing ${colsToClear.size} columns in all rows`)
+  bulletinWs.eachRow({ includeEmpty: true }, (row, rowNum) => {
+    if (rowNum < 11) return // Skip headers (rows 1-10)
+    for (const col of colsToClear) {
+      // Ne pas vider les cellules qui ont été explicitement définies
+      if (overrideKeys.has(`${rowNum}_${col}`)) continue
+      const cell = row.getCell(col)
+      if (cell.value !== null && cell.value !== undefined) {
+        cell.value = null
+      }
+    }
   })
 
   console.log('[BULLETIN_FILL] Done')
