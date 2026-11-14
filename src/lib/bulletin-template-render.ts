@@ -581,6 +581,134 @@ export async function findTemplateForStudent(studentId: string) {
 }
 
 /**
+ * Remplit les pourcentages pour chaque colonne quand selection=all.
+ * Lit les valeurs des lignes cours dans le BULLETIN, calcule le
+ * pourcentage = (somme élève / somme max) × 100 pour chaque colonne.
+ */
+function fillPourcentagePerColumn(
+  bulletinWs: ExcelJS.Worksheet,
+  rankRowNum: number,
+  startCol: number,
+): void {
+  // Trouver la ligne MAXIMA (qui contient les maxima par colonne)
+  // et la ligne TOTAUX (qui contient les totaux de l'élève)
+  let maximaRow = -1
+  let totauxRow = -1
+  for (let r = 11; r < rankRowNum; r++) {
+    const row = bulletinWs.getRow(r)
+    const aVal = row.getCell(1).value
+    let aStr = ''
+    if (aVal !== null && aVal !== undefined) {
+      if (typeof aVal === 'object' && 'result' in aVal) aStr = String((aVal as { result?: unknown }).result ?? '')
+      else aStr = String(aVal)
+    }
+    if (aStr.toUpperCase().includes('MAXIMA')) maximaRow = r
+    if (aStr.toUpperCase().includes('TOTAUX') && !aStr.toUpperCase().includes('MAXIMA')) totauxRow = r
+  }
+
+  // Pour chaque colonne C-V, calculer le pourcentage
+  for (let col = startCol + 1; col <= 22; col++) {
+    let studentTotal = 0
+    let maxTotal = 0
+
+    // Lire le total élève depuis la ligne TOTAUX (ou la dernière Sous-Total)
+    if (totauxRow > 0) {
+      const v = bulletinWs.getRow(totauxRow).getCell(col).value
+      studentTotal = typeof v === 'number' ? v : 0
+    }
+
+    // Lire le max depuis la ligne MAXIMA
+    if (maximaRow > 0) {
+      const v = bulletinWs.getRow(maximaRow).getCell(col).value
+      maxTotal = typeof v === 'number' ? v : 0
+    }
+
+    if (maxTotal > 0 && studentTotal > 0) {
+      const pct = Math.round((studentTotal / maxTotal) * 1000) / 10
+      bulletinWs.getRow(rankRowNum).getCell(col).value = pct
+    } else {
+      bulletinWs.getRow(rankRowNum).getCell(col).value = null
+    }
+  }
+}
+
+/**
+ * Remplit les rangs pour chaque colonne quand selection=all.
+ * Pour chaque colonne (C=1èP, D=2èP, F=EX T1, H=TRIM T1, etc.),
+ * calcule le rang de l'élève parmi ses camarades basé sur les notes
+ * de cette colonne.
+ */
+async function fillRankPerColumn(
+  bulletinWs: ExcelJS.Worksheet,
+  rankRowNum: number,
+  startCol: number,
+  student: { id: string },
+  classmates: { id: string }[],
+  schoolYear: string,
+  db: typeof import('@/lib/db').db,
+  gradeColMap: { type: string; trimester: string; col: number; isExam: boolean }[],
+): Promise<void> {
+  // Pour chaque colonne de note (C, D, F, H, I, J, L, N, O, P, R, T, V)
+  const colToGradeMap: { col: number; trimester: string; type: string }[] = []
+  for (const entry of gradeColMap) {
+    colToGradeMap.push({ col: entry.col, trimester: entry.trimester, type: entry.type })
+  }
+  // Ajouter les colonnes TRIM (H=8, N=14, T=20) et ANNUEL (V=22)
+  colToGradeMap.push({ col: 8, trimester: '1er', type: '__trim__' })
+  colToGradeMap.push({ col: 14, trimester: '2eme', type: '__trim__' })
+  colToGradeMap.push({ col: 20, trimester: '3eme', type: '__trim__' })
+  colToGradeMap.push({ col: 22, trimester: '__all__', type: '__annuel__' })
+
+  for (const cm of colToGradeMap) {
+    if (cm.col <= startCol) continue // Skip B
+
+    try {
+      // Calculer le total de chaque camarade pour cette colonne
+      const totals: { studentId: string; total: number }[] = []
+      for (const m of classmates) {
+        let total = 0
+        if (cm.type === '__trim__') {
+          // Trim = somme des 3 colonnes (périodes + examen) du trimestre
+          const periodCols = cm.trimester === '1er' ? [3, 4, 6] : cm.trimester === '2eme' ? [9, 10, 12] : [15, 16, 18]
+          for (const pc of periodCols) {
+            const entry = gradeColMap.find(e => e.col === pc)
+            if (entry) {
+              const g = await db.grade.findFirst({
+                where: { studentId: m.id, schoolYear, trimester: entry.trimester, type: entry.type },
+                select: { value: true },
+              })
+              total += g?.value || 0
+            }
+          }
+        } else if (cm.type === '__annuel__') {
+          // Annuel = toutes les notes
+          const grades = await db.grade.findMany({
+            where: { studentId: m.id, schoolYear },
+            select: { value: true },
+          })
+          total = grades.reduce((s, g) => s + g.value, 0)
+        } else {
+          // Une seule période/examen
+          const g = await db.grade.findFirst({
+            where: { studentId: m.id, schoolYear, trimester: cm.trimester, type: cm.type },
+            select: { value: true },
+          })
+          total = g?.value || 0
+        }
+        totals.push({ studentId: m.id, total })
+      }
+      totals.sort((a, b) => b.total - a.total)
+      const colRank = totals.findIndex(t => t.studentId === student.id) + 1
+      if (colRank > 0) {
+        bulletinWs.getRow(rankRowNum).getCell(cm.col).value = `${colRank}${colRank === 1 ? 'er' : 'ème'}`
+      }
+    } catch {
+      // Skip cette colonne en cas d'erreur
+    }
+  }
+}
+
+/**
  * Remplit DIRECTEMENT la feuille BULLETIN avec les notes de l'élève.
  *
  * On parcourt chaque ligne du BULLETIN à partir de la row 11 (après les
@@ -998,6 +1126,9 @@ async function fillBulletinSheetDirectly(
     console.log(`[BULLETIN_FILL] Rank: ${rank}/${totals.length} | total: ${studentTotal}/${maxTotal} | ${pourcentage}% | sel: ${selection}`)
 
     // Trouver et remplir RANG et POURCENTAGE dans le BULLETIN
+    // ⚠ Quand selection=all, on calcule le rang ET le pourcentage pour
+    // CHAQUE colonne (C=1èP, D=2èP, F=EX T1, H=TRIM T1, I=3èP, etc.)
+    // pas seulement en B.
     for (let rowNum = 1; rowNum <= bulletinWs.rowCount; rowNum++) {
       const prow = bulletinWs.getRow(rowNum)
       for (let colNum = 1; colNum <= 25; colNum++) {
@@ -1009,24 +1140,30 @@ async function fillBulletinSheetDirectly(
           else valStr = String(val)
         }
         if (valStr.toUpperCase().includes('RANG') || valStr.toUpperCase().includes('PLACE') || valStr.toUpperCase().includes('RANK')) {
-          // Remplir B (col+1) avec le rang
+          // Remplir B avec le rang global
           prow.getCell(colNum + 1).value = rank > 0 ? `${rank}${rank === 1 ? 'er' : 'ème'}` : ''
-          // ⚠ VIDER C-V dans cette ligne (sinon les anciens rangs "9e"
-          // restent dans toutes les colonnes du template)
-          for (let c = colNum + 2; c <= 22; c++) {
-            prow.getCell(c).value = null
+          // Si selection=all, calculer le rang pour chaque colonne
+          if (selection === 'all') {
+            await fillRankPerColumn(bulletinWs, rowNum, colNum + 1, student, classmates, schoolYear, db, gradeColMap)
           }
-          console.log(`[BULLETIN_FILL] Rang at row ${rowNum} col ${colNum + 1}: ${rank}, cleared C-V`)
+          // Vider C-V (le remplissage par colonne se fait dans fillRankPerColumn)
+          for (let c = colNum + 2; c <= 22; c++) {
+            if (selection !== 'all') prow.getCell(c).value = null
+          }
+          console.log(`[BULLETIN_FILL] Rang at row ${rowNum} col ${colNum + 1}: ${rank}`)
         }
         if (valStr.toUpperCase().includes('POURC') || valStr === '%') {
-          // Remplir B avec le pourcentage arrondi à 1 décimale
+          // Remplir B avec le pourcentage global arrondi
           prow.getCell(colNum + 1).value = Math.round(pourcentage * 10) / 10
-          // ⚠ VIDER C-V dans cette ligne (sinon les anciens pourcentages
-          // avec décimales non arrondies restent)
-          for (let c = colNum + 2; c <= 22; c++) {
-            prow.getCell(c).value = null
+          // Si selection=all, calculer le pourcentage pour chaque colonne
+          if (selection === 'all') {
+            fillPourcentagePerColumn(bulletinWs, rowNum, colNum + 1)
           }
-          console.log(`[BULLETIN_FILL] Pourcentage at row ${rowNum} col ${colNum + 1}: ${pourcentage}%, cleared C-V`)
+          // Vider C-V si pas all (pour all, fillPourcentagePerColumn s'en charge)
+          for (let c = colNum + 2; c <= 22; c++) {
+            if (selection !== 'all') prow.getCell(c).value = null
+          }
+          console.log(`[BULLETIN_FILL] Pourcentage at row ${rowNum} col ${colNum + 1}: ${pourcentage}%`)
         }
       }
     }
