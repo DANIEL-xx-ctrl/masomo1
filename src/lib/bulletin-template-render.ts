@@ -582,52 +582,85 @@ export async function findTemplateForStudent(studentId: string) {
 
 /**
  * Remplit les pourcentages pour chaque colonne quand selection=all.
- * Lit les valeurs des lignes cours dans le BULLETIN, calcule le
- * pourcentage = (somme élève / somme max) × 100 pour chaque colonne.
+ * ⚠ IMPORTANT : On calcule les pourcentages depuis les notes DB de l'élève,
+ * PAS depuis les cellules du BULLETIN (qui peuvent contenir les valeurs
+ * du template au lieu des vraies notes).
  */
-function fillPourcentagePerColumn(
+async function fillPourcentagePerColumn(
   bulletinWs: ExcelJS.Worksheet,
   rankRowNum: number,
   startCol: number,
-): void {
-  // Trouver la ligne MAXIMA (qui contient les maxima par colonne)
-  // et la ligne TOTAUX (qui contient les totaux de l'élève)
-  let maximaRow = -1
-  let totauxRow = -1
-  for (let r = 11; r < rankRowNum; r++) {
-    const row = bulletinWs.getRow(r)
-    const aVal = row.getCell(1).value
-    let aStr = ''
-    if (aVal !== null && aVal !== undefined) {
-      if (typeof aVal === 'object' && 'result' in aVal) aStr = String((aVal as { result?: unknown }).result ?? '')
-      else aStr = String(aVal)
-    }
-    if (aStr.toUpperCase().includes('MAXIMA')) maximaRow = r
-    if (aStr.toUpperCase().includes('TOTAUX') && !aStr.toUpperCase().includes('MAXIMA')) totauxRow = r
-  }
+  student: { id: string },
+  schoolYear: string,
+  db: typeof import('@/lib/db').db,
+): Promise<void> {
+  // Mapping colonne → (trimester, type) pour calculer le total depuis la DB
+  const colToGrade: { col: number; trimester: string; type: string | null }[] = [
+    { col: 3, trimester: '1er', type: '1ère période' },    // C
+    { col: 4, trimester: '1er', type: '2ème période' },    // D
+    { col: 6, trimester: '1er', type: 'examen' },          // F
+    { col: 8, trimester: '1er', type: null },              // H = trim T1 (somme)
+    { col: 9, trimester: '2eme', type: '3ème période' },   // I
+    { col: 10, trimester: '2eme', type: '4ème période' },  // J
+    { col: 12, trimester: '2eme', type: 'examen' },        // L
+    { col: 14, trimester: '2eme', type: null },             // N = trim T2
+    { col: 15, trimester: '3eme', type: '5ème période' },  // O
+    { col: 16, trimester: '3eme', type: '6ème période' },  // P
+    { col: 18, trimester: '3eme', type: 'examen' },        // R
+    { col: 20, trimester: '3eme', type: null },             // T = trim T3
+    { col: 22, trimester: null, type: null },              // V = annuel
+  ]
 
-  // Pour chaque colonne C-V, calculer le pourcentage
-  for (let col = startCol + 1; col <= 22; col++) {
+  for (const cm of colToGrade) {
+    if (cm.col <= startCol) continue
+
     let studentTotal = 0
     let maxTotal = 0
 
-    // Lire le total élève depuis la ligne TOTAUX (ou la dernière Sous-Total)
-    if (totauxRow > 0) {
-      const v = bulletinWs.getRow(totauxRow).getCell(col).value
-      studentTotal = typeof v === 'number' ? v : 0
-    }
-
-    // Lire le max depuis la ligne MAXIMA
-    if (maximaRow > 0) {
-      const v = bulletinWs.getRow(maximaRow).getCell(col).value
-      maxTotal = typeof v === 'number' ? v : 0
-    }
-
-    if (maxTotal > 0 && studentTotal > 0) {
-      const pct = Math.round((studentTotal / maxTotal) * 1000) / 10
-      bulletinWs.getRow(rankRowNum).getCell(col).value = pct
+    if (cm.type === null && cm.trimester !== null) {
+      // Trim = somme des 3 types du trimestre
+      const types = ['1ère période', '2ème période', 'examen']
+      const trim = cm.trimester
+      const trimTypes = trim === '1er' ? ['1ère période', '2ème période', 'examen']
+        : trim === '2eme' ? ['3ème période', '4ème période', 'examen']
+        : ['5ème période', '6ème période', 'examen']
+      for (const t of trimTypes) {
+        const grades = await db.grade.findMany({
+          where: { studentId: student.id, schoolYear, trimester: trim, type: t },
+          select: { value: true, maxValue: true },
+        })
+        for (const g of grades) {
+          studentTotal += g.value
+          maxTotal += g.maxValue
+        }
+      }
+    } else if (cm.trimester === null) {
+      // Annuel = toutes les notes
+      const grades = await db.grade.findMany({
+        where: { studentId: student.id, schoolYear },
+        select: { value: true, maxValue: true },
+      })
+      for (const g of grades) {
+        studentTotal += g.value
+        maxTotal += g.maxValue
+      }
     } else {
-      bulletinWs.getRow(rankRowNum).getCell(col).value = null
+      // Une seule période/examen
+      const grades = await db.grade.findMany({
+        where: { studentId: student.id, schoolYear, trimester: cm.trimester, type: cm.type },
+        select: { value: true, maxValue: true },
+      })
+      for (const g of grades) {
+        studentTotal += g.value
+        maxTotal += g.maxValue
+      }
+    }
+
+    if (maxTotal > 0) {
+      const pct = Math.round((studentTotal / maxTotal) * 1000) / 10
+      bulletinWs.getRow(rankRowNum).getCell(cm.col).value = pct
+    } else {
+      bulletinWs.getRow(rankRowNum).getCell(cm.col).value = null
     }
   }
 }
@@ -872,20 +905,43 @@ async function fillBulletinSheetDirectly(
       continue
     }
 
-    // ⚠ Si col A est vide, on skip la ligne. Tous les cours du template
-    // ont leur nom ET leurs données sur la MÊME ligne.
-    // ⚠ MAIS : on vide quand même les colonnes B-V de cette ligne pour
-    // éviter que les anciennes valeurs du template (formules VLOOKUP
-    // remplacées par leurs résultats cachés) apparaissent dans le bulletin.
-    if (!colAStr) {
-      // Vider toutes les colonnes B-V de cette ligne sans nom
-      for (let c = 2; c <= 22; c++) {
-        const cell = row.getCell(c)
-        if (cell.value !== null && cell.value !== undefined) {
-          cell.value = null
-        }
-      }
+    // ⚠ "LECT. - ECRITURE..." est un SOUS-TITRE (comme "FRANCAIS"), pas un
+    // cours. Les données du cours sont sur la ligne EN-DESSOUS (Row 21).
+    // On skip cette ligne sans reset des sous-totaux — la continuation
+    // ci-dessous utilisera ce nom pour la ligne suivante.
+    if (upperColA.includes('LECT') && upperColA.includes('ECRIT') && upperColA.includes('CONGOLAISE')) {
       continue
+    }
+
+    // ⚠ Si col A est vide, vérifier si la ligne précédente était un sous-titre
+    // (comme "LECT. - ECRITURE EN LANGUES CONGOLAISES"). Si oui, cette ligne
+    // contient les données du cours — on utilise le nom de la ligne précédente.
+    if (!colAStr) {
+      const prevRow = bulletinWs.getRow(rowNum - 1)
+      const prevColA = prevRow.getCell(1).value
+      let prevName = ''
+      if (prevColA !== null && prevColA !== undefined) {
+        if (typeof prevColA === 'object' && 'result' in prevColA) prevName = String((prevColA as { result?: unknown }).result ?? '')
+        else if (typeof prevColA === 'object' && 'richText' in prevColA) prevName = (prevColA as { richText: { text: string }[] }).richText.map(rt => rt.text).join('')
+        else prevName = String(prevColA)
+      }
+      // Si la ligne précédente était un sous-titre de matière (pas un domaine,
+      // pas un sous-total), utiliser ce nom comme nom de matière
+      if (prevName.trim() && !prevName.toLowerCase().includes('sous-total') &&
+          !prevName.toUpperCase().includes('DOMAINE') &&
+          !prevName.toUpperCase().includes('MAXIMA') &&
+          !prevName.toUpperCase().includes('TOTAUX') &&
+          !prevName.toUpperCase().includes('POURC') &&
+          !prevName.toUpperCase().includes('PLACE') &&
+          prevName.length > 3) {
+        colAStr = prevName.trim()
+      } else {
+        // Vider les colonnes B-V de cette ligne sans nom
+        for (let c = 2; c <= 22; c++) {
+          row.getCell(c).value = null
+        }
+        continue
+      }
     }
 
     // C'est une ligne de matière (course row)
@@ -1157,7 +1213,7 @@ async function fillBulletinSheetDirectly(
           prow.getCell(colNum + 1).value = Math.round(pourcentage * 10) / 10
           // Si selection=all, calculer le pourcentage pour chaque colonne
           if (selection === 'all') {
-            fillPourcentagePerColumn(bulletinWs, rowNum, colNum + 1)
+            await fillPourcentagePerColumn(bulletinWs, rowNum, colNum + 1, student, schoolYear, db)
           }
           // Vider C-V si pas all (pour all, fillPourcentagePerColumn s'en charge)
           for (let c = colNum + 2; c <= 22; c++) {
