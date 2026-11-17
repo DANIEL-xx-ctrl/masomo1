@@ -42,6 +42,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useAppStore } from '@/lib/store';
 import { withSchoolYear } from '@/lib/utils';
 import { TRIMESTERS, TRIMESTER_LABELS } from '@/lib/constants';
@@ -189,6 +197,15 @@ export default function BulletinsModule() {
   // Sélection de période pour le bulletin : 'all', '1er', '2eme', '3eme',
   // 'p1'..'p6', 'examen'
   const [previewSelection, setPreviewSelection] = useState<string>('all');
+
+  // ----- State : classement (rangs + pourcentages par élève) -----
+  const [rankingDialogOpen, setRankingDialogOpen] = useState(false);
+  const [rankingSelection, setRankingSelection] = useState<string>('all');
+  const [rankingData, setRankingData] = useState<Array<{ rank: number; name: string; userCode: string | null; total: number; maxTotal: number; percentage: number }>>([]);
+  const [rankingLoading, setRankingLoading] = useState(false);
+  const [rankingError, setRankingError] = useState<string>('');
+  const [rankingExporting, setRankingExporting] = useState<'xlsx' | 'pdf' | 'word' | null>(null);
+  const [rankingPeriodLabel, setRankingPeriodLabel] = useState<string>('');
 
   // ----- State : proclamation (sous-module compacté) -----
   const [procDialogOpen, setProcDialogOpen] = useState(false);
@@ -423,6 +440,72 @@ export default function BulletinsModule() {
   };
 
   // ============================================================================
+  // Classement handlers
+  // ============================================================================
+
+  const handleFetchRanking = async (selection: string) => {
+    if (!filterClassId || filterClassId === 'all') {
+      addToast('warning', 'Classe requise', 'Sélectionnez une classe d\'abord');
+      return;
+    }
+    setRankingLoading(true);
+    setRankingError('');
+    setRankingData([]);
+    try {
+      const params = new URLSearchParams();
+      params.set('classId', filterClassId);
+      params.set('schoolYear', schoolYear);
+      params.set('selection', selection);
+      params.set('format', 'json');
+      const res = await fetch(`/api/bulletins/class-ranking?${params.toString()}`);
+      if (!res.ok) throw new Error(`Erreur ${res.status}`);
+      const data = await res.json();
+      setRankingData(data.ranking || []);
+      setRankingPeriodLabel(data.periodLabel || '');
+    } catch (error) {
+      setRankingError(error instanceof Error ? error.message : 'Erreur');
+    } finally {
+      setRankingLoading(false);
+    }
+  };
+
+  const handleExportRanking = async (format: 'xlsx' | 'pdf' | 'word') => {
+    if (!filterClassId || filterClassId === 'all') return;
+    setRankingExporting(format);
+    try {
+      const params = new URLSearchParams();
+      params.set('classId', filterClassId);
+      params.set('schoolYear', schoolYear);
+      params.set('selection', rankingSelection);
+      params.set('format', format);
+      const url = `/api/bulletins/class-ranking?${params.toString()}`;
+      const ext = format === 'xlsx' ? 'xlsx' : format === 'pdf' ? 'pdf' : 'docx';
+      await triggerDownload(url, `classement_${rankingSelection}.${ext}`);
+      addToast('success', `Export ${format.toUpperCase()}`, 'Classement exporté');
+    } catch (error) {
+      addToast('error', 'Erreur', error instanceof Error ? error.message : 'Export impossible');
+    } finally {
+      setRankingExporting(null);
+    }
+  };
+
+  const openRankingDialog = () => {
+    setRankingDialogOpen(true);
+    setRankingData([]);
+    setRankingError('');
+    if (filterClassId && filterClassId !== 'all') {
+      handleFetchRanking(rankingSelection);
+    }
+  };
+
+  const getRankBadge = (rank: number) => {
+    if (rank === 1) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+    if (rank === 2) return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+    if (rank === 3) return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400';
+    return 'bg-muted text-muted-foreground';
+  };
+
+  // ============================================================================
   // Proclamation handlers (sous-module conservé en compacté)
   // ============================================================================
 
@@ -593,6 +676,15 @@ export default function BulletinsModule() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={openRankingDialog}
+            variant="outline"
+            className="border-sky-400 text-sky-700 hover:bg-sky-50 hover:text-sky-800 dark:border-sky-700 dark:text-sky-400 dark:hover:bg-sky-950/30"
+            title="Voir les rangs et pourcentages de tous les élèves par période"
+          >
+            <Trophy className="w-4 h-4 mr-2" />
+            Classement
+          </Button>
           <Button
             onClick={openProclamationDialog}
             variant="outline"
@@ -1424,6 +1516,143 @@ export default function BulletinsModule() {
                 onClick={() => setProcDialogOpen(false)}
                 className="w-full sm:w-auto"
               >
+                Fermer
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== Dialog : Classement (rangs + pourcentages par élève) ===== */}
+      <Dialog open={rankingDialogOpen} onOpenChange={setRankingDialogOpen}>
+        <DialogContent className="sm:max-w-[800px] max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden gap-0 p-0">
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-3 border-b">
+            <DialogTitle className="flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-sky-500" />
+              Classement — {classes.find(c => c.id === filterClassId)?.name || 'Classe'}
+            </DialogTitle>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <p className="text-xs text-muted-foreground">
+                Année {schoolYear} · {rankingPeriodLabel}
+              </p>
+              <Select
+                value={rankingSelection}
+                onValueChange={(v) => {
+                  setRankingSelection(v);
+                  handleFetchRanking(v);
+                }}
+              >
+                <SelectTrigger className="h-7 w-auto text-xs min-w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les trimestres</SelectItem>
+                  <SelectItem value="1er">1er trimestre</SelectItem>
+                  <SelectItem value="2eme">2ème trimestre</SelectItem>
+                  <SelectItem value="3eme">3ème trimestre</SelectItem>
+                  <SelectItem value="p1">1ère période</SelectItem>
+                  <SelectItem value="p2">2ème période</SelectItem>
+                  <SelectItem value="p3">3ème période</SelectItem>
+                  <SelectItem value="p4">4ème période</SelectItem>
+                  <SelectItem value="p5">5ème période</SelectItem>
+                  <SelectItem value="p6">6ème période</SelectItem>
+                  <SelectItem value="examen">Examens</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </DialogHeader>
+
+          {/* Table de classement */}
+          <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4">
+            {rankingLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
+              </div>
+            ) : rankingError ? (
+              <div className="text-center py-8 text-red-600">{rankingError}</div>
+            ) : rankingData.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {filterClassId === 'all' ? 'Sélectionnez une classe' : 'Aucune donnée — cliquez sur une période'}
+              </div>
+            ) : (
+              <div className="rounded-lg border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-card">
+                      <TableHead className="w-16 text-center">Rang</TableHead>
+                      <TableHead>Nom</TableHead>
+                      <TableHead className="text-center">N° ID</TableHead>
+                      <TableHead className="text-center">Total obtenu</TableHead>
+                      <TableHead className="text-center">Total max</TableHead>
+                      <TableHead className="text-center">Pourcentage</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rankingData.map((r) => (
+                      <TableRow key={r.rank} className={r.rank <= 3 ? 'font-medium' : ''}>
+                        <TableCell className="text-center">
+                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${getRankBadge(r.rank)}`}>
+                            {r.rank}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-semibold">{r.name}</TableCell>
+                        <TableCell className="text-center text-xs font-mono text-muted-foreground">{r.userCode || '—'}</TableCell>
+                        <TableCell className="text-center">
+                          <span className={`font-bold ${r.percentage >= 50 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {r.total}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center text-muted-foreground">{r.maxTotal}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-16 h-2 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={`h-full ${r.percentage >= 50 ? 'bg-emerald-500' : 'bg-red-500'}`}
+                                style={{ width: `${Math.min(r.percentage, 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-medium">{r.percentage}%</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          {/* Footer avec exports */}
+          <DialogFooter className="shrink-0 border-t bg-background px-6 py-3 mt-0">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2 w-full">
+              <Button
+                onClick={() => handleExportRanking('xlsx')}
+                disabled={rankingData.length === 0 || rankingExporting !== null}
+                variant="outline"
+                className="w-full sm:w-auto border-emerald-300 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:border-emerald-900/50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              >
+                {rankingExporting === 'xlsx' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
+                Excel
+              </Button>
+              <Button
+                onClick={() => handleExportRanking('pdf')}
+                disabled={rankingData.length === 0 || rankingExporting !== null}
+                variant="outline"
+                className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
+              >
+                {rankingExporting === 'pdf' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
+                PDF
+              </Button>
+              <Button
+                onClick={() => handleExportRanking('word')}
+                disabled={rankingData.length === 0 || rankingExporting !== null}
+                variant="outline"
+                className="w-full sm:w-auto border-sky-300 text-sky-600 hover:bg-sky-50 hover:text-sky-700 dark:border-sky-900/50 dark:text-sky-400 dark:hover:bg-sky-950/30"
+              >
+                {rankingExporting === 'word' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileType2 className="w-4 h-4 mr-2" />}
+                Word
+              </Button>
+              <Button variant="outline" onClick={() => setRankingDialogOpen(false)} className="w-full sm:w-auto">
                 Fermer
               </Button>
             </div>
