@@ -839,6 +839,11 @@ async function fillBulletinSheetDirectly(
   const cellOverrides: { rowNum: number; col: number; value: number }[] = []
   // Stocker les sous-totaux pour recalcul après application différée
   const sousTotalsToRecalc: { rowNum: number; courseRows: number[] }[] = []
+  // Stocker les cours isolés (sans Sous-Total) pour le calcul MAXIMA
+  const isolatedCourseRows: number[] = []
+  // Flag : la ligne précédente était un sous-titre LECT → le cours qui suit
+  // est un cours ISOLÉ (pas de Sous-Total propre)
+  let isAfterLECTSubTitle = false
 
   // Parcourir les lignes du BULLETIN à partir de row 11
   let currentDomain = ''
@@ -860,6 +865,11 @@ async function fillBulletinSheetDirectly(
     }
     colAStr = colAStr.trim()
 
+    // Debug: log Row 20-22 pour diagnostiquer LECT
+    if (rowNum >= 20 && rowNum <= 22) {
+      console.log(`[BULLETIN_FILL] Row ${rowNum}: colAStr="${colAStr.substring(0, 40)}", isAfterLECT=${isAfterLECTSubTitle}`)
+    }
+
     // NOTE : On NE skip PAS les lignes vides ici — la détection de
     // continuation ci-dessous peut récupérer le nom de la matière depuis
     // la row précédente. Le skip se fait après la détection de continuation.
@@ -877,39 +887,56 @@ async function fillBulletinSheetDirectly(
 
     // Détecter "MAXIMA" ou "TOTAL GENERAL"
     if (colAStr.toUpperCase().includes('MAXIMA') || colAStr.toUpperCase().includes('TOTAL')) {
-      // Sommer tous les sous-totaux ou toutes les lignes cours
-      // Pour simplifier, on somme toutes les lignes cours depuis le début
+      // Avant le MAXIMA, vérifier s'il reste des cours sans Sous-Total
+      if (courseRowsForSousTotal.length > 0) {
+        isolatedCourseRows.push(...courseRowsForSousTotal)
+        console.log(`[BULLETIN_FILL] ${courseRowsForSousTotal.length} isolated courses before MAXIMA: rows ${courseRowsForSousTotal.join(',')}`)
+      }
       courseRowsForSousTotal.length = 0
       continue
     }
 
     // Détecter les en-têtes de domaine (DOMAINE DES LANGUES, MATHEMATIQUES, etc.)
-    // ⚠ IMPORTANT : Ne PAS matcher sur "CONGOLAISE" seul car "LECT. - ECRITURE
-    // EN LANGUES CONGOLAISES" est une MATIÈRE, pas un domaine.
-    // ⚠ IMPORTANT : "Sciences d'éveil" contient "SCIENCE" mais c'est une
-    // MATIÈRE, pas un domaine. On ne matche "SCIENCE" que si c'est court.
-    // ⚠ IMPORTANT : "Technologie" est une MATIÈRE, pas juste un domaine.
+    // ⚠ IMPORTANT : Ne PAS clear courseRowsForSousTotal sur les sous-domaines
+    // (MATHEMATIQUES, SCIENCES, TECHNOLOGIE, FRANCAIS, LANGUES CONGOLAISES)
+    // car plusieurs sous-domaines peuvent partager un même Sous-Total.
+    // On clear SEULEMENT sur "DOMAINE" (changement de domaine principal).
     const upperColA = colAStr.toUpperCase()
+    if (upperColA.includes('DOMAINE')) {
+      // Changement de domaine principal — avant de clear, vérifier s'il reste
+      // des cours sans Sous-Total (cours isolés)
+      if (courseRowsForSousTotal.length > 0) {
+        isolatedCourseRows.push(...courseRowsForSousTotal)
+        console.log(`[BULLETIN_FILL] ${courseRowsForSousTotal.length} isolated courses before DOMAINE: rows ${courseRowsForSousTotal.join(',')}`)
+      }
+      courseRowsForSousTotal.length = 0
+      currentDomain = colAStr
+      continue
+    }
+    // Sous-domaines (FRANCAIS, LANGUES CONGOLAISES, MATHEMATIQUES, etc.)
+    // → on ne clear PAS, on continue juste
     const isShortHeader = colAStr.length < 20
-    if (upperColA.includes('DOMAINE') ||
-        (upperColA === 'MATHEMATIQUES') ||
-        (upperColA === 'SCIENCES' && isShortHeader) ||
-        (upperColA === 'TECHNOLOGIE' && isShortHeader && colAStr.length <= 11) ||
+    if ((upperColA === 'FRANCAIS' || upperColA === 'FRANCAIS ' ||
+         upperColA === 'LANGUES CONGOLAISES' ||
+         upperColA === 'MATHEMATIQUES' ||
+         upperColA === 'SCIENCES' ||
+         upperColA === 'TECHNOLOGIE') ||
         (upperColA.includes('ART') && isShortHeader && !upperColA.includes('DRAMATIQUE') && !upperColA.includes('PLASTIQUE') && !upperColA.includes('PHYS')) ||
         (upperColA.includes('DEVELOPPEMENT') && isShortHeader) ||
-        (upperColA.includes('UNIVERS') && isShortHeader) ||
-        (upperColA === 'LANGUES CONGOLAISES') ||
-        (upperColA === 'FRANCAIS' || upperColA === 'FRANCAIS ')) {
+        (upperColA.includes('UNIVERS') && isShortHeader)) {
       currentDomain = colAStr
-      courseRowsForSousTotal.length = 0
       continue
     }
 
     // ⚠ "LECT. - ECRITURE..." est un SOUS-TITRE (comme "FRANCAIS"), pas un
     // cours. Les données du cours sont sur la ligne EN-DESSOUS (Row 21).
-    // On skip cette ligne sans reset des sous-totaux — la continuation
-    // ci-dessous utilisera ce nom pour la ligne suivante.
-    if (upperColA.includes('LECT') && upperColA.includes('ECRIT') && upperColA.includes('CONGOLAISE')) {
+    // Ce cours n'a pas de Sous-Total propre — il doit être traité comme
+    // un cours ISOLÉ pour le calcul du MAXIMA GENERAUX.
+    // ⚠ MAIS : si isAfterLECTSubTitle est déjà true, on NE re-détecte PAS
+    // LECT — la ligne suivante contient les données du cours (même si col A
+    // a le même nom via une formule VLOOKUP).
+    if (!isAfterLECTSubTitle && upperColA.includes('LECT') && upperColA.includes('ECRIT') && upperColA.includes('CONGOLAISE')) {
+      isAfterLECTSubTitle = true
       continue
     }
 
@@ -917,30 +944,31 @@ async function fillBulletinSheetDirectly(
     // (comme "LECT. - ECRITURE EN LANGUES CONGOLAISES"). Si oui, cette ligne
     // contient les données du cours — on utilise le nom de la ligne précédente.
     if (!colAStr) {
-      const prevRow = bulletinWs.getRow(rowNum - 1)
-      const prevColA = prevRow.getCell(1).value
-      let prevName = ''
-      if (prevColA !== null && prevColA !== undefined) {
-        if (typeof prevColA === 'object' && 'result' in prevColA) prevName = String((prevColA as { result?: unknown }).result ?? '')
-        else if (typeof prevColA === 'object' && 'richText' in prevColA) prevName = (prevColA as { richText: { text: string }[] }).richText.map(rt => rt.text).join('')
-        else prevName = String(prevColA)
-      }
-      // Si la ligne précédente était un sous-titre de matière (pas un domaine,
-      // pas un sous-total), utiliser ce nom comme nom de matière
-      if (prevName.trim() && !prevName.toLowerCase().includes('sous-total') &&
-          !prevName.toUpperCase().includes('DOMAINE') &&
-          !prevName.toUpperCase().includes('MAXIMA') &&
-          !prevName.toUpperCase().includes('TOTAUX') &&
-          !prevName.toUpperCase().includes('POURC') &&
-          !prevName.toUpperCase().includes('PLACE') &&
-          prevName.length > 3) {
-        colAStr = prevName.trim()
+      // Si on était après un sous-titre LECT, utiliser directement "LECT..."
+      // comme nom de matière (sans vérifier la row précédente)
+      if (isAfterLECTSubTitle) {
+        colAStr = 'LECT. - ECRITURE EN LANGUES CONGOLAISES'
       } else {
-        // Vider les colonnes B-V de cette ligne sans nom
-        for (let c = 2; c <= 22; c++) {
-          row.getCell(c).value = null
+        const prevRow = bulletinWs.getRow(rowNum - 1)
+        const prevColA = prevRow.getCell(1).value
+        let prevName = ''
+        if (prevColA !== null && prevColA !== undefined) {
+          if (typeof prevColA === 'object' && 'result' in prevColA) prevName = String((prevColA as { result?: unknown }).result ?? '')
+          else if (typeof prevColA === 'object' && 'richText' in prevColA) prevName = (prevColA as { richText: { text: string }[] }).richText.map(rt => rt.text).join('')
+          else prevName = String(prevColA)
         }
-        continue
+        if (prevName.trim() && !prevName.toLowerCase().includes('sous-total') &&
+            !prevName.toUpperCase().includes('DOMAINE') &&
+            !prevName.toUpperCase().includes('MAXIMA') &&
+            !prevName.toUpperCase().includes('TOTAUX') &&
+            !prevName.toUpperCase().includes('POURC') &&
+            !prevName.toUpperCase().includes('PLACE') &&
+            prevName.length > 3) {
+          colAStr = prevName.trim()
+        } else {
+          for (let c = 2; c <= 22; c++) { row.getCell(c).value = null }
+          continue
+        }
       }
     }
 
@@ -1070,9 +1098,22 @@ async function fillBulletinSheetDirectly(
       }
 
       row.commit()
-      courseRowsForSousTotal.push(rowNum)
+      // Si ce cours vient après un sous-titre LECT, c'est un cours isolé
+      // (pas de Sous-Total propre) → ajouter à isolatedCourseRows
+      if (isAfterLECTSubTitle) {
+        isolatedCourseRows.push(rowNum)
+        isAfterLECTSubTitle = false
+        console.log(`[BULLETIN_FILL] LECT isolated course: row ${rowNum}`)
+      } else {
+        courseRowsForSousTotal.push(rowNum)
+      }
       console.log(`[BULLETIN_FILL] Row ${rowNum}: "${colAStr}" → matched "${bestSubj.name}"`)
     } else {
+      // Si on était après LECT mais que la matière n'est pas matchée,
+      // on reset quand même le flag pour ne pas affecter la prochaine matière
+      if (isAfterLECTSubTitle) {
+        isAfterLECTSubTitle = false
+      }
       console.log(`[BULLETIN_FILL] Row ${rowNum}: "${colAStr}" → NO MATCH`)
     }
   }
@@ -1137,6 +1178,62 @@ async function fillBulletinSheetDirectly(
     }
     row.commit()
     console.log(`[BULLETIN_FILL] Sous-Total row ${st.rowNum}: recalculated with ${st.courseRows.length} course rows`)
+  }
+
+  // ⚠ CRITIQUE — Recalculer la ligne MAXIMA GENERAUX.
+  //   Cette ligne doit être la SOMME de toutes les lignes Sous-Total + les
+  //   cours qui n'ont pas de Sous-Total (comme LECT-ECRITURE).
+  //   On parcourt TOUTES les lignes entre 11 et MAXIMA, et on somme les
+  //   Sous-Total + les cours isolés.
+  let maximaRowNum = -1
+  let totauxRowNum = -1
+  for (let r = 11; r <= bulletinWs.rowCount; r++) {
+    const aVal = bulletinWs.getRow(r).getCell(1).value
+    let aStr = ''
+    if (aVal !== null && aVal !== undefined) {
+      if (typeof aVal === 'object' && 'result' in aVal) aStr = String((aVal as { result?: unknown }).result ?? '')
+      else aStr = String(aVal)
+    }
+    if (aStr.toUpperCase().includes('MAXIMA') && (aStr.toUpperCase().includes('GENERAL') || aStr.toUpperCase().includes('GENERAUX'))) maximaRowNum = r
+    if (aStr.toUpperCase() === 'TOTAUX' || (aStr.toUpperCase().includes('TOTAUX') && !aStr.toUpperCase().includes('MAXIMA'))) totauxRowNum = r
+  }
+
+  if (maximaRowNum > 0) {
+    // Utiliser les sous-totaux + les cours isolés trackés pendant la boucle
+    const allSousTotalRows = sousTotalsToRecalc.map(st => st.rowNum)
+    const allIsolatedRows = isolatedCourseRows
+    const rowsToSum = [...allSousTotalRows, ...allIsolatedRows]
+    console.log(`[BULLETIN_FILL] MAXIMA: ${allSousTotalRows.length} sous-totaux + ${allIsolatedRows.length} cours isolés = ${rowsToSum.length} rows`)
+
+    // Sommer pour chaque colonne
+    const maximaRow = bulletinWs.getRow(maximaRowNum)
+    for (let col = 2; col <= 22; col++) {
+      let sum = 0
+      let hasValue = false
+      for (const rowNum of rowsToSum) {
+        const cellVal = bulletinWs.getRow(rowNum).getCell(col).value
+        let numVal = 0
+        if (typeof cellVal === 'number') { numVal = cellVal; hasValue = true }
+        else if (typeof cellVal === 'string') { numVal = parseFloat(cellVal) || 0; if (numVal !== 0) hasValue = true }
+        else if (cellVal !== null && cellVal !== undefined && typeof cellVal === 'object' && 'result' in cellVal) {
+          numVal = Number((cellVal as { result?: unknown }).result) || 0; if (numVal !== 0) hasValue = true
+        }
+        sum += numVal
+      }
+      maximaRow.getCell(col).value = hasValue ? sum : null
+    }
+    maximaRow.commit()
+    console.log(`[BULLETIN_FILL] MAXIMA GENERAUX row ${maximaRowNum}: summed ${rowsToSum.length} rows (${allSousTotalRows.length} sous-totaux + ${allIsolatedRows.length} cours isolés)`)
+
+    // Aussi recalculer TOTAUX (si présent) = mêmes valeurs que MAXIMA
+    if (totauxRowNum > 0 && totauxRowNum !== maximaRowNum) {
+      const totauxRow = bulletinWs.getRow(totauxRowNum)
+      for (let col = 2; col <= 22; col++) {
+        totauxRow.getCell(col).value = maximaRow.getCell(col).value
+      }
+      totauxRow.commit()
+      console.log(`[BULLETIN_FILL] TOTAUX row ${totauxRowNum}: copied from MAXIMA`)
+    }
   }
   try {
     // ⚠ IMPORTANT : Le rang et le pourcentage sont calculés sur la PÉRIODE
