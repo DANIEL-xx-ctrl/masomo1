@@ -901,8 +901,10 @@ async function fillBulletinSheetDirectly(
     // (MATHEMATIQUES, SCIENCES, TECHNOLOGIE, FRANCAIS, LANGUES CONGOLAISES)
     // car plusieurs sous-domaines peuvent partager un même Sous-Total.
     // On clear SEULEMENT sur "DOMAINE" (changement de domaine principal).
+    // ⚠ CORRECTION TYPO : Le template contient "DOMIANE" (typo) au lieu de
+    // "DOMAINE" pour la section "DEVELOPPEMENT PERSONNEL". On accepte les deux.
     const upperColA = colAStr.toUpperCase()
-    if (upperColA.includes('DOMAINE')) {
+    if (upperColA.includes('DOMAINE') || upperColA.includes('DOMIANE')) {
       // Changement de domaine principal — avant de clear, vérifier s'il reste
       // des cours sans Sous-Total (cours isolés)
       if (courseRowsForSousTotal.length > 0) {
@@ -915,13 +917,22 @@ async function fillBulletinSheetDirectly(
     }
     // Sous-domaines (FRANCAIS, LANGUES CONGOLAISES, MATHEMATIQUES, etc.)
     // → on ne clear PAS, on continue juste
+    // ⚠ IMPORTANT : Les sous-domaines sont en MAJUSCULES dans le template
+    // (ex: "TECHNOLOGIE" à la row 30), tandis que les cours sont en casse
+    // titre (ex: "Technologie" à la row 31). On ne skip QUE si le texte
+    // original est en MAJUSCULES — sinon on traiterait "Technologie" (cours)
+    // comme un sous-domaine, et il serait ignoré.
+    const isAllCapsHeader = colAStr === colAStr.toUpperCase() && /[A-Z]/.test(colAStr) && colAStr.length > 3
     const isShortHeader = colAStr.length < 20
-    if ((upperColA === 'FRANCAIS' || upperColA === 'FRANCAIS ' ||
+    if (isAllCapsHeader && (upperColA === 'FRANCAIS' || upperColA === 'FRANCAIS ' ||
          upperColA === 'LANGUES CONGOLAISES' ||
          upperColA === 'MATHEMATIQUES' ||
          upperColA === 'SCIENCES' ||
-         upperColA === 'TECHNOLOGIE') ||
-        (upperColA.includes('ART') && isShortHeader && !upperColA.includes('DRAMATIQUE') && !upperColA.includes('PLASTIQUE') && !upperColA.includes('PHYS')) ||
+         upperColA === 'TECHNOLOGIE')) {
+      currentDomain = colAStr
+      continue
+    }
+    if ((upperColA.includes('ART') && isShortHeader && !upperColA.includes('DRAMATIQUE') && !upperColA.includes('PLASTIQUE') && !upperColA.includes('PHYS')) ||
         (upperColA.includes('DEVELOPPEMENT') && isShortHeader) ||
         (upperColA.includes('UNIVERS') && isShortHeader)) {
       currentDomain = colAStr
@@ -987,20 +998,40 @@ async function fillBulletinSheetDirectly(
     seenCourseNames.add(normColA)
     // Essayer de matcher avec une matière DB
     // Trouver la matière DB correspondante (non encore utilisée, avec notes)
+    // ⚠ IMPORTANT : Préférer les matières avec maxTJ NON-NULL (sinon on tombe
+    // sur des duplicates "Ed. phys. & sportive" avec maxTJ=null qui donnent
+    // une valeur par défaut de 20 au lieu de la vraie valeur 10).
     let bestSubj = allDbSubjects.find(s => {
       const ns = normalize(s.name)
-      return !usedSubjectIds.has(s.id) && ns === normColA && gradesBySubject.has(s.id)
+      return !usedSubjectIds.has(s.id) && ns === normColA && gradesBySubject.has(s.id) && s.maxTJ !== null && s.maxTJ !== undefined
     })
     if (!bestSubj) {
-      // Fuzzy match : préfixe ou inclusion
+      // Second try : exact match mais sans exiger maxTJ non-null (fallback)
+      bestSubj = allDbSubjects.find(s => {
+        const ns = normalize(s.name)
+        return !usedSubjectIds.has(s.id) && ns === normColA && gradesBySubject.has(s.id)
+      })
+    }
+    if (!bestSubj) {
+      // Fuzzy match : préfixe ou inclusion — préférer maxTJ non-null
+      bestSubj = allDbSubjects.find(s => {
+        const ns = normalize(s.name)
+        return !usedSubjectIds.has(s.id) && ns.length > 3 && (normColA.includes(ns) || ns.includes(normColA)) && gradesBySubject.has(s.id) && s.maxTJ !== null && s.maxTJ !== undefined
+      })
+    }
+    if (!bestSubj) {
+      // Fuzzy match sans condition maxTJ
       bestSubj = allDbSubjects.find(s => {
         const ns = normalize(s.name)
         return !usedSubjectIds.has(s.id) && ns.length > 3 && (normColA.includes(ns) || ns.includes(normColA)) && gradesBySubject.has(s.id)
       })
     }
     if (!bestSubj) {
-      // Dernier fallback : première matière avec notes non utilisée
-      bestSubj = allDbSubjects.find(s => !usedSubjectIds.has(s.id) && gradesBySubject.has(s.id))
+      // Dernier fallback : première matière avec notes non utilisée (préférer maxTJ non-null)
+      bestSubj = allDbSubjects.find(s => !usedSubjectIds.has(s.id) && gradesBySubject.has(s.id) && s.maxTJ !== null && s.maxTJ !== undefined)
+      if (!bestSubj) {
+        bestSubj = allDbSubjects.find(s => !usedSubjectIds.has(s.id) && gradesBySubject.has(s.id))
+      }
     }
 
     if (bestSubj) {
@@ -1199,36 +1230,94 @@ async function fillBulletinSheetDirectly(
   }
 
   if (maximaRowNum > 0) {
-    // Utiliser les sous-totaux + les cours isolés trackés pendant la boucle
-    const allSousTotalRows = sousTotalsToRecalc.map(st => st.rowNum)
-    const allIsolatedRows = isolatedCourseRows
-    const rowsToSum = [...allSousTotalRows, ...allIsolatedRows]
-    console.log(`[BULLETIN_FILL] MAXIMA: ${allSousTotalRows.length} sous-totaux + ${allIsolatedRows.length} cours isolés = ${rowsToSum.length} rows`)
+    // ⚠ CRITIQUE — MAXIMA GENERAUX = somme des MAX (pas des notes réelles).
+    //
+    // Pour chaque cours, on a 4 types de MAX :
+    //   maxTJ    → max par période (1èP, 2èP, 3èP, 4èP, 5èP, 6èP)
+    //   maxEX    → max par examen (EX T1, EX T2, EX T3)
+    //   maxTRIM  → max par trimestre (PTS OBT TRIM T1, T2, T3)
+    //   maxAnnuel→ max annuel (PTS OBT ANNUEL)
+    //
+    // Donc MAXIMA GENERAUX doit avoir :
+    //   - Col B (MAX per), C/D (périodes T1), I/J (périodes T2), O/P (périodes T3)
+    //     → tous égaux à SOMME des maxTJ de tous les cours
+    //   - Col E (MAX EX T1), F (Examen T1), K/L (T2), Q/R (T3)
+    //     → tous égaux à SOMME des maxEX
+    //   - Col G (MAX TRIM T1), H (PTS TRIM T1), M/N (T2), S/T (T3)
+    //     → tous égaux à SOMME des maxTRIM
+    //   - Col U (MAX ANNUEL), V (PTS ANNUEL)
+    //     → tous égaux à SOMME des maxAnnuel
+    //
+    // On calcule ces 4 sommes DEPUIS LA DB (usedSubjectIds), ce qui est
+    // indépendant de la sélection de période — le MAXIMA est toujours
+    // le maximum possible, quelle que soit la période affichée.
 
-    // Sommer pour chaque colonne
-    const maximaRow = bulletinWs.getRow(maximaRowNum)
-    for (let col = 2; col <= 22; col++) {
-      let sum = 0
-      let hasValue = false
+    let totalMaxTJ = 0
+    let totalMaxEX = 0
+    let totalMaxTRIM = 0
+    let totalMaxAnnuel = 0
+    let hasAnyMatchedSubject = false
+
+    for (const subj of allDbSubjects) {
+      if (!usedSubjectIds.has(subj.id)) continue
+      hasAnyMatchedSubject = true
+      const maxTJ = subj.maxTJ || 20
+      const maxEX = subj.maxEX || 40
+      const maxTRIM = subj.maxTRIM || (maxTJ * 2 + maxEX)
+      const maxAnnuel = subj.maxAnnuel || (maxTRIM * 3)
+      totalMaxTJ += maxTJ
+      totalMaxEX += maxEX
+      totalMaxTRIM += maxTRIM
+      totalMaxAnnuel += maxAnnuel
+    }
+    console.log(`[BULLETIN_FILL] MAXIMA from DB: maxTJ=${totalMaxTJ}, maxEX=${totalMaxEX}, maxTRIM=${totalMaxTRIM}, maxAnnuel=${totalMaxAnnuel}`)
+
+    // Si aucun sujet matché, fallback : sommer depuis les sous-totaux + isolés
+    if (!hasAnyMatchedSubject) {
+      const rowsToSum = [...sousTotalsToRecalc.map(st => st.rowNum), ...isolatedCourseRows]
       for (const rowNum of rowsToSum) {
-        const cellVal = bulletinWs.getRow(rowNum).getCell(col).value
-        let numVal = 0
-        if (typeof cellVal === 'number') { numVal = cellVal; hasValue = true }
-        else if (typeof cellVal === 'string') { numVal = parseFloat(cellVal) || 0; if (numVal !== 0) hasValue = true }
-        else if (cellVal !== null && cellVal !== undefined && typeof cellVal === 'object' && 'result' in cellVal) {
-          numVal = Number((cellVal as { result?: unknown }).result) || 0; if (numVal !== 0) hasValue = true
+        const getNum = (col: number): number => {
+          const v = bulletinWs.getRow(rowNum).getCell(col).value
+          if (typeof v === 'number') return v
+          if (typeof v === 'string') return parseFloat(v) || 0
+          if (v && typeof v === 'object' && 'result' in v) return Number((v as { result?: unknown }).result) || 0
+          return 0
         }
-        sum += numVal
+        totalMaxTJ += getNum(2)   // B
+        totalMaxEX += getNum(5)   // E
+        totalMaxTRIM += getNum(7) // G
+        totalMaxAnnuel += getNum(21) // U
       }
-      maximaRow.getCell(col).value = hasValue ? sum : null
+      console.log(`[BULLETIN_FILL] MAXIMA fallback from ${rowsToSum.length} rows: maxTJ=${totalMaxTJ}, maxEX=${totalMaxEX}, maxTRIM=${totalMaxTRIM}, maxAnnuel=${totalMaxAnnuel}`)
+    }
+
+    const maximaRow = bulletinWs.getRow(maximaRowNum)
+
+    // Map : chaque colonne → quelle somme MAX utiliser
+    // Périodes (max = maxTJ) : B, C, D, I, J, O, P
+    // Examens (max = maxEX)  : E, F, K, L, Q, R
+    // Trimestres (max = maxTRIM): G, H, M, N, S, T
+    // Annuel (max = maxAnnuel): U, V
+    const colToMax: { [col: number]: number } = {
+      2: totalMaxTJ, 3: totalMaxTJ, 4: totalMaxTJ, 9: totalMaxTJ, 10: totalMaxTJ, 15: totalMaxTJ, 16: totalMaxTJ,
+      5: totalMaxEX, 6: totalMaxEX, 11: totalMaxEX, 12: totalMaxEX, 17: totalMaxEX, 18: totalMaxEX,
+      7: totalMaxTRIM, 8: totalMaxTRIM, 13: totalMaxTRIM, 14: totalMaxTRIM, 19: totalMaxTRIM, 20: totalMaxTRIM,
+      21: totalMaxAnnuel, 22: totalMaxAnnuel,
+    }
+
+    for (const colStr of Object.keys(colToMax)) {
+      const col = Number(colStr)
+      const val = colToMax[col]
+      maximaRow.getCell(col).value = val > 0 ? val : null
     }
     maximaRow.commit()
-    console.log(`[BULLETIN_FILL] MAXIMA GENERAUX row ${maximaRowNum}: summed ${rowsToSum.length} rows (${allSousTotalRows.length} sous-totaux + ${allIsolatedRows.length} cours isolés)`)
+    console.log(`[BULLETIN_FILL] MAXIMA GENERAUX row ${maximaRowNum}: maxTJ=${totalMaxTJ} → B,C,D,I,J,O,P; maxEX=${totalMaxEX} → E,F,K,L,Q,R; maxTRIM=${totalMaxTRIM} → G,H,M,N,S,T; maxAnnuel=${totalMaxAnnuel} → U,V`)
 
     // Aussi recalculer TOTAUX (si présent) = mêmes valeurs que MAXIMA
     if (totauxRowNum > 0 && totauxRowNum !== maximaRowNum) {
       const totauxRow = bulletinWs.getRow(totauxRowNum)
-      for (let col = 2; col <= 22; col++) {
+      for (const colStr of Object.keys(colToMax)) {
+        const col = Number(colStr)
         totauxRow.getCell(col).value = maximaRow.getCell(col).value
       }
       totauxRow.commit()
