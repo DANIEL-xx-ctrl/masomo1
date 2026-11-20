@@ -1313,15 +1313,47 @@ async function fillBulletinSheetDirectly(
     maximaRow.commit()
     console.log(`[BULLETIN_FILL] MAXIMA GENERAUX row ${maximaRowNum}: maxTJ=${totalMaxTJ} → B,C,D,I,J,O,P; maxEX=${totalMaxEX} → E,F,K,L,Q,R; maxTRIM=${totalMaxTRIM} → G,H,M,N,S,T; maxAnnuel=${totalMaxAnnuel} → U,V`)
 
-    // Aussi recalculer TOTAUX (si présent) = mêmes valeurs que MAXIMA
+    // ⚠ TOTAUX = somme des NOTES RÉELLES (pas des MAX).
+    // Pour chaque colonne de notes (C, D, F, H, I, J, L, N, O, P, R, T, V),
+    // on somme les valeurs des lignes cours.
+    // Les colonnes MAX (B, E, G, K, M, Q, S, U) restent vides pour TOTAUX.
     if (totauxRowNum > 0 && totauxRowNum !== maximaRowNum) {
       const totauxRow = bulletinWs.getRow(totauxRowNum)
-      for (const colStr of Object.keys(colToMax)) {
-        const col = Number(colStr)
-        totauxRow.getCell(col).value = maximaRow.getCell(col).value
+      
+      // Collecter toutes les lignes cours (depuis sous-totaux + isolés)
+      const allCourseRows = new Set<number>()
+      for (const st of sousTotalsToRecalc) {
+        for (const cr of st.courseRows) allCourseRows.add(cr)
       }
+      for (const ir of isolatedCourseRows) allCourseRows.add(ir)
+      
+      // Colonnes de notes à sommer
+      const gradeColsToSum = [3, 4, 6, 8, 9, 10, 12, 14, 15, 16, 18, 20, 22]
+      
+      for (const col of gradeColsToSum) {
+        let sum = 0
+        let hasValue = false
+        for (const rowNum of allCourseRows) {
+          const cellVal = bulletinWs.getRow(rowNum).getCell(col).value
+          let numVal = 0
+          if (typeof cellVal === 'number') { numVal = cellVal; hasValue = true }
+          else if (typeof cellVal === 'string') { numVal = parseFloat(cellVal) || 0; if (numVal !== 0) hasValue = true }
+          else if (cellVal !== null && cellVal !== undefined && typeof cellVal === 'object' && 'result' in cellVal) {
+            numVal = Number((cellVal as { result?: unknown }).result) || 0; if (numVal !== 0) hasValue = true
+          }
+          sum += numVal
+        }
+        totauxRow.getCell(col).value = hasValue ? sum : null
+      }
+      
+      // Vider les colonnes MAX (B, E, G, K, M, Q, S, U) pour TOTAUX
+      // (TOTAUX ne contient que les notes réelles, pas les MAX)
+      for (const col of [2, 5, 7, 11, 13, 17, 19, 21]) {
+        totauxRow.getCell(col).value = null
+      }
+      
       totauxRow.commit()
-      console.log(`[BULLETIN_FILL] TOTAUX row ${totauxRowNum}: copied from MAXIMA`)
+      console.log(`[BULLETIN_FILL] TOTAUX row ${totauxRowNum}: summed actual grades from ${allCourseRows.size} course rows`)
     }
   }
   try {
@@ -1368,9 +1400,12 @@ async function fillBulletinSheetDirectly(
     console.log(`[BULLETIN_FILL] Rank: ${rank}/${totals.length} | total: ${studentTotal}/${maxTotal} | ${pourcentage}% | sel: ${selection}`)
 
     // Trouver et remplir RANG et POURCENTAGE dans le BULLETIN
-    // ⚠ Quand selection=all, on calcule le rang ET le pourcentage pour
-    // CHAQUE colonne (C=1èP, D=2èP, F=EX T1, H=TRIM T1, I=3èP, etc.)
-    // pas seulement en B.
+    // ⚠ IMPORTANT : Le rang et le pourcentage vont dans les colonnes de NOTES
+    // (C, D, F, H, I, J, L, N, O, P, R, T, V) — PAS dans la colonne B (MAX per).
+    // La colonne B reste vide pour les lignes POURCETAGE et PLACE.
+    // ⚠ Pour TOUTES les sélections (all, 1er, 2eme, p1, etc.), on calcule
+    // le rang/pourcentage pour chaque colonne via fillRankPerColumn /
+    // fillPourcentagePerColumn, puis on vide les colonnes non-sélectionnées.
     for (let rowNum = 1; rowNum <= bulletinWs.rowCount; rowNum++) {
       const prow = bulletinWs.getRow(rowNum)
       for (let colNum = 1; colNum <= 25; colNum++) {
@@ -1382,30 +1417,64 @@ async function fillBulletinSheetDirectly(
           else valStr = String(val)
         }
         if (valStr.toUpperCase().includes('RANG') || valStr.toUpperCase().includes('PLACE') || valStr.toUpperCase().includes('RANK')) {
-          // Remplir B avec le rang global
-          prow.getCell(colNum + 1).value = rank > 0 ? `${rank}${rank === 1 ? 'er' : 'ème'}` : ''
-          // Si selection=all, calculer le rang pour chaque colonne
-          if (selection === 'all') {
-            await fillRankPerColumn(bulletinWs, rowNum, colNum + 1, student, classmates, schoolYear, db, gradeColMap)
+          // ⚠ NE PAS mettre le rang dans la colonne B (MAX per).
+          // La colonne B doit rester vide pour PLACE.
+          prow.getCell(colNum + 1).value = null  // Vider B
+          
+          // Calculer le rang pour chaque colonne de notes (C-V)
+          // fillRankPerColumn remplit C(3) à V(22) en sautant B
+          await fillRankPerColumn(bulletinWs, rowNum, colNum + 1, student, classmates, schoolYear, db, gradeColMap)
+          
+          // Vider les colonnes non-sélectionnées
+          for (const entry of gradeColMap) {
+            if (!shouldFill(entry)) {
+              prow.getCell(entry.col).value = null
+            }
           }
-          // Vider C-V (le remplissage par colonne se fait dans fillRankPerColumn)
-          for (let c = colNum + 2; c <= 22; c++) {
-            if (selection !== 'all') prow.getCell(c).value = null
+          // Vider les colonnes TRIM non-calculées
+          for (const tc of trimColMap) {
+            if (!shouldCalcTrim(tc.trim)) {
+              prow.getCell(tc.ptsCol).value = null
+            }
           }
-          console.log(`[BULLETIN_FILL] Rang at row ${rowNum} col ${colNum + 1}: ${rank}`)
+          // Vider V (annuel) si pas all
+          if (selection !== 'all') {
+            prow.getCell(22).value = null
+          }
+          // Vider les colonnes MAX (B déjà vidé, E, G, K, M, Q, S, U)
+          for (const c of [5, 7, 11, 13, 17, 19, 21]) {
+            prow.getCell(c).value = null
+          }
+          console.log(`[BULLETIN_FILL] Rang at row ${rowNum}: filled per-column (B empty)`)
         }
         if (valStr.toUpperCase().includes('POURC') || valStr === '%') {
-          // Remplir B avec le pourcentage global arrondi
-          prow.getCell(colNum + 1).value = Math.round(pourcentage * 10) / 10
-          // Si selection=all, calculer le pourcentage pour chaque colonne
-          if (selection === 'all') {
-            await fillPourcentagePerColumn(bulletinWs, rowNum, colNum + 1, student, schoolYear, db)
+          // ⚠ NE PAS mettre le pourcentage dans la colonne B (MAX per).
+          prow.getCell(colNum + 1).value = null  // Vider B
+          
+          // Calculer le pourcentage pour chaque colonne de notes (C-V)
+          await fillPourcentagePerColumn(bulletinWs, rowNum, colNum + 1, student, schoolYear, db)
+          
+          // Vider les colonnes non-sélectionnées
+          for (const entry of gradeColMap) {
+            if (!shouldFill(entry)) {
+              prow.getCell(entry.col).value = null
+            }
           }
-          // Vider C-V si pas all (pour all, fillPourcentagePerColumn s'en charge)
-          for (let c = colNum + 2; c <= 22; c++) {
-            if (selection !== 'all') prow.getCell(c).value = null
+          // Vider les colonnes TRIM non-calculées
+          for (const tc of trimColMap) {
+            if (!shouldCalcTrim(tc.trim)) {
+              prow.getCell(tc.ptsCol).value = null
+            }
           }
-          console.log(`[BULLETIN_FILL] Pourcentage at row ${rowNum} col ${colNum + 1}: ${pourcentage}%`)
+          // Vider V (annuel) si pas all
+          if (selection !== 'all') {
+            prow.getCell(22).value = null
+          }
+          // Vider les colonnes MAX (B déjà vidé, E, G, K, M, Q, S, U)
+          for (const c of [5, 7, 11, 13, 17, 19, 21]) {
+            prow.getCell(c).value = null
+          }
+          console.log(`[BULLETIN_FILL] Pourcentage at row ${rowNum}: filled per-column (B empty)`)
         }
       }
     }
