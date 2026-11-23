@@ -95,6 +95,10 @@ export async function PUT(
       status,
       statusDate,
       image,
+      ville,
+      commune,
+      numeroEleve,
+      numeroPerm,
     } = body
 
     const existing = await db.student.findUnique({
@@ -150,6 +154,10 @@ export async function PUT(
         status,
         statusDate: resolvedStatusDate,
         image,
+        ville,
+        commune,
+        numeroEleve,
+        numeroPerm,
       },
       include: {
         user: { select: { id: true, email: true, phone: true, active: true } },
