@@ -1841,6 +1841,15 @@ export async function renderBulletinFromTemplate(params: {
   }
   studentRowData.getCell(5).value = student.class.name // CLASSE
 
+  // ⚠ NOUVEAU — Insérer ville, commune, N° élève, N° PERM dans LISTE
+  // LISTE headers: F=N° PERM, G=PROVINCE, H=VILLE, I=COMMUNE, J=ECOLE, K=CODE
+  // On utilise K (CODE) pour le N° élève (9 chiffres) et F pour N° PERM (13 chiffres)
+  const studentAny = student as unknown as Record<string, unknown>
+  studentRowData.getCell(6).value = (studentAny.numeroPerm as string) || ''  // F = N° PERM
+  studentRowData.getCell(8).value = (studentAny.ville as string) || ''       // H = VILLE
+  studentRowData.getCell(9).value = (studentAny.commune as string) || ''     // I = COMMUNE
+  studentRowData.getCell(11).value = (studentAny.numeroEleve as string) || '' // K = CODE (N° élève)
+
   // Notes : pour chaque matière, placer les 9 valeurs dans les colonnes correspondantes
   // studentRow était préparé avec les valeurs aux bons index (0-based)
   // On réutilise les valeurs déjà calculées dans studentRow[]
@@ -1871,6 +1880,40 @@ export async function renderBulletinFromTemplate(params: {
     const i3Cell = bulletinWsExceljs.getCell('I3')
     i3Cell.value = studentName
     console.log('[BULLETIN_RENDER] BULLETIN!I3 mis à jour avec le nom élève:', studentName)
+
+    // ⚠ NOUVEAU — Écrire directement ville, commune, N° élève, N° PERM
+    // dans l'en-tête du BULLETIN (rows 3-6).
+    // Structure du template BULLETIN:
+    //   Row 3 col A (merged A-H) = Ville  → student.ville
+    //   Row 4 col A (merged A-H) = Commune → student.commune
+    //   Row 6 col A (merged A-H) = Code   → student.numeroEleve (9 chiffres)
+    //   Row 6 col I               = N° PERM → student.numeroPerm (13 chiffres)
+    const sAny = student as unknown as Record<string, unknown>
+    const ville = (sAny.ville as string) || ''
+    const commune = (sAny.commune as string) || ''
+    const numeroEleve = (sAny.numeroEleve as string) || ''
+    const numeroPerm = (sAny.numeroPerm as string) || ''
+
+    if (ville) {
+      bulletinWsExceljs.getRow(3).getCell(1).value = ville
+      console.log('[BULLETIN_RENDER] BULLETIN Row 3 col A = Ville:', ville)
+    }
+    if (commune) {
+      bulletinWsExceljs.getRow(4).getCell(1).value = commune
+      console.log('[BULLETIN_RENDER] BULLETIN Row 4 col A = Commune:', commune)
+    }
+    if (numeroEleve) {
+      bulletinWsExceljs.getRow(6).getCell(1).value = numeroEleve
+      console.log('[BULLETIN_RENDER] BULLETIN Row 6 col A = N° élève:', numeroEleve)
+    }
+    if (numeroPerm) {
+      bulletinWsExceljs.getRow(6).getCell(9).value = numeroPerm
+      // Aussi vider J6-V6 pour éviter les valeurs stale du template
+      for (let c = 10; c <= 22; c++) {
+        bulletinWsExceljs.getRow(6).getCell(c).value = null
+      }
+      console.log('[BULLETIN_RENDER] BULLETIN Row 6 col I = N° PERM:', numeroPerm)
+    }
   } else {
     console.log('[BULLETIN_RENDER] Pas de feuille BULLETIN dans le template — skip I3 update')
   }
