@@ -210,6 +210,10 @@ export async function POST(request: Request) {
       status,
       statusDate,
       image,
+      ville,
+      commune,
+      numeroEleve,
+      numeroPerm,
     } = body
 
     if (!firstName || !lastName) {
@@ -283,6 +287,10 @@ export async function POST(request: Request) {
         status: status || 'active',
         statusDate: resolveStatusDate(status, statusDate),
         image,
+        ville,
+        commune,
+        numeroEleve,
+        numeroPerm,
       },
       include: {
         user: {
