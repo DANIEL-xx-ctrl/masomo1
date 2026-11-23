@@ -107,6 +107,10 @@ model Student {
   parentId       String?
   status         String  @default("active") // active, abandoned, migrated, deceased
   statusDate     String? // Date à laquelle le statut (abandon/migration/décès) a été constaté (YYYY-MM-DD)
+  ville          String? // Ville de l'élève (affichée dans le bulletin)
+  commune        String? // Commune de l'élève (affichée dans le bulletin)
+  numeroEleve    String? // N° de l'élève (9 chiffres, affiché dans le bulletin)
+  numeroPerm     String? // N° PERM de l'élève (13 chiffres, affiché dans le bulletin)
 
   user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   class       Class?               @relation(fields: [classId], references: [id])
