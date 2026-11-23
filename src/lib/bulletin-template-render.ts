@@ -1883,34 +1883,54 @@ export async function renderBulletinFromTemplate(params: {
 
     // ⚠ NOUVEAU — Écrire directement ville, commune, N° élève, N° PERM
     // dans l'en-tête du BULLETIN (rows 3-6) AVEC LES ÉTIQUETTES.
-    // Le template original contient juste les valeurs sans étiquettes.
-    // On ajoute "Ville : ", "Commune : ", etc. devant chaque valeur.
-    //
-    // Structure du template BULLETIN:
-    //   Row 3 col A (merged A-H) = Ville    → "Ville : " + ville
-    //   Row 4 col A (merged A-H) = Commune  → "Commune : " + commune
-    //   Row 5 col A (merged A-H) = École    → garde la valeur du template (C.S EXCEL)
-    //   Row 6 col A (merged A-H) = Code     → "N° élève : " + numeroEleve
-    //   Row 6 col I               = N° PERM → "N° PERM : " + numeroPerm
-    //   Row 3 col I (merged I-V)  = Nom     → "Nom : " + studentName
-    //   Row 4 col I (merged I-V)  = Date naiss → "Date de naissance : " + dob
-    //   Row 5 col I (merged I-P)  = Classe  → "Classe : " + className
+    // On préserve le formatage du template (font, fill, border) et on
+    // ajuste l'alignment pour que le texte avec étiquette tienne dans la cellule.
     const sAny = student as unknown as Record<string, unknown>
     const ville = (sAny.ville as string) || ''
     const commune = (sAny.commune as string) || ''
     const numeroEleve = (sAny.numeroEleve as string) || ''
     const numeroPerm = (sAny.numeroPerm as string) || ''
 
+    // Helper : écrire une valeur avec étiquette en préservant le format du template
+    const writeWithLabel = (rowNum: number, col: number, label: string, value: string) => {
+      if (!value) return
+      const cell = bulletinWsExceljs.getRow(rowNum).getCell(col)
+      // Préserver le font existant (size, bold, color) du template
+      const existingFont = cell.font
+      cell.value = `${label} ${value}`
+      // Ajuster l'alignment : réduire l'indent pour que le texte avec étiquette tienne
+      cell.alignment = {
+        horizontal: 'left',
+        vertical: 'middle',
+        indent: 1,  // indent réduit (le template utilise 13, trop grand avec étiquette)
+        wrapText: false,
+      }
+      // Préserver le font du template
+      if (existingFont) {
+        cell.font = existingFont
+      }
+    }
+
+    // Helper : écrire avec étiquette en alignment center (pour col I)
+    const writeWithLabelCenter = (rowNum: number, col: number, label: string, value: string) => {
+      if (!value) return
+      const cell = bulletinWsExceljs.getRow(rowNum).getCell(col)
+      const existingFont = cell.font
+      cell.value = `${label} ${value}`
+      cell.alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+        wrapText: false,
+      }
+      if (existingFont) {
+        cell.font = existingFont
+      }
+    }
+
     // Col A (rows 3-6) — étiquettes gauche
-    if (ville) {
-      bulletinWsExceljs.getRow(3).getCell(1).value = `Ville : ${ville}`
-      console.log('[BULLETIN_RENDER] BULLETIN Row 3 col A = "Ville : ' + ville + '"')
-    }
-    if (commune) {
-      bulletinWsExceljs.getRow(4).getCell(1).value = `Commune : ${commune}`
-      console.log('[BULLETIN_RENDER] BULLETIN Row 4 col A = "Commune : ' + commune + '"')
-    }
-    // Row 5 col A = École (garde la valeur du template, ou ajoute étiquette)
+    writeWithLabel(3, 1, 'Ville :', ville)
+    writeWithLabel(4, 1, 'Commune :', commune)
+    // Row 5 col A = École (garde la valeur du template, ajoute étiquette si pas déjà présente)
     const ecoleVal = bulletinWsExceljs.getRow(5).getCell(1).value
     let ecoleStr = ''
     if (ecoleVal) {
@@ -1919,16 +1939,12 @@ export async function renderBulletinFromTemplate(params: {
       else ecoleStr = String(ecoleVal)
     }
     if (ecoleStr && !ecoleStr.toLowerCase().startsWith('école') && !ecoleStr.toLowerCase().startsWith('ecole')) {
-      bulletinWsExceljs.getRow(5).getCell(1).value = `École : ${ecoleStr}`
+      writeWithLabel(5, 1, 'École :', ecoleStr)
     }
-    if (numeroEleve) {
-      bulletinWsExceljs.getRow(6).getCell(1).value = `N° élève : ${numeroEleve}`
-      console.log('[BULLETIN_RENDER] BULLETIN Row 6 col A = "N° élève : ' + numeroEleve + '"')
-    }
+    writeWithLabel(6, 1, 'N° élève :', numeroEleve)
 
     // Col I (rows 3-6) — étiquettes droite
-    // Row 3 col I = Nom de l'élève
-    bulletinWsExceljs.getRow(3).getCell(9).value = `Nom : ${studentName}`
+    writeWithLabelCenter(3, 9, 'Nom :', studentName)
     // Row 4 col I = Date de naissance
     let dobStr = ''
     if (student.dateOfBirth) {
@@ -1944,22 +1960,49 @@ export async function renderBulletinFromTemplate(params: {
       }
     }
     if (dobStr) {
-      bulletinWsExceljs.getRow(4).getCell(9).value = `Date de naissance : ${dobStr}`
+      writeWithLabel(4, 9, 'Date de naissance :', dobStr)
     }
     // Row 5 col I = Classe
     const className = student.class?.name || ''
     if (className) {
-      bulletinWsExceljs.getRow(5).getCell(9).value = `Classe : ${className}`
+      writeWithLabel(5, 9, 'Classe :', className)
     }
     // Row 6 col I = N° PERM
     if (numeroPerm) {
-      bulletinWsExceljs.getRow(6).getCell(9).value = `N° PERM : ${numeroPerm}`
+      writeWithLabelCenter(6, 9, 'N° PERM :', numeroPerm)
       // Aussi vider J6-V6 pour éviter les valeurs stale du template
       for (let c = 10; c <= 22; c++) {
         bulletinWsExceljs.getRow(6).getCell(c).value = null
       }
-      console.log('[BULLETIN_RENDER] BULLETIN Row 6 col I = "N° PERM : ' + numeroPerm + '"')
     }
+
+    // ⚠ Configurer la mise en page pour impression Excel
+    // Le bulletin doit tenir sur une page A4 en portrait
+    bulletinWsExceljs.pageSetup = {
+      paperSize: 9,        // A4
+      orientation: 'portrait',
+      fitToPage: true,
+      fitToWidth: 1,       // Toutes les colonnes sur 1 page de large
+      fitToHeight: 1,      // Toutes les lignes sur 1 page de haut
+      scale: 100,
+      horizontalDpi: 300,
+      verticalDpi: 300,
+      printArea: undefined,
+    }
+    bulletinWsExceljs.pageMargins = {
+      top: 0.25,
+      bottom: 0.25,
+      left: 0.25,
+      right: 0.25,
+      header: 0,
+      footer: 0,
+    }
+    // Définir la zone d'impression (A1 jusqu'à la dernière ligne/colonne utilisée)
+    const lastRow = Math.max(bulletinWsExceljs.rowCount, 50)
+    const lastCol = 22  // V
+    bulletinWsExceljs.printArea = `A1:${String.fromCharCode(64 + lastCol)}${lastRow}`
+    
+    console.log('[BULLETIN_RENDER] Page setup configuré pour impression A4 portrait')
   } else {
     console.log('[BULLETIN_RENDER] Pas de feuille BULLETIN dans le template — skip I3 update')
   }
