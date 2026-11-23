@@ -1940,6 +1940,14 @@ export async function renderBulletinFromTemplate(params: {
   //       On ne depend plus des VLOOKUP — on remplit chaque ligne du BULLETIN
   //       ligne par ligne, en respectant la sélection (trimestre/période).
   if (bulletinWsExceljs) {
+    // ⚠ Réduire la largeur des colonnes PTS OBT (H, N, T, V) qui sont trop larges
+    // par défaut dans le template. On les met à la même largeur que les autres
+    // colonnes de notes (C, D, F, etc.)
+    const narrowWidth = 5.5  // largeur réduite pour les colonnes PTS OBT
+    for (const col of [8, 14, 20, 22]) {  // H, N, T, V
+      bulletinWsExceljs.getColumn(col).width = narrowWidth
+    }
+
     await fillBulletinSheetDirectly(
       bulletinWsExceljs,
       listeWs,
