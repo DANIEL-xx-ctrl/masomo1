@@ -122,6 +122,10 @@ interface StudentFormData {
   parentContact: string
   parentPhone: string
   phone: string
+  ville: string
+  commune: string
+  numeroEleve: string
+  numeroPerm: string
 }
 
 const todayISO = () => new Date().toISOString().split('T')[0]
@@ -139,6 +143,10 @@ const emptyForm: StudentFormData = {
   parentContact: '',
   parentPhone: '',
   phone: '',
+  ville: '',
+  commune: '',
+  numeroEleve: '',
+  numeroPerm: '',
 }
 
 // ---------- Helper ----------
@@ -290,6 +298,10 @@ export default function StudentsModule() {
       parentContact: student.parentContact || '',
       parentPhone: student.parentPhone || '',
       phone: student.user?.phone || '',
+      ville: (student as Record<string, unknown>).ville as string || '',
+      commune: (student as Record<string, unknown>).commune as string || '',
+      numeroEleve: (student as Record<string, unknown>).numeroEleve as string || '',
+      numeroPerm: (student as Record<string, unknown>).numeroPerm as string || '',
     })
     setImageField(student.image || null)
     setFormOpen(true)
@@ -334,6 +346,10 @@ export default function StudentsModule() {
             parentContact: form.parentContact || undefined,
             parentPhone: form.parentPhone || undefined,
             image: imageField,
+            ville: form.ville || undefined,
+            commune: form.commune || undefined,
+            numeroEleve: form.numeroEleve || undefined,
+            numeroPerm: form.numeroPerm || undefined,
           }),
         })
         if (!res.ok) {
@@ -363,6 +379,10 @@ export default function StudentsModule() {
             parentPhone: form.parentPhone || undefined,
             phone: form.phone || undefined,
             image: imageField,
+            ville: form.ville || undefined,
+            commune: form.commune || undefined,
+            numeroEleve: form.numeroEleve || undefined,
+            numeroPerm: form.numeroPerm || undefined,
           }),
         })
         if (!res.ok) {
@@ -1395,6 +1415,56 @@ export default function StudentsModule() {
                 />
               </div>
             )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="ville">Ville</Label>
+                <Input
+                  id="ville"
+                  value={form.ville}
+                  onChange={(e) => updateForm('ville', e.target.value)}
+                  placeholder="Lubumbashi"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="commune">Commune</Label>
+                <Input
+                  id="commune"
+                  value={form.commune}
+                  onChange={(e) => updateForm('commune', e.target.value)}
+                  placeholder="Annexe"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="numeroEleve">N° de l'élève (9 chiffres)</Label>
+                <Input
+                  id="numeroEleve"
+                  value={form.numeroEleve}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, '').slice(0, 9)
+                    updateForm('numeroEleve', v)
+                  }}
+                  placeholder="123456789"
+                  maxLength={9}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="numeroPerm">N° PERM (13 chiffres)</Label>
+                <Input
+                  id="numeroPerm"
+                  value={form.numeroPerm}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, '').slice(0, 13)
+                    updateForm('numeroPerm', v)
+                  }}
+                  placeholder="1234567890123"
+                  maxLength={13}
+                />
+              </div>
+            </div>
           </div>
 
           <DialogFooter>
