@@ -1875,11 +1875,39 @@ export async function renderBulletinFromTemplate(params: {
   //      l'élève depuis LISTE.
   const bulletinWsExceljs = exceljsWb.getWorksheet('BULLETIN')
   if (bulletinWsExceljs) {
-    const studentName = `${student.lastName || ''} ${student.firstName || ''}`.trim()
+    // ⚠ Nom de l'élève en MAJUSCULES
+    const studentName = `${student.lastName || ''} ${student.firstName || ''}`.trim().toUpperCase()
     // I3 = colonne I (9ème colonne, 1-based), row 3
     const i3Cell = bulletinWsExceljs.getCell('I3')
     i3Cell.value = studentName
-    console.log('[BULLETIN_RENDER] BULLETIN!I3 mis à jour avec le nom élève:', studentName)
+    console.log('[BULLETIN_RENDER] BULLETIN!I3 mis à jour avec le nom élève (MAJ):', studentName)
+
+    // ⚠ Insérer l'année scolaire automatiquement dans le titre (row 7)
+    // Le template contient "ANNEE SCOLAIRE 20….. - 20….." → remplacer par l'année réelle
+    const r7cell = bulletinWsExceljs.getRow(7).getCell(1)
+    let r7val: string
+    if (r7cell.value) {
+      if (typeof r7cell.value === 'object' && 'result' in r7cell.value) {
+        r7val = String((r7cell.value as { result?: unknown }).result ?? '')
+      } else if (typeof r7cell.value === 'string') {
+        r7val = r7cell.value
+      } else {
+        r7val = String(r7cell.value)
+      }
+    } else {
+      r7val = ''
+    }
+    // Remplacer "20….. - 20….." ou "20..... - 20....." par l'année scolaire
+    const currentYear = new Date().getFullYear()
+    const nextYear = currentYear + 1
+    const schoolYearStr = `${currentYear} - ${nextYear}`
+    const updatedR7 = r7val.replace(/20[….]+\s*-\s*20[….]+/g, schoolYearStr)
+      .replace(/20\.{2,}\s*-\s*20\.{2,}/g, schoolYearStr)
+      .replace(/ANNEE SCOLAIRE\s*20[^\d]*-\s*20[^\d]*/g, `ANNEE SCOLAIRE ${schoolYearStr}`)
+    if (updatedR7 !== r7val) {
+      bulletinWsExceljs.getRow(7).getCell(1).value = updatedR7
+      console.log('[BULLETIN_RENDER] Année scolaire insérée:', schoolYearStr)
+    }
 
     // ⚠ NOUVEAU — Écrire directement ville, commune, N° élève, N° PERM
     // dans l'en-tête du BULLETIN (rows 3-6) AVEC LES ÉTIQUETTES.
@@ -1927,7 +1955,7 @@ export async function renderBulletinFromTemplate(params: {
       }
     }
 
-    // Col A (rows 3-6) — étiquettes gauche
+    // Col A (rows 3-5) — étiquettes gauche
     writeWithLabel(3, 1, 'Ville :', ville)
     writeWithLabel(4, 1, 'Commune :', commune)
     // Row 5 col A = École (garde la valeur du template, ajoute étiquette si pas déjà présente)
@@ -1941,9 +1969,43 @@ export async function renderBulletinFromTemplate(params: {
     if (ecoleStr && !ecoleStr.toLowerCase().startsWith('école') && !ecoleStr.toLowerCase().startsWith('ecole')) {
       writeWithLabel(5, 1, 'École :', ecoleStr)
     }
-    writeWithLabel(6, 1, 'N° élève :', numeroEleve)
 
-    // Col I (rows 3-6) — étiquettes droite
+    // ⚠ N° élève subdivisé en 9 cases individuelles (row 6, cols A-I)
+    // Chaque cellule contient UN chiffre, avec bordure = case
+    if (numeroEleve) {
+      // Unmerge A6:H6 pour libérer les cellules individuelles
+      bulletinWsExceljs.unMergeCells('A6:H6')
+      // Écrire "N° élève" comme étiquette dans A5 (row 5, à côté de l'école)
+      // Non — on met l'étiquette directement en A6 avec petit texte, puis les 9 chiffres
+      // A6 = étiquette "N° élève", B6-I6 = ... non, seulement 8 colonnes (B à I)
+      // Solution: A6-I6 = 9 cellules (colonnes 1 à 9), chaque cellule = 1 chiffre
+      // Pas d'étiquette séparée — l'étiquette est dans la cellule A6 avec le 1er chiffre
+      
+      // Vider d'abord toutes les cellules A6-I6
+      for (let c = 1; c <= 9; c++) {
+        bulletinWsExceljs.getRow(6).getCell(c).value = null
+      }
+      
+      // Écrire chaque chiffre du N° élève dans une cellule séparée
+      const paddedEleve = numeroEleve.padStart(9, '0').slice(0, 9)
+      for (let i = 0; i < 9; i++) {
+        const cell = bulletinWsExceljs.getRow(6).getCell(i + 1)  // cols 1-9 (A-I)
+        cell.value = paddedEleve[i]
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        // Bordure pour créer l'effet "case"
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FF000000' } },
+          right: { style: 'thin', color: { argb: 'FF000000' } },
+        }
+        const existingFont = cell.font || {}
+        cell.font = { ...existingFont, size: 9, bold: true }
+      }
+      console.log('[BULLETIN_RENDER] N° élève subdivisé en 9 cases:', paddedEleve)
+    }
+
+    // Col I (rows 3-5) — étiquettes droite
     writeWithLabelCenter(3, 9, 'Nom :', studentName)
     // Row 4 col I = Date de naissance
     let dobStr = ''
@@ -1967,13 +2029,36 @@ export async function renderBulletinFromTemplate(params: {
     if (className) {
       writeWithLabel(5, 9, 'Classe :', className)
     }
-    // Row 6 col I = N° PERM
+
+    // ⚠ N° PERM subdivisé en 13 cases individuelles (row 6, cols J-V)
+    // En dessous de Classe (row 5 col I), sur la même row 6 à droite
     if (numeroPerm) {
-      writeWithLabelCenter(6, 9, 'N° PERM :', numeroPerm)
-      // Aussi vider J6-V6 pour éviter les valeurs stale du template
-      for (let c = 10; c <= 22; c++) {
+      // Unmerge I6:V6 pour libérer les cellules individuelles
+      bulletinWsExceljs.unMergeCells('I6:V6')
+      
+      // Vider d'abord toutes les cellules I6-V6
+      for (let c = 9; c <= 22; c++) {
         bulletinWsExceljs.getRow(6).getCell(c).value = null
       }
+      
+      // Écrire chaque chiffre du N° PERM dans une cellule séparée
+      // 13 chiffres → colonnes J(10) à V(22) = 13 colonnes
+      const paddedPerm = numeroPerm.padStart(13, '0').slice(0, 13)
+      for (let i = 0; i < 13; i++) {
+        const col = 10 + i  // J=10 à V=22
+        const cell = bulletinWsExceljs.getRow(6).getCell(col)
+        cell.value = paddedPerm[i]
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FF000000' } },
+          right: { style: 'thin', color: { argb: 'FF000000' } },
+        }
+        const existingFont = cell.font || {}
+        cell.font = { ...existingFont, size: 9, bold: true }
+      }
+      console.log('[BULLETIN_RENDER] N° PERM subdivisé en 13 cases:', paddedPerm)
     }
 
     // ⚠ Configurer la mise en page pour impression Excel
