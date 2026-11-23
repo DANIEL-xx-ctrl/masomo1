@@ -658,7 +658,12 @@ async function fillPourcentagePerColumn(
 
     if (maxTotal > 0) {
       const pct = Math.round((studentTotal / maxTotal) * 1000) / 10
-      bulletinWs.getRow(rankRowNum).getCell(cm.col).value = pct
+      const cell = bulletinWs.getRow(rankRowNum).getCell(cm.col)
+      cell.value = pct
+      // ⚠ Réduire la police pour que le pourcentage tienne dans la cellule
+      cell.font = { size: 7, bold: true }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.numFmt = '0.0"%"'
     } else {
       bulletinWs.getRow(rankRowNum).getCell(cm.col).value = null
     }
@@ -733,7 +738,12 @@ async function fillRankPerColumn(
       totals.sort((a, b) => b.total - a.total)
       const colRank = totals.findIndex(t => t.studentId === student.id) + 1
       if (colRank > 0) {
-        bulletinWs.getRow(rankRowNum).getCell(cm.col).value = `${colRank}${colRank === 1 ? 'er' : 'ème'}`
+        const cell = bulletinWs.getRow(rankRowNum).getCell(cm.col)
+        cell.value = `${colRank}${colRank === 1 ? 'er' : 'ème'}`
+        // ⚠ Réduire la police pour que le rang tienne dans la cellule
+        // (les cellules sont étroites, "1er"/"2ème" doit tenir)
+        cell.font = { size: 7, bold: true }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
       }
     } catch {
       // Skip cette colonne en cas d'erreur
@@ -1308,7 +1318,11 @@ async function fillBulletinSheetDirectly(
     for (const colStr of Object.keys(colToMax)) {
       const col = Number(colStr)
       const val = colToMax[col]
-      maximaRow.getCell(col).value = val > 0 ? val : null
+      const cell = maximaRow.getCell(col)
+      cell.value = val > 0 ? val : null
+      // ⚠ Réduire la police pour MAXIMA (les valeurs sont grandes)
+      cell.font = { size: 7, bold: true }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
     }
     maximaRow.commit()
     console.log(`[BULLETIN_FILL] MAXIMA GENERAUX row ${maximaRowNum}: maxTJ=${totalMaxTJ} → B,C,D,I,J,O,P; maxEX=${totalMaxEX} → E,F,K,L,Q,R; maxTRIM=${totalMaxTRIM} → G,H,M,N,S,T; maxAnnuel=${totalMaxAnnuel} → U,V`)
@@ -1343,7 +1357,11 @@ async function fillBulletinSheetDirectly(
           }
           sum += numVal
         }
-        totauxRow.getCell(col).value = hasValue ? sum : null
+        const tCell = totauxRow.getCell(col)
+        tCell.value = hasValue ? sum : null
+        // ⚠ Réduire la police pour TOTAUX (les valeurs sont grandes)
+        tCell.font = { size: 7, bold: true }
+        tCell.alignment = { horizontal: 'center', vertical: 'middle' }
       }
       
       // Vider les colonnes MAX (B, E, G, K, M, Q, S, U) pour TOTAUX
