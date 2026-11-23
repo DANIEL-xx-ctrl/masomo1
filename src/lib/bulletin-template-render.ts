@@ -660,10 +660,11 @@ async function fillPourcentagePerColumn(
       const pct = Math.round((studentTotal / maxTotal) * 1000) / 10
       const cell = bulletinWs.getRow(rankRowNum).getCell(cm.col)
       cell.value = pct
-      // ⚠ Réduire la police pour que le pourcentage tienne dans la cellule
-      cell.font = { size: 7, bold: true }
-      cell.alignment = { horizontal: 'center', vertical: 'middle' }
-      cell.numFmt = '0.0"%"'
+      // ⚠ Police réduite (size 6) pour que le pourcentage tienne dans la cellule
+      // ⚠ PAS de signe % — juste le nombre
+      cell.font = { size: 6, bold: true }
+      cell.alignment = { horizontal: 'center', vertical: 'middle', textRotation: 0, wrapText: false }
+      cell.numFmt = '0.0'  // Affiche juste le nombre, sans %
     } else {
       bulletinWs.getRow(rankRowNum).getCell(cm.col).value = null
     }
