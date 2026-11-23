@@ -1977,7 +1977,36 @@ export async function renderBulletinFromTemplate(params: {
     }
 
     // ⚠ Configurer la mise en page pour impression Excel
-    // Le bulletin doit tenir sur une page A4 en portrait
+    // Le bulletin doit tenir sur une page A4 en portrait SANS espace vide en bas.
+    // Pour combler l'espace, on augmente la taille de police et la hauteur des lignes.
+    
+    // 1. Augmenter la taille de police pour toutes les cellules de données (rows 11+)
+    //    et augmenter la hauteur des lignes pour remplir la page
+    const dataStartRow = 11
+    const dataEndRow = Math.max(bulletinWsExceljs.rowCount, 50)
+    for (let r = dataStartRow; r <= dataEndRow; r++) {
+      const row = bulletinWsExceljs.getRow(r)
+      // Augmenter la hauteur de ligne (de ~15 à 20 pour remplir la page)
+      row.height = 20
+      // Augmenter la taille de police pour chaque cellule
+      for (let c = 1; c <= 22; c++) {
+        const cell = row.getCell(c)
+        if (cell.value !== null && cell.value !== undefined) {
+          const existingFont = cell.font || {}
+          cell.font = {
+            ...existingFont,
+            size: 10,  // Augmenter de 8/9 à 10
+          }
+        }
+      }
+    }
+    
+    // 2. Augmenter aussi la hauteur des lignes d'en-tête (rows 8-10)
+    for (let r = 8; r <= 10; r++) {
+      bulletinWsExceljs.getRow(r).height = 22
+    }
+    
+    // 3. Configurer la mise en page
     bulletinWsExceljs.pageSetup = {
       paperSize: 9,        // A4
       orientation: 'portrait',
@@ -1987,13 +2016,12 @@ export async function renderBulletinFromTemplate(params: {
       scale: 100,
       horizontalDpi: 300,
       verticalDpi: 300,
-      printArea: undefined,
     }
     bulletinWsExceljs.pageMargins = {
-      top: 0.25,
-      bottom: 0.25,
-      left: 0.25,
-      right: 0.25,
+      top: 0.2,
+      bottom: 0.2,
+      left: 0.2,
+      right: 0.2,
       header: 0,
       footer: 0,
     }
@@ -2002,7 +2030,7 @@ export async function renderBulletinFromTemplate(params: {
     const lastCol = 22  // V
     bulletinWsExceljs.printArea = `A1:${String.fromCharCode(64 + lastCol)}${lastRow}`
     
-    console.log('[BULLETIN_RENDER] Page setup configuré pour impression A4 portrait')
+    console.log('[BULLETIN_RENDER] Page setup configuré: font size 10, row height 20, margins 0.2')
   } else {
     console.log('[BULLETIN_RENDER] Pas de feuille BULLETIN dans le template — skip I3 update')
   }
