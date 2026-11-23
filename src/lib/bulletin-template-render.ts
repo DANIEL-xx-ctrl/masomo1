@@ -1977,60 +1977,73 @@ export async function renderBulletinFromTemplate(params: {
     }
 
     // ⚠ Configurer la mise en page pour impression Excel
-    // Le bulletin doit tenir sur une page A4 en portrait SANS espace vide en bas.
-    // Pour combler l'espace, on augmente la taille de police et la hauteur des lignes.
+    // Le bulletin doit REMPLIR toute la page A4 portrait sans être coupé.
+    // 
+    // Le template original a ~50 lignes. A4 portrait = ~813 points imprimables
+    // (avec marges 0.2"). On calcule la hauteur exacte pour remplir la page.
+    //
+    // Hauteur totale disponible: ~813 points
+    // Header rows 1-10: ~235 points (row 1 = 64.5, autres = ~15-22)
+    // Data rows 11-46: 36 rows
+    // Footer rows 47-50: 4 rows
+    // Total data+footer rows: 40
+    // Available: 813 - 235 = 578 points pour 40 rows = ~14.5 par row
+    //
+    // Pour REMPLIR la page, on augmente légèrement et laisse fitToHeight=1
+    // faire l'ajustement exact.
+
+    // 1. Hauteur des lignes de données (rows 11-46) — 16 pour remplir
+    for (let r = 11; r <= 46; r++) {
+      bulletinWsExceljs.getRow(r).height = 16
+    }
+    // Footer rows (47-50) — plus hautes pour combler l'espace restant
+    for (let r = 47; r <= 49; r++) {
+      bulletinWsExceljs.getRow(r).height = 25
+    }
+    // Row 50 (footer text) — grande hauteur pour le texte long
+    bulletinWsExceljs.getRow(50).height = 50
     
-    // 1. Augmenter la taille de police pour toutes les cellules de données (rows 11+)
-    //    et augmenter la hauteur des lignes pour remplir la page
-    const dataStartRow = 11
-    const dataEndRow = Math.max(bulletinWsExceljs.rowCount, 50)
-    for (let r = dataStartRow; r <= dataEndRow; r++) {
+    // 2. Augmenter la taille de police pour les données (rows 11-46)
+    for (let r = 11; r <= 46; r++) {
       const row = bulletinWsExceljs.getRow(r)
-      // Augmenter la hauteur de ligne (de ~15 à 20 pour remplir la page)
-      row.height = 20
-      // Augmenter la taille de police pour chaque cellule
       for (let c = 1; c <= 22; c++) {
         const cell = row.getCell(c)
         if (cell.value !== null && cell.value !== undefined) {
           const existingFont = cell.font || {}
-          cell.font = {
-            ...existingFont,
-            size: 10,  // Augmenter de 8/9 à 10
+          // Garder la taille existante si >= 9, sinon mettre à 9
+          if (!existingFont.size || existingFont.size < 9) {
+            cell.font = {
+              ...existingFont,
+              size: 9,
+            }
           }
         }
       }
     }
     
-    // 2. Augmenter aussi la hauteur des lignes d'en-tête (rows 8-10)
-    for (let r = 8; r <= 10; r++) {
-      bulletinWsExceljs.getRow(r).height = 22
-    }
-    
-    // 3. Configurer la mise en page
+    // 3. Configurer la mise en page — fitToHeight=1 pour ajuster exactement
     bulletinWsExceljs.pageSetup = {
       paperSize: 9,        // A4
       orientation: 'portrait',
       fitToPage: true,
       fitToWidth: 1,       // Toutes les colonnes sur 1 page de large
-      fitToHeight: 1,      // Toutes les lignes sur 1 page de haut
+      fitToHeight: 1,      // Toutes les lignes sur 1 page de haut (auto-scale)
       scale: 100,
       horizontalDpi: 300,
       verticalDpi: 300,
     }
     bulletinWsExceljs.pageMargins = {
-      top: 0.2,
-      bottom: 0.2,
-      left: 0.2,
-      right: 0.2,
+      top: 0.15,
+      bottom: 0.15,
+      left: 0.15,
+      right: 0.15,
       header: 0,
       footer: 0,
     }
-    // Définir la zone d'impression (A1 jusqu'à la dernière ligne/colonne utilisée)
-    const lastRow = Math.max(bulletinWsExceljs.rowCount, 50)
-    const lastCol = 22  // V
-    bulletinWsExceljs.printArea = `A1:${String.fromCharCode(64 + lastCol)}${lastRow}`
+    // Zone d'impression : A1 à V50 (tout le bulletin)
+    bulletinWsExceljs.printArea = 'A1:V50'
     
-    console.log('[BULLETIN_RENDER] Page setup configuré: font size 10, row height 20, margins 0.2')
+    console.log('[BULLETIN_RENDER] Page setup: row height 16, footer 25-50, font 9, margins 0.15, fitToHeight=1')
   } else {
     console.log('[BULLETIN_RENDER] Pas de feuille BULLETIN dans le template — skip I3 update')
   }
