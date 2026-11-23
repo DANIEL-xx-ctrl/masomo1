@@ -1882,37 +1882,83 @@ export async function renderBulletinFromTemplate(params: {
     console.log('[BULLETIN_RENDER] BULLETIN!I3 mis à jour avec le nom élève:', studentName)
 
     // ⚠ NOUVEAU — Écrire directement ville, commune, N° élève, N° PERM
-    // dans l'en-tête du BULLETIN (rows 3-6).
+    // dans l'en-tête du BULLETIN (rows 3-6) AVEC LES ÉTIQUETTES.
+    // Le template original contient juste les valeurs sans étiquettes.
+    // On ajoute "Ville : ", "Commune : ", etc. devant chaque valeur.
+    //
     // Structure du template BULLETIN:
-    //   Row 3 col A (merged A-H) = Ville  → student.ville
-    //   Row 4 col A (merged A-H) = Commune → student.commune
-    //   Row 6 col A (merged A-H) = Code   → student.numeroEleve (9 chiffres)
-    //   Row 6 col I               = N° PERM → student.numeroPerm (13 chiffres)
+    //   Row 3 col A (merged A-H) = Ville    → "Ville : " + ville
+    //   Row 4 col A (merged A-H) = Commune  → "Commune : " + commune
+    //   Row 5 col A (merged A-H) = École    → garde la valeur du template (C.S EXCEL)
+    //   Row 6 col A (merged A-H) = Code     → "N° élève : " + numeroEleve
+    //   Row 6 col I               = N° PERM → "N° PERM : " + numeroPerm
+    //   Row 3 col I (merged I-V)  = Nom     → "Nom : " + studentName
+    //   Row 4 col I (merged I-V)  = Date naiss → "Date de naissance : " + dob
+    //   Row 5 col I (merged I-P)  = Classe  → "Classe : " + className
     const sAny = student as unknown as Record<string, unknown>
     const ville = (sAny.ville as string) || ''
     const commune = (sAny.commune as string) || ''
     const numeroEleve = (sAny.numeroEleve as string) || ''
     const numeroPerm = (sAny.numeroPerm as string) || ''
 
+    // Col A (rows 3-6) — étiquettes gauche
     if (ville) {
-      bulletinWsExceljs.getRow(3).getCell(1).value = ville
-      console.log('[BULLETIN_RENDER] BULLETIN Row 3 col A = Ville:', ville)
+      bulletinWsExceljs.getRow(3).getCell(1).value = `Ville : ${ville}`
+      console.log('[BULLETIN_RENDER] BULLETIN Row 3 col A = "Ville : ' + ville + '"')
     }
     if (commune) {
-      bulletinWsExceljs.getRow(4).getCell(1).value = commune
-      console.log('[BULLETIN_RENDER] BULLETIN Row 4 col A = Commune:', commune)
+      bulletinWsExceljs.getRow(4).getCell(1).value = `Commune : ${commune}`
+      console.log('[BULLETIN_RENDER] BULLETIN Row 4 col A = "Commune : ' + commune + '"')
+    }
+    // Row 5 col A = École (garde la valeur du template, ou ajoute étiquette)
+    const ecoleVal = bulletinWsExceljs.getRow(5).getCell(1).value
+    let ecoleStr = ''
+    if (ecoleVal) {
+      if (typeof ecoleVal === 'object' && 'result' in ecoleVal) ecoleStr = String((ecoleVal as { result?: unknown }).result ?? '')
+      else if (typeof ecoleVal === 'string') ecoleStr = ecoleVal
+      else ecoleStr = String(ecoleVal)
+    }
+    if (ecoleStr && !ecoleStr.toLowerCase().startsWith('école') && !ecoleStr.toLowerCase().startsWith('ecole')) {
+      bulletinWsExceljs.getRow(5).getCell(1).value = `École : ${ecoleStr}`
     }
     if (numeroEleve) {
-      bulletinWsExceljs.getRow(6).getCell(1).value = numeroEleve
-      console.log('[BULLETIN_RENDER] BULLETIN Row 6 col A = N° élève:', numeroEleve)
+      bulletinWsExceljs.getRow(6).getCell(1).value = `N° élève : ${numeroEleve}`
+      console.log('[BULLETIN_RENDER] BULLETIN Row 6 col A = "N° élève : ' + numeroEleve + '"')
     }
+
+    // Col I (rows 3-6) — étiquettes droite
+    // Row 3 col I = Nom de l'élève
+    bulletinWsExceljs.getRow(3).getCell(9).value = `Nom : ${studentName}`
+    // Row 4 col I = Date de naissance
+    let dobStr = ''
+    if (student.dateOfBirth) {
+      try {
+        const dob = new Date(student.dateOfBirth)
+        if (!isNaN(dob.getTime())) {
+          dobStr = dob.toLocaleDateString('fr-FR')
+        } else {
+          dobStr = String(student.dateOfBirth)
+        }
+      } catch {
+        dobStr = String(student.dateOfBirth)
+      }
+    }
+    if (dobStr) {
+      bulletinWsExceljs.getRow(4).getCell(9).value = `Date de naissance : ${dobStr}`
+    }
+    // Row 5 col I = Classe
+    const className = student.class?.name || ''
+    if (className) {
+      bulletinWsExceljs.getRow(5).getCell(9).value = `Classe : ${className}`
+    }
+    // Row 6 col I = N° PERM
     if (numeroPerm) {
-      bulletinWsExceljs.getRow(6).getCell(9).value = numeroPerm
+      bulletinWsExceljs.getRow(6).getCell(9).value = `N° PERM : ${numeroPerm}`
       // Aussi vider J6-V6 pour éviter les valeurs stale du template
       for (let c = 10; c <= 22; c++) {
         bulletinWsExceljs.getRow(6).getCell(c).value = null
       }
-      console.log('[BULLETIN_RENDER] BULLETIN Row 6 col I = N° PERM:', numeroPerm)
+      console.log('[BULLETIN_RENDER] BULLETIN Row 6 col I = "N° PERM : ' + numeroPerm + '"')
     }
   } else {
     console.log('[BULLETIN_RENDER] Pas de feuille BULLETIN dans le template — skip I3 update')
