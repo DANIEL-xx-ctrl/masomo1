@@ -2132,7 +2132,7 @@ export async function renderBulletinFromTemplate(params: {
       footer: 0,
     }
     // Zone d'impression : A1 à V50 (tout le bulletin)
-    bulletinWsExceljs.printArea = 'A1:V50'
+    bulletinWsExceljs.printArea = 'A1:V55'
     
     console.log('[BULLETIN_RENDER] Page setup: row height 16, footer 25-50, font 9, margins 0.15, fitToHeight=1')
   } else {
@@ -2261,8 +2261,19 @@ export async function renderBulletinFromTemplate(params: {
     bulletinWsExceljs.getRow(applicationRow).height = 16
     bulletinWsExceljs.getRow(conduiteRow).height = 16
     bulletinWsExceljs.getRow(signatureRow).height = 16
-    // Footer — grande hauteur pour le texte long
-    bulletinWsExceljs.getRow(footerRow).height = 50
+    // Footer — grande hauteur pour le texte long (le template utilise 133.5)
+    // Le footer contient plusieurs lignes de texte :
+    //   - "L'élève passe dans la classe supérieure (1)"
+    //   - "L'élève double la classe (1)"
+    //   - "Fait à..., le .../.../20..."
+    //   - "LE CHEF D'ETABLISSEMENT"
+    //   - "NOM & SIGNATURE"
+    //   - "SCEAU DE L'ECOLE"
+    //   - "(1) Biffer la mention inutile"
+    //   - "NOTE IMPORTANTE: Le bulletin est sans valeur s'il est raturé..."
+    // On garde la hauteur du template original (133.5) si elle existe, sinon 100
+    const footerOriginalHeight = bulletinWsExceljs.getRow(footerRow).height
+    bulletinWsExceljs.getRow(footerRow).height = footerOriginalHeight && footerOriginalHeight > 50 ? footerOriginalHeight : 100
     // Vider les hauteurs des rows après le footer
     for (let r = footerRow + 1; r <= bulletinWsExceljs.rowCount; r++) {
       bulletinWsExceljs.getRow(r).height = 16
