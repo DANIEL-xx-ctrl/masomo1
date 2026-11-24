@@ -37,7 +37,10 @@ export async function GET(request: Request) {
       'p1': { t: '1er', ty: '1ère période', l: '1ère période' }, 'p2': { t: '1er', ty: '2ème période', l: '2ème période' },
       'p3': { t: '2eme', ty: '3ème période', l: '3ème période' }, 'p4': { t: '2eme', ty: '4ème période', l: '4ème période' },
       'p5': { t: '3eme', ty: '5ème période', l: '5ème période' }, 'p6': { t: '3eme', ty: '6ème période', l: '6ème période' },
-      'examen': { ty: 'examen', l: 'Examens' },
+      'examen': { ty: 'examen', l: 'Tous les examens' },
+      'examen1': { t: '1er', ty: 'examen', l: 'Examen 1er trimestre' },
+      'examen2': { t: '2eme', ty: 'examen', l: 'Examen 2ème trimestre' },
+      'examen3': { t: '3eme', ty: 'examen', l: 'Examen 3ème trimestre' },
     }
     if (selMap[selection]) { const s = selMap[selection]; if (s.t) gf.trimester = s.t; if (s.ty) gf.type = s.ty; periodLabel = s.l }
 
