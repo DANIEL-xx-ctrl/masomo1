@@ -2091,26 +2091,9 @@ export async function renderBulletinFromTemplate(params: {
     //
     // Pour REMPLIR la page, on augmente légèrement et laisse fitToHeight=1
     // faire l'ajustement exact.
+    // ⚠ Les hauteurs de lignes sont définies APRÈS fillBulletinSheetDirectly
+    // (plus bas dans le code) pour ne pas être écrasées.
 
-    // 1. Hauteur des lignes de données (rows 11-46) — 16 pour remplir
-    for (let r = 11; r <= 46; r++) {
-      bulletinWsExceljs.getRow(r).height = 16
-    }
-    // ⚠ APPLICATION et CONDUITE doivent avoir la MÊME hauteur que MAXIMA GENERAUX (16)
-    // MAXIMA GENERAUX est à row 46 (height=16)
-    // Rows 47-49 (TOTAUX, POURCETAGE, PLACE) peuvent être un peu plus hautes
-    for (let r = 47; r <= 49; r++) {
-      bulletinWsExceljs.getRow(r).height = 20
-    }
-    // Row 50 (APPLICATION) — même hauteur que MAXIMA GENERAUX
-    bulletinWsExceljs.getRow(50).height = 16
-    // Row 51 (CONDUITE) — même hauteur que MAXIMA GENERAUX
-    bulletinWsExceljs.getRow(51).height = 16
-    // Row 52 (SIGNATURE) — même hauteur que MAXIMA GENERAUX
-    bulletinWsExceljs.getRow(52).height = 16
-    // Row 53 (footer text) — grande hauteur pour le texte long
-    bulletinWsExceljs.getRow(53).height = 50
-    
     // 2. Augmenter la taille de police pour les données (rows 11-46)
     for (let r = 11; r <= 46; r++) {
       const row = bulletinWsExceljs.getRow(r)
@@ -2239,6 +2222,53 @@ export async function renderBulletinFromTemplate(params: {
       db,
       schoolYear,
     )
+
+    // ⚠ Définir les hauteurs de lignes APRÈS fillBulletinSheetDirectly
+    // pour qu'elles ne soient pas écrasées par le traitement.
+    // APPLICATION, CONDUITE, SIGNATURE doivent avoir la MÊME hauteur que MAXIMA GENERAUX.
+    
+    // Trouver dynamiquement les rows MAXIMA, APPLICATION, CONDUITE, SIGNATURE
+    let maximaRow = 46, applicationRow = 50, conduiteRow = 51, signatureRow = 52, footerRow = 53
+    for (let r = 40; r <= 55; r++) {
+      const aVal = bulletinWsExceljs.getRow(r).getCell(1).value
+      let aStr = ''
+      if (aVal) {
+        if (typeof aVal === 'object') {
+          if ('result' in aVal) aStr = String((aVal as { result?: unknown }).result ?? '')
+          else if ('richText' in aVal) aStr = (aVal as { richText: { text: string }[] }).richText.map(rt => rt.text).join('')
+          else aStr = String(aVal)
+        } else aStr = String(aVal)
+      }
+      const upper = aStr.toUpperCase()
+      if (upper.includes('MAXIMA')) maximaRow = r
+      if (upper === 'APPLICATION') applicationRow = r
+      if (upper === 'CONDUITE') conduiteRow = r
+      if (upper === 'SIGNATURE') signatureRow = r
+      if (upper.includes('L ÉLÈVE PASSE') || upper.includes('L\'ÉLÈVE PASSE') || upper.includes('CLASSE SUPÉRIEURE')) footerRow = r
+    }
+    
+    console.log(`[BULLETIN_RENDER] Rows trouvés: MAXIMA=${maximaRow}, APPLICATION=${applicationRow}, CONDUITE=${conduiteRow}, SIGNATURE=${signatureRow}, FOOTER=${footerRow}`)
+    
+    // Hauteur des lignes de données (11 à MAXIMA) — 16
+    for (let r = 11; r <= maximaRow; r++) {
+      bulletinWsExceljs.getRow(r).height = 16
+    }
+    // Rows entre MAXIMA et APPLICATION (TOTAUX, POURCETAGE, PLACE) — 20
+    for (let r = maximaRow + 1; r < applicationRow; r++) {
+      bulletinWsExceljs.getRow(r).height = 20
+    }
+    // APPLICATION, CONDUITE, SIGNATURE — MÊME hauteur que MAXIMA (16)
+    bulletinWsExceljs.getRow(applicationRow).height = 16
+    bulletinWsExceljs.getRow(conduiteRow).height = 16
+    bulletinWsExceljs.getRow(signatureRow).height = 16
+    // Footer — grande hauteur pour le texte long
+    bulletinWsExceljs.getRow(footerRow).height = 50
+    // Vider les hauteurs des rows après le footer
+    for (let r = footerRow + 1; r <= bulletinWsExceljs.rowCount; r++) {
+      bulletinWsExceljs.getRow(r).height = 16
+    }
+    
+    console.log(`[BULLETIN_RENDER] Hauteurs définies: APPLICATION=${16}, CONDUITE=${16}, SIGNATURE=${16}`)
   }
 
   // 12f. Écrire le workbook modifié en buffer avec ExcelJS.
