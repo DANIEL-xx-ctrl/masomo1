@@ -1983,39 +1983,83 @@ export async function renderBulletinFromTemplate(params: {
       writeWithLabel(5, 1, 'École :', ecoleStr)
     }
 
-    // ⚠ N° élève subdivisé en 9 cases individuelles (row 6, cols A-I)
-    // Chaque cellule contient UN chiffre, avec bordure = case
-    if (numeroEleve) {
-      // Unmerge A6:H6 pour libérer les cellules individuelles
+    // ⚠ N° élève : étiquette "Code :" + 9 cases individuelles (row 6)
+    // ⚠ N° PERM : étiquette "N° PERM :" + 13 cases individuelles (row 6)
+    // Layout row 6 :
+    //   A6 = "Code :" (étiquette, col A large = 20.4)
+    //   B6-J6 = 9 cases (9 chiffres du N° élève)
+    //   K6:L6 merged = "N° PERM :" (étiquette)
+    //   M6-Y6 = 13 cases (13 chiffres du N° PERM, étend au-delà de V)
+    // ⚠ IMPORTANT : Défusionner I6:V6 AVANT d'écrire les chiffres.
+    if (numeroEleve || numeroPerm) {
+      // Défusionner les deux zones merged de la row 6 EN PREMIER
       bulletinWsExceljs.unMergeCells('A6:H6')
-      // Écrire "N° élève" comme étiquette dans A5 (row 5, à côté de l'école)
-      // Non — on met l'étiquette directement en A6 avec petit texte, puis les 9 chiffres
-      // A6 = étiquette "N° élève", B6-I6 = ... non, seulement 8 colonnes (B à I)
-      // Solution: A6-I6 = 9 cellules (colonnes 1 à 9), chaque cellule = 1 chiffre
-      // Pas d'étiquette séparée — l'étiquette est dans la cellule A6 avec le 1er chiffre
+      bulletinWsExceljs.unMergeCells('I6:V6')
       
-      // Vider d'abord toutes les cellules A6-I6
-      for (let c = 1; c <= 9; c++) {
+      // Vider toutes les cellules A6-Y6
+      for (let c = 1; c <= 25; c++) {
         bulletinWsExceljs.getRow(6).getCell(c).value = null
       }
-      
-      // Écrire chaque chiffre du N° élève dans une cellule séparée
-      const paddedEleve = numeroEleve.padStart(9, '0').slice(0, 9)
-      for (let i = 0; i < 9; i++) {
-        const cell = bulletinWsExceljs.getRow(6).getCell(i + 1)  // cols 1-9 (A-I)
-        cell.value = paddedEleve[i]
-        cell.alignment = { horizontal: 'center', vertical: 'middle' }
-        // Bordure pour créer l'effet "case"
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FF000000' } },
-          bottom: { style: 'thin', color: { argb: 'FF000000' } },
-          left: { style: 'thin', color: { argb: 'FF000000' } },
-          right: { style: 'thin', color: { argb: 'FF000000' } },
+
+      // 1. Étiquette "Code :" dans A6 (colonne large)
+      if (numeroEleve) {
+        const codeLabelCell = bulletinWsExceljs.getRow(6).getCell(1)  // A6
+        codeLabelCell.value = 'Code :'
+        codeLabelCell.alignment = { horizontal: 'right', vertical: 'middle' }
+        const lblFont = codeLabelCell.font || {}
+        codeLabelCell.font = { ...lblFont, size: 9, bold: true }
+        
+        // 9 cases dans B6(2) à J6(10)
+        const paddedEleve = numeroEleve.padStart(9, '0').slice(0, 9)
+        for (let i = 0; i < 9; i++) {
+          const col = 2 + i  // B=2 à J=10
+          const cell = bulletinWsExceljs.getRow(6).getCell(col)
+          cell.value = paddedEleve[i]
+          cell.alignment = { horizontal: 'center', vertical: 'middle' }
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FF000000' } },
+            bottom: { style: 'thin', color: { argb: 'FF000000' } },
+            left: { style: 'thin', color: { argb: 'FF000000' } },
+            right: { style: 'thin', color: { argb: 'FF000000' } },
+          }
+          const existingFont = cell.font || {}
+          cell.font = { ...existingFont, size: 9, bold: true }
         }
-        const existingFont = cell.font || {}
-        cell.font = { ...existingFont, size: 9, bold: true }
+        console.log('[BULLETIN_RENDER] Code : étiquette + 9 cases:', paddedEleve)
       }
-      console.log('[BULLETIN_RENDER] N° élève subdivisé en 9 cases:', paddedEleve)
+
+      // 2. Étiquette "N° PERM :" dans K6:L6 (merged)
+      if (numeroPerm) {
+        // Merger K6:L6 pour l'étiquette
+        bulletinWsExceljs.mergeCells('K6:L6')
+        const permLabelCell = bulletinWsExceljs.getRow(6).getCell(11)  // K6
+        permLabelCell.value = 'N° PERM :'
+        permLabelCell.alignment = { horizontal: 'right', vertical: 'middle' }
+        const pLblFont = permLabelCell.font || {}
+        permLabelCell.font = { ...pLblFont, size: 9, bold: true }
+        
+        // 13 cases dans M6(13) à Y6(25)
+        const paddedPerm = numeroPerm.padStart(13, '0').slice(0, 13)
+        for (let i = 0; i < 13; i++) {
+          const col = 13 + i  // M=13 à Y=25
+          const cell = bulletinWsExceljs.getRow(6).getCell(col)
+          cell.value = paddedPerm[i]
+          cell.alignment = { horizontal: 'center', vertical: 'middle' }
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FF000000' } },
+            bottom: { style: 'thin', color: { argb: 'FF000000' } },
+            left: { style: 'thin', color: { argb: 'FF000000' } },
+            right: { style: 'thin', color: { argb: 'FF000000' } },
+          }
+          const existingFont = cell.font || {}
+          cell.font = { ...existingFont, size: 9, bold: true }
+          // Définir la largeur des colonnes au-delà de V (W=23, X=24, Y=25)
+          if (col >= 23) {
+            bulletinWsExceljs.getColumn(col).width = 4.7
+          }
+        }
+        console.log('[BULLETIN_RENDER] N° PERM : étiquette + 13 cases:', paddedPerm)
+      }
     }
 
     // Col I (rows 3-5) — étiquettes droite
@@ -2044,37 +2088,20 @@ export async function renderBulletinFromTemplate(params: {
     if (className) {
       writeWithLabel(5, 9, 'Classe :', className)
     }
-
-    // ⚠ N° PERM subdivisé en 13 cases individuelles (row 6, cols J-V)
-    // En dessous de Classe (row 5 col I), sur la même row 6 à droite
-    if (numeroPerm) {
-      // Unmerge I6:V6 pour libérer les cellules individuelles
-      bulletinWsExceljs.unMergeCells('I6:V6')
-      
-      // Vider d'abord toutes les cellules I6-V6
-      for (let c = 9; c <= 22; c++) {
-        bulletinWsExceljs.getRow(6).getCell(c).value = null
-      }
-      
-      // Écrire chaque chiffre du N° PERM dans une cellule séparée
-      // 13 chiffres → colonnes J(10) à V(22) = 13 colonnes
-      const paddedPerm = numeroPerm.padStart(13, '0').slice(0, 13)
-      for (let i = 0; i < 13; i++) {
-        const col = 10 + i  // J=10 à V=22
-        const cell = bulletinWsExceljs.getRow(6).getCell(col)
-        cell.value = paddedPerm[i]
-        cell.alignment = { horizontal: 'center', vertical: 'middle' }
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FF000000' } },
-          bottom: { style: 'thin', color: { argb: 'FF000000' } },
-          left: { style: 'thin', color: { argb: 'FF000000' } },
-          right: { style: 'thin', color: { argb: 'FF000000' } },
-        }
-        const existingFont = cell.font || {}
-        cell.font = { ...existingFont, size: 9, bold: true }
-      }
-      console.log('[BULLETIN_RENDER] N° PERM subdivisé en 13 cases:', paddedPerm)
+    // ⚠ SEXE : afficher "SEXE : M" ou "SEXE : F" dans Q5 (zone réservée Q5:V5)
+    // Le template a Q5:V5 merged contenant "M" — c'est le champ SEXE
+    const gender = student.gender || ''
+    if (gender) {
+      const sexCell = bulletinWsExceljs.getRow(5).getCell(17)  // Q = col 17
+      const sexLabel = gender.toUpperCase().startsWith('M') ? 'M' : gender.toUpperCase().startsWith('F') ? 'F' : gender
+      sexCell.value = `SEXE : ${sexLabel}`
+      sexCell.alignment = { horizontal: 'center', vertical: 'middle' }
+      const sexFont = sexCell.font || {}
+      sexCell.font = { ...sexFont, size: 11, bold: true }
+      console.log('[BULLETIN_RENDER] SEXE écrit dans Q5:', sexLabel)
     }
+
+    // ⚠ N° PERM est déjà écrit dans la section combinée ci-dessus (Code + N° PERM)
 
     // ⚠ Configurer la mise en page pour impression Excel
     // Le bulletin doit REMPLIR toute la page A4 portrait sans être coupé.
@@ -2132,7 +2159,7 @@ export async function renderBulletinFromTemplate(params: {
       footer: 0,
     }
     // Zone d'impression : A1 à V50 (tout le bulletin)
-    bulletinWsExceljs.printArea = 'A1:V55'
+    bulletinWsExceljs.printArea = 'A1:Y55'
     
     console.log('[BULLETIN_RENDER] Page setup: row height 16, footer 25-50, font 9, margins 0.15, fitToHeight=1')
   } else {
