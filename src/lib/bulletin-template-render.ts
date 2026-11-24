@@ -1985,11 +1985,11 @@ export async function renderBulletinFromTemplate(params: {
 
     // ⚠ N° élève : étiquette "Code :" + 9 cases individuelles (row 6)
     // ⚠ N° PERM : étiquette "N° PERM :" + 13 cases individuelles (row 6)
-    // Layout row 6 :
-    //   A6 = "Code :" (étiquette, col A large = 20.4)
+    // Layout row 6 (décalé à gauche pour éviter le débordement) :
+    //   A6 = "Code :" (étiquette, col A large = 20.4, alignment RIGHT pour décaler à gauche)
     //   B6-J6 = 9 cases (9 chiffres du N° élève)
-    //   K6:L6 merged = "N° PERM :" (étiquette)
-    //   M6-Y6 = 13 cases (13 chiffres du N° PERM, étend au-delà de V)
+    //   K6 = "N°" + L6 = "PERM :" (étiquette sur 2 cellules pour gagner de la place)
+    //   M6-Y6 = 13 cases (13 chiffres du N° PERM)
     // ⚠ IMPORTANT : Défusionner I6:V6 AVANT d'écrire les chiffres.
     if (numeroEleve || numeroPerm) {
       // Défusionner les deux zones merged de la row 6 EN PREMIER
@@ -2001,13 +2001,13 @@ export async function renderBulletinFromTemplate(params: {
         bulletinWsExceljs.getRow(6).getCell(c).value = null
       }
 
-      // 1. Étiquette "Code :" dans A6 (colonne large)
+      // 1. Étiquette "Code :" dans A6 — alignment RIGHT pour coller aux cases
       if (numeroEleve) {
         const codeLabelCell = bulletinWsExceljs.getRow(6).getCell(1)  // A6
         codeLabelCell.value = 'Code :'
-        codeLabelCell.alignment = { horizontal: 'right', vertical: 'middle' }
+        codeLabelCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 0 }
         const lblFont = codeLabelCell.font || {}
-        codeLabelCell.font = { ...lblFont, size: 9, bold: true }
+        codeLabelCell.font = { ...lblFont, size: 8, bold: true }
         
         // 9 cases dans B6(2) à J6(10)
         const paddedEleve = numeroEleve.padStart(9, '0').slice(0, 9)
@@ -2023,20 +2023,20 @@ export async function renderBulletinFromTemplate(params: {
             right: { style: 'thin', color: { argb: 'FF000000' } },
           }
           const existingFont = cell.font || {}
-          cell.font = { ...existingFont, size: 9, bold: true }
+          cell.font = { ...existingFont, size: 8, bold: true }
         }
         console.log('[BULLETIN_RENDER] Code : étiquette + 9 cases:', paddedEleve)
       }
 
-      // 2. Étiquette "N° PERM :" dans K6:L6 (merged)
+      // 2. Étiquette "N° PERM :" dans K6:L6 (merged) — alignment RIGHT
       if (numeroPerm) {
-        // Merger K6:L6 pour l'étiquette
+        // Merger K6:L6 pour l'étiquette "N° PERM :"
         bulletinWsExceljs.mergeCells('K6:L6')
         const permLabelCell = bulletinWsExceljs.getRow(6).getCell(11)  // K6
         permLabelCell.value = 'N° PERM :'
-        permLabelCell.alignment = { horizontal: 'right', vertical: 'middle' }
+        permLabelCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 0 }
         const pLblFont = permLabelCell.font || {}
-        permLabelCell.font = { ...pLblFont, size: 9, bold: true }
+        permLabelCell.font = { ...pLblFont, size: 8, bold: true }
         
         // 13 cases dans M6(13) à Y6(25)
         const paddedPerm = numeroPerm.padStart(13, '0').slice(0, 13)
@@ -2052,7 +2052,7 @@ export async function renderBulletinFromTemplate(params: {
             right: { style: 'thin', color: { argb: 'FF000000' } },
           }
           const existingFont = cell.font || {}
-          cell.font = { ...existingFont, size: 9, bold: true }
+          cell.font = { ...existingFont, size: 8, bold: true }
           // Définir la largeur des colonnes au-delà de V (W=23, X=24, Y=25)
           if (col >= 23) {
             bulletinWsExceljs.getColumn(col).width = 4.7
