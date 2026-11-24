@@ -1556,7 +1556,10 @@ export default function BulletinsModule() {
                   <SelectItem value="p4">4ème période</SelectItem>
                   <SelectItem value="p5">5ème période</SelectItem>
                   <SelectItem value="p6">6ème période</SelectItem>
-                  <SelectItem value="examen">Examens</SelectItem>
+                  <SelectItem value="examen">Tous les examens</SelectItem>
+                  <SelectItem value="examen1">Examen 1er trimestre</SelectItem>
+                  <SelectItem value="examen2">Examen 2ème trimestre</SelectItem>
+                  <SelectItem value="examen3">Examen 3ème trimestre</SelectItem>
                 </SelectContent>
               </Select>
             </div>
