@@ -708,15 +708,16 @@ async function fillRankPerColumn(
         let total = 0
         if (cm.type === '__trim__') {
           // Trim = somme des 3 colonnes (périodes + examen) du trimestre
+          // ⚠ Utiliser findMany + sum (pas findFirst) pour correspondre au classement
           const periodCols = cm.trimester === '1er' ? [3, 4, 6] : cm.trimester === '2eme' ? [9, 10, 12] : [15, 16, 18]
           for (const pc of periodCols) {
             const entry = gradeColMap.find(e => e.col === pc)
             if (entry) {
-              const g = await db.grade.findFirst({
+              const grades = await db.grade.findMany({
                 where: { studentId: m.id, schoolYear, trimester: entry.trimester, type: entry.type },
                 select: { value: true },
               })
-              total += g?.value || 0
+              total += grades.reduce((s, g) => s + g.value, 0)
             }
           }
         } else if (cm.type === '__annuel__') {
@@ -727,12 +728,13 @@ async function fillRankPerColumn(
           })
           total = grades.reduce((s, g) => s + g.value, 0)
         } else {
-          // Une seule période/examen
-          const g = await db.grade.findFirst({
+          // Une seule période/examen — ⚠ Utiliser findMany + sum (pas findFirst)
+          // pour correspondre au calcul du classement
+          const grades = await db.grade.findMany({
             where: { studentId: m.id, schoolYear, trimester: cm.trimester, type: cm.type },
             select: { value: true },
           })
-          total = g?.value || 0
+          total = grades.reduce((s, g) => s + g.value, 0)
         }
         totals.push({ studentId: m.id, total })
       }
@@ -1882,7 +1884,8 @@ export async function renderBulletinFromTemplate(params: {
     i3Cell.value = studentName
     console.log('[BULLETIN_RENDER] BULLETIN!I3 mis à jour avec le nom élève (MAJ):', studentName)
 
-    // ⚠ Insérer l'année scolaire automatiquement dans le titre (row 7)
+    // ⚠ Insérer l'année scolaire selon l'année sélectionnée dans le tableau de bord
+    // Le schoolYear passé en paramètre est comme "2024-2025"
     // Le template contient "ANNEE SCOLAIRE 20….. - 20….." → remplacer par l'année réelle
     const r7cell = bulletinWsExceljs.getRow(7).getCell(1)
     let r7val: string
@@ -1897,16 +1900,26 @@ export async function renderBulletinFromTemplate(params: {
     } else {
       r7val = ''
     }
-    // Remplacer "20….. - 20….." ou "20..... - 20....." par l'année scolaire
-    const currentYear = new Date().getFullYear()
-    const nextYear = currentYear + 1
-    const schoolYearStr = `${currentYear} - ${nextYear}`
+    // Utiliser le schoolYear passé en paramètre (ex: "2024-2025")
+    // Si schoolYear contient un "-", on l'utilise directement
+    // Sinon, on calcule à partir de l'année courante
+    let schoolYearStr: string
+    if (schoolYear && schoolYear.includes('-')) {
+      schoolYearStr = schoolYear.replace(/\s/g, '')
+    } else if (schoolYear && schoolYear.length === 4) {
+      const y = parseInt(schoolYear)
+      schoolYearStr = `${y}-${y + 1}`
+    } else {
+      const currentYear = new Date().getFullYear()
+      schoolYearStr = `${currentYear}-${currentYear + 1}`
+    }
+    // Remplacer "20….. - 20….." par l'année scolaire
     const updatedR7 = r7val.replace(/20[….]+\s*-\s*20[….]+/g, schoolYearStr)
       .replace(/20\.{2,}\s*-\s*20\.{2,}/g, schoolYearStr)
       .replace(/ANNEE SCOLAIRE\s*20[^\d]*-\s*20[^\d]*/g, `ANNEE SCOLAIRE ${schoolYearStr}`)
     if (updatedR7 !== r7val) {
       bulletinWsExceljs.getRow(7).getCell(1).value = updatedR7
-      console.log('[BULLETIN_RENDER] Année scolaire insérée:', schoolYearStr)
+      console.log('[BULLETIN_RENDER] Année scolaire insérée (selon sélection):', schoolYearStr)
     }
 
     // ⚠ NOUVEAU — Écrire directement ville, commune, N° élève, N° PERM
@@ -2006,8 +2019,10 @@ export async function renderBulletinFromTemplate(params: {
     }
 
     // Col I (rows 3-5) — étiquettes droite
-    writeWithLabelCenter(3, 9, 'Nom :', studentName)
-    // Row 4 col I = Date de naissance
+    // ⚠ Nom (row 3) et Date de naissance (row 4) doivent avoir le MÊME alignment
+    // pour être au même niveau visuel
+    writeWithLabel(3, 9, 'Nom :', studentName)
+    // Row 4 col I = Date de naissance — même alignment que Nom (left, indent 1)
     let dobStr = ''
     if (student.dateOfBirth) {
       try {
@@ -2081,12 +2096,16 @@ export async function renderBulletinFromTemplate(params: {
     for (let r = 11; r <= 46; r++) {
       bulletinWsExceljs.getRow(r).height = 16
     }
-    // Footer rows (47-50) — plus hautes pour combler l'espace restant
+    // ⚠ APPLICATION row doit avoir la MÊME hauteur que MAXIMA GENERAUX (16)
+    // MAXIMA GENERAUX est à row 46 (height=16), APPLICATION est à row 50
+    // Rows 47-49 (TOTAUX, POURCETAGE, PLACE) peuvent être un peu plus hautes
     for (let r = 47; r <= 49; r++) {
-      bulletinWsExceljs.getRow(r).height = 25
+      bulletinWsExceljs.getRow(r).height = 20
     }
-    // Row 50 (footer text) — grande hauteur pour le texte long
-    bulletinWsExceljs.getRow(50).height = 50
+    // Row 50 (APPLICATION) — même hauteur que MAXIMA GENERAUX
+    bulletinWsExceljs.getRow(50).height = 16
+    // Row 51 (footer text) — grande hauteur pour le texte long
+    bulletinWsExceljs.getRow(51).height = 50
     
     // 2. Augmenter la taille de police pour les données (rows 11-46)
     for (let r = 11; r <= 46; r++) {
