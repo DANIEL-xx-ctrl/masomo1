@@ -2096,16 +2096,20 @@ export async function renderBulletinFromTemplate(params: {
     for (let r = 11; r <= 46; r++) {
       bulletinWsExceljs.getRow(r).height = 16
     }
-    // ⚠ APPLICATION row doit avoir la MÊME hauteur que MAXIMA GENERAUX (16)
-    // MAXIMA GENERAUX est à row 46 (height=16), APPLICATION est à row 50
+    // ⚠ APPLICATION et CONDUITE doivent avoir la MÊME hauteur que MAXIMA GENERAUX (16)
+    // MAXIMA GENERAUX est à row 46 (height=16)
     // Rows 47-49 (TOTAUX, POURCETAGE, PLACE) peuvent être un peu plus hautes
     for (let r = 47; r <= 49; r++) {
       bulletinWsExceljs.getRow(r).height = 20
     }
     // Row 50 (APPLICATION) — même hauteur que MAXIMA GENERAUX
     bulletinWsExceljs.getRow(50).height = 16
-    // Row 51 (footer text) — grande hauteur pour le texte long
-    bulletinWsExceljs.getRow(51).height = 50
+    // Row 51 (CONDUITE) — même hauteur que MAXIMA GENERAUX
+    bulletinWsExceljs.getRow(51).height = 16
+    // Row 52 (SIGNATURE) — même hauteur que MAXIMA GENERAUX
+    bulletinWsExceljs.getRow(52).height = 16
+    // Row 53 (footer text) — grande hauteur pour le texte long
+    bulletinWsExceljs.getRow(53).height = 50
     
     // 2. Augmenter la taille de police pour les données (rows 11-46)
     for (let r = 11; r <= 46; r++) {
