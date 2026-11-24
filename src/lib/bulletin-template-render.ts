@@ -1983,16 +1983,14 @@ export async function renderBulletinFromTemplate(params: {
       writeWithLabel(5, 1, 'École :', ecoleStr)
     }
 
-    // ⚠ N° élève : étiquette "Code :" + 9 cases individuelles (row 6)
-    // ⚠ N° PERM : étiquette "N° PERM :" + 13 cases individuelles (row 6)
-    // Layout row 6 (décalé à gauche pour éviter le débordement) :
-    //   A6 = "Code :" (étiquette, col A large = 20.4, alignment RIGHT pour décaler à gauche)
-    //   B6-J6 = 9 cases (9 chiffres du N° élève)
-    //   K6 = "N°" + L6 = "PERM :" (étiquette sur 2 cellules pour gagner de la place)
-    //   M6-Y6 = 13 cases (13 chiffres du N° PERM)
-    // ⚠ IMPORTANT : Défusionner I6:V6 AVANT d'écrire les chiffres.
+    // ⚠ Code et N° PERM insérés sous forme d'IMAGE pour éviter tout débordement.
+    // On génère un SVG qui contient "Code :" + 9 cases + "N° PERM :" + 13 cases,
+    // on le convertit en PNG avec sharp, puis on l'insère dans la feuille Excel.
+    // L'image est placée sur la row 6 (de A6 à Y6).
+    // Les variables sAny, ville, commune, numeroEleve, numeroPerm sont déjà définies ci-dessus.
+
     if (numeroEleve || numeroPerm) {
-      // Défusionner les deux zones merged de la row 6 EN PREMIER
+      // Défusionner les deux zones merged de la row 6
       bulletinWsExceljs.unMergeCells('A6:H6')
       bulletinWsExceljs.unMergeCells('I6:V6')
       
@@ -2001,65 +1999,90 @@ export async function renderBulletinFromTemplate(params: {
         bulletinWsExceljs.getRow(6).getCell(c).value = null
       }
 
-      // 1. Étiquette "Code :" dans A6 — alignment LEFT (même point de départ que École)
-      if (numeroEleve) {
-        const codeLabelCell = bulletinWsExceljs.getRow(6).getCell(1)  // A6
-        codeLabelCell.value = 'Code :'
-        codeLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 0 }
-        const lblFont = codeLabelCell.font || {}
-        codeLabelCell.font = { ...lblFont, size: 8, bold: true }
-        
-        // 9 cases dans B6(2) à J6(10)
-        const paddedEleve = numeroEleve.padStart(9, '0').slice(0, 9)
-        for (let i = 0; i < 9; i++) {
-          const col = 2 + i  // B=2 à J=10
-          const cell = bulletinWsExceljs.getRow(6).getCell(col)
-          cell.value = paddedEleve[i]
-          cell.alignment = { horizontal: 'center', vertical: 'middle' }
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FF000000' } },
-            bottom: { style: 'thin', color: { argb: 'FF000000' } },
-            left: { style: 'thin', color: { argb: 'FF000000' } },
-            right: { style: 'thin', color: { argb: 'FF000000' } },
-          }
-          const existingFont = cell.font || {}
-          cell.font = { ...existingFont, size: 8, bold: true }
-        }
-        console.log('[BULLETIN_RENDER] Code : étiquette (LEFT) + 9 cases:', paddedEleve)
-      }
+      try {
+        // Calculer les dimensions en pixels
+        // Col A = 20.4 → (20.4 × 7) + 5 = 148px
+        // Cols B-Y = 4.7 → (4.7 × 7) + 5 = 38px each
+        const colAPx = 148
+        const colNarrowPx = 38
+        const totalCols = 25  // A(1) + B-Y(24)
+        const imgWidth = colAPx + (totalCols - 1) * colNarrowPx  // 148 + 24×38 = 1060
+        const imgHeight = 28  // hauteur de la row en pixels
 
-      // 2. Étiquette "N° PERM :" dans K6:L6 (merged) — font size 7 pour éviter le débordement
-      if (numeroPerm) {
-        // Merger K6:L6 pour l'étiquette "N° PERM :"
-        bulletinWsExceljs.mergeCells('K6:L6')
-        const permLabelCell = bulletinWsExceljs.getRow(6).getCell(11)  // K6
-        permLabelCell.value = 'N° PERM :'
-        permLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 0 }
-        const pLblFont = permLabelCell.font || {}
-        // ⚠ Font size 7 pour que "N° PERM :" tienne dans K6:L6 (width=9.4) sans déborder
-        permLabelCell.font = { ...pLblFont, size: 7, bold: true }
-        
-        // 13 cases dans M6(13) à Y6(25)
+        // Positions en pixels
+        // "Code :" label: x=2, width=colAPx-4
+        // 9 digit boxes: starting at x=colAPx, each colNarrowPx wide
+        // "N° PERM :" label: after 9th box (x = colAPx + 9*colNarrowPx = 148+342=490)
+        // 13 digit boxes: after the label
+
+        const codeBoxesStartX = colAPx  // 148
+        const codeBoxesEndX = codeBoxesStartX + 9 * colNarrowPx  // 148 + 342 = 490
+        const permLabelStartX = codeBoxesEndX  // 490
+        const permLabelWidth = 2 * colNarrowPx  // 76 (K+L merged)
+        const permBoxesStartX = permLabelStartX + permLabelWidth  // 566
+        const permBoxesEndX = permBoxesStartX + 13 * colNarrowPx  // 566 + 494 = 1060
+
+        const paddedEleve = numeroEleve.padStart(9, '0').slice(0, 9)
         const paddedPerm = numeroPerm.padStart(13, '0').slice(0, 13)
-        for (let i = 0; i < 13; i++) {
-          const col = 13 + i  // M=13 à Y=25
-          const cell = bulletinWsExceljs.getRow(6).getCell(col)
-          cell.value = paddedPerm[i]
-          cell.alignment = { horizontal: 'center', vertical: 'middle' }
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FF000000' } },
-            bottom: { style: 'thin', color: { argb: 'FF000000' } },
-            left: { style: 'thin', color: { argb: 'FF000000' } },
-            right: { style: 'thin', color: { argb: 'FF000000' } },
-          }
-          const existingFont = cell.font || {}
-          cell.font = { ...existingFont, size: 8, bold: true }
-          // Définir la largeur des colonnes au-delà de V (W=23, X=24, Y=25)
-          if (col >= 23) {
-            bulletinWsExceljs.getColumn(col).width = 4.7
+
+        // Générer le SVG
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${imgWidth}" height="${imgHeight}" viewBox="0 0 ${imgWidth} ${imgHeight}">`
+        svg += `<rect x="0" y="0" width="${imgWidth}" height="${imgHeight}" fill="white"/>`
+
+        // "Code :" label (left-aligned, same start as École)
+        if (numeroEleve) {
+          svg += `<text x="3" y="${imgHeight / 2 + 4}" font-family="Arial" font-size="10" font-weight="bold" fill="black">Code :</text>`
+          // 9 digit boxes
+          for (let i = 0; i < 9; i++) {
+            const x = codeBoxesStartX + i * colNarrowPx
+            svg += `<rect x="${x + 1}" y="2" width="${colNarrowPx - 2}" height="${imgHeight - 4}" fill="white" stroke="black" stroke-width="0.8"/>`
+            svg += `<text x="${x + colNarrowPx / 2}" y="${imgHeight / 2 + 4}" font-family="Arial" font-size="11" font-weight="bold" fill="black" text-anchor="middle">${paddedEleve[i]}</text>`
           }
         }
-        console.log('[BULLETIN_RENDER] N° PERM : étiquette + 13 cases:', paddedPerm)
+
+        // "N° PERM :" label
+        if (numeroPerm) {
+          svg += `<text x="${permLabelStartX + 3}" y="${imgHeight / 2 + 4}" font-family="Arial" font-size="9" font-weight="bold" fill="black">N° PERM :</text>`
+          // 13 digit boxes
+          for (let i = 0; i < 13; i++) {
+            const x = permBoxesStartX + i * colNarrowPx
+            svg += `<rect x="${x + 1}" y="2" width="${colNarrowPx - 2}" height="${imgHeight - 4}" fill="white" stroke="black" stroke-width="0.8"/>`
+            svg += `<text x="${x + colNarrowPx / 2}" y="${imgHeight / 2 + 4}" font-family="Arial" font-size="11" font-weight="bold" fill="black" text-anchor="middle">${paddedPerm[i]}</text>`
+          }
+        }
+
+        svg += `</svg>`
+
+        // Convertir SVG en PNG avec sharp
+        const sharp = (await import('sharp')).default
+        const pngBuffer = await sharp(Buffer.from(svg))
+          .png()
+          .toBuffer()
+
+        // Ajouter l'image au workbook
+        const imageId = exceljsWb.addImage({
+          buffer: pngBuffer,
+          extension: 'png',
+        })
+
+        // Placer l'image sur la row 6 (de A6 à Y7)
+        // tl = top-left (col 0 = A, row 5 = row 6 en 0-based)
+        // br = bottom-right (col 25 = Y+1, row 6 = row 7 en 0-based)
+        bulletinWsExceljs.addImage(imageId, {
+          tl: { col: 0, row: 5 },
+          br: { col: 25, row: 6 },
+        })
+
+        console.log('[BULLETIN_RENDER] Image Code + N° PERM insérée (SVG→PNG, ' + imgWidth + '×' + imgHeight + 'px)')
+      } catch (imgErr) {
+        console.warn('[BULLETIN_RENDER] Échec génération image Code/PERM, fallback texte:', imgErr instanceof Error ? imgErr.message : imgErr)
+        // Fallback : écrire en texte simple si l'image échoue
+        if (numeroEleve) {
+          bulletinWsExceljs.getRow(6).getCell(1).value = 'Code : ' + numeroEleve
+        }
+        if (numeroPerm) {
+          bulletinWsExceljs.getRow(6).getCell(11).value = 'N° PERM : ' + numeroPerm
+        }
       }
     }
 
@@ -2238,6 +2261,10 @@ export async function renderBulletinFromTemplate(params: {
     const narrowWidth = 5.5  // largeur réduite pour les colonnes PTS OBT
     for (const col of [8, 14, 20, 22]) {  // H, N, T, V
       bulletinWsExceljs.getColumn(col).width = narrowWidth
+    }
+    // ⚠ Définir la largeur des colonnes W(23), X(24), Y(25) pour l'image Code/PERM
+    for (const col of [23, 24, 25]) {
+      bulletinWsExceljs.getColumn(col).width = 4.7
     }
 
     await fillBulletinSheetDirectly(
