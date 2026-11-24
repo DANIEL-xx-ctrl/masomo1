@@ -2001,11 +2001,11 @@ export async function renderBulletinFromTemplate(params: {
         bulletinWsExceljs.getRow(6).getCell(c).value = null
       }
 
-      // 1. Étiquette "Code :" dans A6 — alignment RIGHT pour coller aux cases
+      // 1. Étiquette "Code :" dans A6 — alignment LEFT (même point de départ que École)
       if (numeroEleve) {
         const codeLabelCell = bulletinWsExceljs.getRow(6).getCell(1)  // A6
         codeLabelCell.value = 'Code :'
-        codeLabelCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 0 }
+        codeLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 0 }
         const lblFont = codeLabelCell.font || {}
         codeLabelCell.font = { ...lblFont, size: 8, bold: true }
         
@@ -2025,18 +2025,19 @@ export async function renderBulletinFromTemplate(params: {
           const existingFont = cell.font || {}
           cell.font = { ...existingFont, size: 8, bold: true }
         }
-        console.log('[BULLETIN_RENDER] Code : étiquette + 9 cases:', paddedEleve)
+        console.log('[BULLETIN_RENDER] Code : étiquette (LEFT) + 9 cases:', paddedEleve)
       }
 
-      // 2. Étiquette "N° PERM :" dans K6:L6 (merged) — alignment RIGHT
+      // 2. Étiquette "N° PERM :" dans K6:L6 (merged) — font size 7 pour éviter le débordement
       if (numeroPerm) {
         // Merger K6:L6 pour l'étiquette "N° PERM :"
         bulletinWsExceljs.mergeCells('K6:L6')
         const permLabelCell = bulletinWsExceljs.getRow(6).getCell(11)  // K6
         permLabelCell.value = 'N° PERM :'
-        permLabelCell.alignment = { horizontal: 'right', vertical: 'middle', indent: 0 }
+        permLabelCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 0 }
         const pLblFont = permLabelCell.font || {}
-        permLabelCell.font = { ...pLblFont, size: 8, bold: true }
+        // ⚠ Font size 7 pour que "N° PERM :" tienne dans K6:L6 (width=9.4) sans déborder
+        permLabelCell.font = { ...pLblFont, size: 7, bold: true }
         
         // 13 cases dans M6(13) à Y6(25)
         const paddedPerm = numeroPerm.padStart(13, '0').slice(0, 13)
