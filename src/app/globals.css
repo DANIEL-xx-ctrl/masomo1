@@ -73,14 +73,14 @@
   --chart-3: #3B82F6;
   --chart-4: #60A5FA;
   --chart-5: #93C5FD;
-  /* Sidebar — very dark navy + pure white text */
-  --sidebar: #0B1A2E;
-  --sidebar-foreground: #FFFFFF;
+  /* Sidebar — white background with dark text in light mode */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #334155;
   --sidebar-primary: #3B82F6;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #142844;
-  --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #1E3A5F;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
   --sidebar-ring: #3B82F6;
   --capacite-bar: #cbd5e1;
 }
@@ -131,66 +131,76 @@
   font-weight: 600 !important;
 }
 
-/* === Sidebar: very dark gradient + vivid bright white text === */
+/* === Sidebar: white background in light mode === */
 :root:not(.dark) [data-slot="sidebar"],
 :root:not(.dark) [data-slot="sidebar-container"],
 :root:not(.dark) [data-slot="sidebar-inner"],
 :root:not(.dark) [data-slot="sidebar"] > div,
 :root:not(.dark) [data-slot="sidebar"] > div > div {
-  background: linear-gradient(180deg, #060D1A 0%, #0B1A2E 25%, #142844 50%, #0B1A2E 75%, #060D1A 100%) !important;
+  background: #ffffff !important;
 }
 
-/* Force vivid bright white on ALL sidebar text — override everything */
+/* Sidebar text: dark text on white background in light mode */
+/* BUT keep icon colors (svg, Lucide icons) — don't override them */
 :root:not(.dark) [data-slot="sidebar"],
-:root:not(.dark) [data-slot="sidebar"] *,
-:root:not(.dark) [data-slot="sidebar"] *::before,
-:root:not(.dark) [data-slot="sidebar"] *::after {
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
-  -webkit-text-stroke: 0.3px rgba(255, 255, 255, 0.3);
-  font-weight: 600 !important;
-  text-shadow:
-    0 0 1px rgba(255, 255, 255, 0.8),
-    0 0 3px rgba(255, 255, 255, 0.4),
-    0 1px 2px rgba(0, 0, 0, 0.9);
+:root:not(.dark) [data-slot="sidebar"] *:not(svg):not(.lucide):not([class*="text-emerald"]):not([class*="text-purple"]):not([class*="text-amber"]):not([class*="text-teal"]):not([class*="text-cyan"]):not([class*="text-rose"]):not([class*="text-blue"]):not([class*="text-sky"]):not([class*="text-red"]):not([class*="text-green"]):not([class*="text-orange"]):not([class*="text-yellow"]) {
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155 !important;
+  font-weight: 500 !important;
+  text-shadow: none !important;
 }
 
-/* Active menu item — extra bold + brighter */
+/* Keep icon colors intact in light mode sidebar */
+:root:not(.dark) [data-slot="sidebar"] svg,
+:root:not(.dark) [data-slot="sidebar"] .lucide,
+:root:not(.dark) [data-slot="sidebar"] [class*="text-emerald"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-purple"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-amber"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-teal"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-cyan"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-rose"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-blue"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-sky"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-red"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-green"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-orange"],
+:root:not(.dark) [data-slot="sidebar"] [class*="text-yellow"] {
+  color: revert !important;
+  -webkit-text-fill-color: revert !important;
+}
+
+/* Active menu item — slightly darker background */
 :root:not(.dark) [data-slot="sidebar"] [data-active="true"],
-:root:not(.dark) [data-slot="sidebar"] [data-active="true"] *,
-:root:not(.dark) [data-slot="sidebar"] .text-white {
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
+:root:not(.dark) [data-slot="sidebar"] [data-active="true"] * {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
   font-weight: 700 !important;
-  text-shadow:
-    0 0 2px rgba(255, 255, 255, 1),
-    0 0 6px rgba(255, 255, 255, 0.6),
-    0 1px 3px rgba(0, 0, 0, 1);
+  text-shadow: none !important;
 }
 
-/* === Dashboard stat cards: even darker, more differentiated colors === */
+/* === Dashboard stat cards: keep ONLY left border colors, remove background === */
 :root:not(.dark) .border-l-emerald-500 {
-  background-color: #a7f3d0 !important;
+  background-color: transparent !important;
   border-left-color: #047857 !important;
 }
 :root:not(.dark) .border-l-purple-500 {
-  background-color: #ddd6fe !important;
+  background-color: transparent !important;
   border-left-color: #6d28d9 !important;
 }
 :root:not(.dark) .border-l-amber-500 {
-  background-color: #fde68a !important;
+  background-color: transparent !important;
   border-left-color: #b45309 !important;
 }
 :root:not(.dark) .border-l-teal-500 {
-  background-color: #99f6e4 !important;
+  background-color: transparent !important;
   border-left-color: #0f766e !important;
 }
 :root:not(.dark) .border-l-cyan-500 {
-  background-color: #a5f3fc !important;
+  background-color: transparent !important;
   border-left-color: #0e7490 !important;
 }
 :root:not(.dark) .border-l-rose-500 {
-  background-color: #fecdd3 !important;
+  background-color: transparent !important;
   border-left-color: #be123c !important;
 }
 
