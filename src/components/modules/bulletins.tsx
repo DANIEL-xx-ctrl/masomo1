@@ -51,8 +51,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useAppStore } from '@/lib/store';
-import { withSchoolYear } from '@/lib/utils';
+import { withSchoolYear, getImageUrl } from '@/lib/utils';
 import { TRIMESTERS, TRIMESTER_LABELS } from '@/lib/constants';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Class, Student } from '@/lib/types';
 
 // ============================================================================
@@ -859,11 +860,14 @@ export default function BulletinsModule() {
                 >
                   <Card className="hover:shadow-md transition-shadow h-full">
                     <CardContent className="p-5 flex flex-col gap-3 h-full">
-                      {/* En-tête carte : initiales + nom */}
+                      {/* En-tête carte : avatar + nom */}
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
-                          {(student.firstName?.[0] || '')}{(student.lastName?.[0] || '')}
-                        </div>
+                        <Avatar className="w-10 h-10 rounded-full ring-2 ring-emerald-100 dark:ring-emerald-900/50 shrink-0">
+                          <AvatarImage src={getImageUrl((student as Student & { image?: string | null }).image)} alt={`${student.firstName} ${student.lastName}`} />
+                          <AvatarFallback className="bg-gradient-to-br from-emerald-400 to-emerald-600 text-white font-bold text-sm">
+                            {(student.firstName?.[0] || '')}{(student.lastName?.[0] || '')}
+                          </AvatarFallback>
+                        </Avatar>
                         <div className="min-w-0 flex-1">
                           <h3 className="font-semibold text-foreground truncate">
                             {student.lastName} {student.firstName}
