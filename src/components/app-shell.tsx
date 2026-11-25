@@ -103,6 +103,27 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Radio,
 }
 
+// Icon colors per module (visible in light mode sidebar)
+const ICON_COLORS: Record<string, string> = {
+  dashboard: 'text-blue-600',
+  students: 'text-emerald-600',
+  teachers: 'text-purple-600',
+  parents: 'text-rose-600',
+  staff: 'text-cyan-600',
+  classes: 'text-amber-600',
+  schedule: 'text-teal-600',
+  grades: 'text-indigo-600',
+  bulletins: 'text-orange-600',
+  attendance: 'text-green-600',
+  homework: 'text-sky-600',
+  payments: 'text-emerald-600',
+  communication: 'text-purple-600',
+  messages: 'text-cyan-600',
+  settings: 'text-slate-600',
+  'school-calendar': 'text-amber-600',
+  'super-admin': 'text-red-600',
+}
+
 // Module title mapping
 const MODULE_TITLES: Record<ModuleKey, string> = {
   dashboard: 'Tableau de bord',
@@ -165,7 +186,7 @@ function SidebarNav({
                     ${collapsed ? 'justify-center px-2' : ''}
                   `}
                 >
-                  {Icon && <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-primary' : ''}`} />}
+                  {Icon && <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-primary' : ICON_COLORS[item.key] || ''}`} />}
                   {!collapsed && <span className="truncate">{item.label}</span>}
                   {isActive && !collapsed && (
                     <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />
