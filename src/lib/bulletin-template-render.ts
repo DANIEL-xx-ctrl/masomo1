@@ -2254,15 +2254,21 @@ export async function renderBulletinFromTemplate(params: {
     // que VILLE, COMMUNE, ÉCOLE, CODE, NOM, DATE DE NAISSANCE, CLASSE, SEXE, N° PERM
     // ne soient pas écrasés par le nettoyage ou le recalcul des formules.
     // Toutes les étiquettes en MAJUSCULES.
+    // ⚠ IMPORTANT : Redéfinir les variables ici car elles étaient dans un bloc précédent.
+    const sAny2 = student as unknown as Record<string, unknown>
+    const ville2 = (sAny2.ville as string) || ''
+    const commune2 = (sAny2.commune as string) || ''
+    const numeroEleve2 = (sAny2.numeroEleve as string) || ''
+    const numeroPerm2 = (sAny2.numeroPerm as string) || ''
     const studentNameUpper = `${student.lastName || ''} ${student.firstName || ''}`.trim().toUpperCase()
     
     // I3 = NOM de l'élève (MAJUSCULES)
     bulletinWsExceljs.getCell('I3').value = studentNameUpper
     
     // Row 3: VILLE (gauche) | NOM (droite)
-    if (ville) {
+    if (ville2) {
       const vCell = bulletinWsExceljs.getRow(3).getCell(1)
-      vCell.value = `VILLE : ${ville}`
+      vCell.value = `VILLE : ${ville2}`
       vCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
     }
     // Row 3 col I = NOM
@@ -2271,9 +2277,9 @@ export async function renderBulletinFromTemplate(params: {
     nomCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
 
     // Row 4: COMMUNE (gauche) | DATE DE NAISSANCE (droite)
-    if (commune) {
+    if (commune2) {
       const cCell = bulletinWsExceljs.getRow(4).getCell(1)
-      cCell.value = `COMMUNE : ${commune}`
+      cCell.value = `COMMUNE : ${commune2}`
       cCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
     }
     let dobStr2 = ''
@@ -2319,14 +2325,14 @@ export async function renderBulletinFromTemplate(params: {
     }
 
     // Row 6: CODE (gauche) | N° PERM (droite)
-    if (numeroEleve) {
+    if (numeroEleve2) {
       const codeCell2 = bulletinWsExceljs.getRow(6).getCell(1)
-      codeCell2.value = `CODE : ${numeroEleve}`
+      codeCell2.value = `CODE : ${numeroEleve2}`
       codeCell2.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
     }
-    if (numeroPerm) {
+    if (numeroPerm2) {
       const permCell2 = bulletinWsExceljs.getRow(6).getCell(9)
-      permCell2.value = `N° PERM : ${numeroPerm}`
+      permCell2.value = `N° PERM : ${numeroPerm2}`
       permCell2.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
     }
 
