@@ -1968,9 +1968,9 @@ export async function renderBulletinFromTemplate(params: {
       }
     }
 
-    // Col A (rows 3-5) — étiquettes gauche
-    writeWithLabel(3, 1, 'Ville :', ville)
-    writeWithLabel(4, 1, 'Commune :', commune)
+    // Col A (rows 3-5) — étiquettes gauche EN MAJUSCULES
+    writeWithLabel(3, 1, 'VILLE :', ville)
+    writeWithLabel(4, 1, 'COMMUNE :', commune)
     // Row 5 col A = École (garde la valeur du template, ajoute étiquette si pas déjà présente)
     const ecoleVal = bulletinWsExceljs.getRow(5).getCell(1).value
     let ecoleStr = ''
@@ -1980,39 +1980,30 @@ export async function renderBulletinFromTemplate(params: {
       else ecoleStr = String(ecoleVal)
     }
     if (ecoleStr && !ecoleStr.toLowerCase().startsWith('école') && !ecoleStr.toLowerCase().startsWith('ecole')) {
-      writeWithLabel(5, 1, 'École :', ecoleStr)
+      writeWithLabel(5, 1, 'ÉCOLE :', ecoleStr)
     }
 
     // ⚠ Code et N° PERM écrits en TEXTE SIMPLE (sans cases quadrillées) pour éviter le débordement.
-    // On utilise les zones merged du template :
-    //   A6:H6 (merged) = "Code : 100000160"
-    //   I6:V6 (merged) = "N° PERM : 1100000002068"
-    // Les variables numeroEleve et numeroPerm sont déjà définies ci-dessus.
+    // ⚠ Code commence au même endroit que École (A6:H6 merged, même indent que writeWithLabel)
+    // ⚠ N° PERM commence au même endroit que Classe (I6:V6 merged, même indent que writeWithLabel)
+    // Toutes les étiquettes en MAJUSCULES.
 
     if (numeroEleve) {
-      // Garder A6:H6 merged (déjà merged dans le template)
-      const codeCell = bulletinWsExceljs.getRow(6).getCell(1)  // A6
-      codeCell.value = 'Code : ' + numeroEleve
-      codeCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 0 }
-      const codeFont = codeCell.font || {}
-      codeCell.font = { ...codeFont, size: 9, bold: true }
-      console.log('[BULLETIN_RENDER] Code écrit en texte simple:', numeroEleve)
+      // Utiliser writeWithLabel pour avoir le MÊME indent que École (indent: 1)
+      writeWithLabel(6, 1, 'CODE :', numeroEleve)
+      console.log('[BULLETIN_RENDER] CODE écrit en texte simple:', numeroEleve)
     }
 
     if (numeroPerm) {
-      // Garder I6:V6 merged (déjà merged dans le template)
-      const permCell = bulletinWsExceljs.getRow(6).getCell(9)  // I6
-      permCell.value = 'N° PERM : ' + numeroPerm
-      permCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 0 }
-      const permFont = permCell.font || {}
-      permCell.font = { ...permFont, size: 9, bold: true }
+      // Utiliser writeWithLabel pour avoir le MÊME indent que Classe (indent: 1)
+      writeWithLabel(6, 9, 'N° PERM :', numeroPerm)
       console.log('[BULLETIN_RENDER] N° PERM écrit en texte simple:', numeroPerm)
     }
 
-    // Col I (rows 3-5) — étiquettes droite
+    // Col I (rows 3-5) — étiquettes droite EN MAJUSCULES
     // ⚠ Nom (row 3) et Date de naissance (row 4) doivent avoir le MÊME alignment
     // pour être au même niveau visuel
-    writeWithLabel(3, 9, 'Nom :', studentName)
+    writeWithLabel(3, 9, 'NOM :', studentName)
     // Row 4 col I = Date de naissance — même alignment que Nom (left, indent 1)
     let dobStr = ''
     if (student.dateOfBirth) {
@@ -2028,12 +2019,12 @@ export async function renderBulletinFromTemplate(params: {
       }
     }
     if (dobStr) {
-      writeWithLabel(4, 9, 'Date de naissance :', dobStr)
+      writeWithLabel(4, 9, 'DATE DE NAISSANCE :', dobStr)
     }
     // Row 5 col I = Classe
     const className = student.class?.name || ''
     if (className) {
-      writeWithLabel(5, 9, 'Classe :', className)
+      writeWithLabel(5, 9, 'CLASSE :', className)
     }
     // ⚠ SEXE : afficher "SEXE : M" ou "SEXE : F" dans Q5 (zone réservée Q5:V5)
     // Le template a Q5:V5 merged contenant "M" — c'est le champ SEXE
