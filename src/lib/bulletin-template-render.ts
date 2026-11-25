@@ -1050,10 +1050,33 @@ async function fillBulletinSheetDirectly(
     if (bestSubj) {
       usedSubjectIds.add(bestSubj.id)
       const subjGrades = gradesBySubject.get(bestSubj.id)
-      const maxTJ = bestSubj.maxTJ || 20
-      const maxEX = bestSubj.maxEX || 40
-      const maxTRIM = bestSubj.maxTRIM || (maxTJ * 2 + maxEX)
-      const maxAnnuel = bestSubj.maxAnnuel || (maxTRIM * 3)
+
+      // ⚠ CRITIQUE : Lire les valeurs MAX depuis le TEMPLATE (colonnes B, E, G, U)
+      // au lieu de la DB. Le template contient les vraies valeurs maxTJ/maxEX/maxTRIM
+      // pour chaque cours, qui peuvent différer entre degrés (élémentaire vs moyen).
+      // Si le template a une valeur numérique, on l'utilise. Sinon, fallback DB.
+      const readTemplateMax = (col: number): number | null => {
+        const v = row.getCell(col).value
+        if (v === null || v === undefined) return null
+        if (typeof v === 'number') return v
+        if (typeof v === 'object' && 'result' in v) {
+          const r = Number((v as { result?: unknown }).result)
+          return isNaN(r) ? null : r
+        }
+        const n = parseFloat(String(v))
+        return isNaN(n) ? null : n
+      }
+
+      const templateMaxTJ = readTemplateMax(2)   // B = MAX per
+      const templateMaxEX = readTemplateMax(5)    // E = MAX EX T1
+      const templateMaxTRIM = readTemplateMax(7)  // G = MAX TRIM T1
+      const templateMaxAnnuel = readTemplateMax(21) // U = MAX ANNUEL
+
+      // Utiliser le template en priorité, fallback DB
+      const maxTJ = templateMaxTJ ?? bestSubj.maxTJ ?? 20
+      const maxEX = templateMaxEX ?? bestSubj.maxEX ?? 40
+      const maxTRIM = templateMaxTRIM ?? bestSubj.maxTRIM ?? (maxTJ * 2 + maxEX)
+      const maxAnnuel = templateMaxAnnuel ?? bestSubj.maxAnnuel ?? (maxTRIM * 3)
 
       // Remplir les colonnes MAX selon la sélection
       // B (MAX per) = toujours (c'est le max par période)
