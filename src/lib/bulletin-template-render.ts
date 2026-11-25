@@ -2249,6 +2249,107 @@ export async function renderBulletinFromTemplate(params: {
     }
     
     console.log(`[BULLETIN_RENDER] Hauteurs définies: APPLICATION=${16}, CONDUITE=${16}, SIGNATURE=${16}`)
+
+    // ⚠ RÉÉCRIRE l'en-tête APRÈS fillBulletinSheetDirectly pour garantir
+    // que VILLE, COMMUNE, ÉCOLE, CODE, NOM, DATE DE NAISSANCE, CLASSE, SEXE, N° PERM
+    // ne soient pas écrasés par le nettoyage ou le recalcul des formules.
+    // Toutes les étiquettes en MAJUSCULES.
+    const studentNameUpper = `${student.lastName || ''} ${student.firstName || ''}`.trim().toUpperCase()
+    
+    // I3 = NOM de l'élève (MAJUSCULES)
+    bulletinWsExceljs.getCell('I3').value = studentNameUpper
+    
+    // Row 3: VILLE (gauche) | NOM (droite)
+    if (ville) {
+      const vCell = bulletinWsExceljs.getRow(3).getCell(1)
+      vCell.value = `VILLE : ${ville}`
+      vCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
+    }
+    // Row 3 col I = NOM
+    const nomCell = bulletinWsExceljs.getRow(3).getCell(9)
+    nomCell.value = `NOM : ${studentNameUpper}`
+    nomCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
+
+    // Row 4: COMMUNE (gauche) | DATE DE NAISSANCE (droite)
+    if (commune) {
+      const cCell = bulletinWsExceljs.getRow(4).getCell(1)
+      cCell.value = `COMMUNE : ${commune}`
+      cCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
+    }
+    let dobStr2 = ''
+    if (student.dateOfBirth) {
+      try {
+        const dob = new Date(student.dateOfBirth)
+        if (!isNaN(dob.getTime())) dobStr2 = dob.toLocaleDateString('fr-FR')
+        else dobStr2 = String(student.dateOfBirth)
+      } catch { dobStr2 = String(student.dateOfBirth) }
+    }
+    if (dobStr2) {
+      const dCell = bulletinWsExceljs.getRow(4).getCell(9)
+      dCell.value = `DATE DE NAISSANCE : ${dobStr2}`
+      dCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
+    }
+
+    // Row 5: ÉCOLE (gauche) | CLASSE (droite) | SEXE (Q5)
+    const ecoleVal2 = bulletinWsExceljs.getRow(5).getCell(1).value
+    let ecoleStr2 = ''
+    if (ecoleVal2) {
+      if (typeof ecoleVal2 === 'object' && 'result' in ecoleVal2) ecoleStr2 = String((ecoleVal2 as { result?: unknown }).result ?? '')
+      else if (typeof ecoleVal2 === 'string') ecoleStr2 = ecoleVal2
+      else ecoleStr2 = String(ecoleVal2)
+    }
+    // Si la valeur a déjà "ÉCOLE :", la garder, sinon ajouter l'étiquette
+    if (ecoleStr2 && !ecoleStr2.toUpperCase().startsWith('ÉCOLE') && !ecoleStr2.toUpperCase().startsWith('ECOLE')) {
+      const eCell = bulletinWsExceljs.getRow(5).getCell(1)
+      eCell.value = `ÉCOLE : ${ecoleStr2}`
+      eCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
+    }
+    const className2 = student.class?.name || ''
+    if (className2) {
+      const clCell = bulletinWsExceljs.getRow(5).getCell(9)
+      clCell.value = `CLASSE : ${className2}`
+      clCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
+    }
+    const gender2 = student.gender || ''
+    if (gender2) {
+      const sexLabel2 = gender2.toUpperCase().startsWith('M') ? 'M' : gender2.toUpperCase().startsWith('F') ? 'F' : gender2
+      const sCell = bulletinWsExceljs.getRow(5).getCell(17)
+      sCell.value = `SEXE : ${sexLabel2}`
+      sCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    }
+
+    // Row 6: CODE (gauche) | N° PERM (droite)
+    if (numeroEleve) {
+      const codeCell2 = bulletinWsExceljs.getRow(6).getCell(1)
+      codeCell2.value = `CODE : ${numeroEleve}`
+      codeCell2.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
+    }
+    if (numeroPerm) {
+      const permCell2 = bulletinWsExceljs.getRow(6).getCell(9)
+      permCell2.value = `N° PERM : ${numeroPerm}`
+      permCell2.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
+    }
+
+    // Année scolaire dans row 7
+    const r7cell2 = bulletinWsExceljs.getRow(7).getCell(1)
+    let r7val2: string
+    if (r7cell2.value) {
+      if (typeof r7cell2.value === 'object' && 'result' in r7cell2.value) r7val2 = String((r7cell2.value as { result?: unknown }).result ?? '')
+      else if (typeof r7cell2.value === 'string') r7val2 = r7cell2.value
+      else r7val2 = String(r7cell2.value)
+    } else r7val2 = ''
+    let schoolYearStr2: string
+    if (schoolYear && schoolYear.includes('-')) schoolYearStr2 = schoolYear.replace(/\s/g, '')
+    else if (schoolYear && schoolYear.length === 4) { const y = parseInt(schoolYear); schoolYearStr2 = `${y}-${y + 1}` }
+    else { const cy = new Date().getFullYear(); schoolYearStr2 = `${cy}-${cy + 1}` }
+    const updatedR7b = r7val2.replace(/20[….]+\s*-\s*20[….]+/g, schoolYearStr2)
+      .replace(/20\.{2,}\s*-\s*20\.{2,}/g, schoolYearStr2)
+      .replace(/ANNEE SCOLAIRE\s*20[^\d]*-\s*20[^\d]*/g, `ANNEE SCOLAIRE ${schoolYearStr2}`)
+    if (updatedR7b !== r7val2) {
+      bulletinWsExceljs.getRow(7).getCell(1).value = updatedR7b
+    }
+
+    console.log('[BULLETIN_RENDER] En-tête réécrit APRÈS fillBulletinSheetDirectly (VILLE, NOM, etc.)')
   }
 
   // 12f. Écrire le workbook modifié en buffer avec ExcelJS.
