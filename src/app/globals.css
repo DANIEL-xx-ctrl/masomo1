@@ -141,32 +141,24 @@
 }
 
 /* Sidebar text: dark text on white background in light mode */
-/* BUT keep icon colors (svg, Lucide icons) — don't override them */
-:root:not(.dark) [data-slot="sidebar"],
-:root:not(.dark) [data-slot="sidebar"] *:not(svg):not(.lucide):not([class*="text-emerald"]):not([class*="text-purple"]):not([class*="text-amber"]):not([class*="text-teal"]):not([class*="text-cyan"]):not([class*="text-rose"]):not([class*="text-blue"]):not([class*="text-sky"]):not([class*="text-red"]):not([class*="text-green"]):not([class*="text-orange"]):not([class*="text-yellow"]) {
+/* Icons (svg) keep their Tailwind color classes */
+:root:not(.dark) [data-slot="sidebar"] .truncate,
+:root:not(.dark) [data-slot="sidebar"] span:not([class*="text-"]) {
   color: #334155 !important;
   -webkit-text-fill-color: #334155 !important;
-  font-weight: 500 !important;
-  text-shadow: none !important;
 }
 
-/* Keep icon colors intact in light mode sidebar */
-:root:not(.dark) [data-slot="sidebar"] svg,
-:root:not(.dark) [data-slot="sidebar"] .lucide,
-:root:not(.dark) [data-slot="sidebar"] [class*="text-emerald"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-purple"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-amber"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-teal"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-cyan"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-rose"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-blue"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-sky"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-red"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-green"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-orange"],
-:root:not(.dark) [data-slot="sidebar"] [class*="text-yellow"] {
-  color: revert !important;
-  -webkit-text-fill-color: revert !important;
+/* Also set text color on sidebar buttons that don't have explicit color */
+:root:not(.dark) [data-slot="sidebar"] button:not([class*="text-"]) {
+  color: #334155 !important;
+}
+
+/* Keep font weight and remove text shadows */
+:root:not(.dark) [data-slot="sidebar"] {
+  font-weight: 500 !important;
+}
+:root:not(.dark) [data-slot="sidebar"] * {
+  text-shadow: none !important;
 }
 
 /* Active menu item — slightly darker background */
