@@ -941,11 +941,18 @@ async function fillBulletinSheetDirectly(
          upperColA === 'LANGUES CONGOLAISES' ||
          upperColA === 'MATHEMATIQUES' ||
          upperColA === 'SCIENCES' ||
-         upperColA === 'TECHNOLOGIE')) {
+         upperColA === 'TECHNOLOGIE' ||
+         upperColA === 'EDUCATION ARTISTIQUE' ||
+         upperColA.includes('EDUCATION ARTIST'))) {
       currentDomain = colAStr
       continue
     }
-    if ((upperColA.includes('ART') && isShortHeader && !upperColA.includes('DRAMATIQUE') && !upperColA.includes('PLASTIQUE') && !upperColA.includes('PHYS')) ||
+    // ⚠ Aussi skip "EDUCATION ARTISTIQUE" même sans all-caps (si le template a des variations)
+    if (upperColA.includes('EDUCATION ARTIST') && !upperColA.includes('DRAMATIQUE') && !upperColA.includes('PLASTIQUE')) {
+      currentDomain = colAStr
+      continue
+    }
+    if ((upperColA.includes('ART') && isShortHeader && !upperColA.includes('DRAMATIQUE') && !upperColA.includes('PLASTIQUE') && !upperColA.includes('PHYS') && !upperColA.includes('EDUCATION')) ||
         (upperColA.includes('DEVELOPPEMENT') && isShortHeader) ||
         (upperColA.includes('UNIVERS') && isShortHeader)) {
       currentDomain = colAStr
