@@ -1299,29 +1299,46 @@ async function fillBulletinSheetDirectly(
     //   - Col U (MAX ANNUEL), V (PTS ANNUEL)
     //     → tous égaux à SOMME des maxAnnuel
     //
-    // On calcule ces 4 sommes DEPUIS LA DB (usedSubjectIds), ce qui est
-    // indépendant de la sélection de période — le MAXIMA est toujours
-    // le maximum possible, quelle que soit la période affichée.
+    // On calcule ces 4 sommes DEPUIS LES CELLULES du BULLETIN (col B/E/G/U),
+    // qui contiennent les valeurs du TEMPLATE (pas de la DB).
+    // ⚠ CRITIQUE : On ne peut PAS utiliser subj.maxTJ de la DB car les valeurs
+    // du template peuvent être différentes (ex: 3ème a maxTJ=5 pour Orth.
+    // Rédaction, mais la DB a maxTJ=10).
+
+    // Collecter toutes les lignes cours (depuis sous-totaux + isolés)
+    const allCourseRowsForMaxima = new Set<number>()
+    for (const st of sousTotalsToRecalc) {
+      for (const cr of st.courseRows) allCourseRowsForMaxima.add(cr)
+    }
+    for (const ir of isolatedCourseRows) allCourseRowsForMaxima.add(ir)
+
+    // Fonction pour lire une valeur numérique depuis une cellule
+    const readCellNum = (rowNum: number, col: number): number => {
+      const v = bulletinWs.getRow(rowNum).getCell(col).value
+      if (v === null || v === undefined) return 0
+      if (typeof v === 'number') return v
+      if (typeof v === 'object' && 'result' in v) {
+        const r = Number((v as { result?: unknown }).result)
+        return isNaN(r) ? 0 : r
+      }
+      const n = parseFloat(String(v))
+      return isNaN(n) ? 0 : n
+    }
 
     let totalMaxTJ = 0
     let totalMaxEX = 0
     let totalMaxTRIM = 0
     let totalMaxAnnuel = 0
-    let hasAnyMatchedSubject = false
+    let hasAnyMatchedSubject = allCourseRowsForMaxima.size > 0
 
-    for (const subj of allDbSubjects) {
-      if (!usedSubjectIds.has(subj.id)) continue
-      hasAnyMatchedSubject = true
-      const maxTJ = subj.maxTJ || 20
-      const maxEX = subj.maxEX || 40
-      const maxTRIM = subj.maxTRIM || (maxTJ * 2 + maxEX)
-      const maxAnnuel = subj.maxAnnuel || (maxTRIM * 3)
-      totalMaxTJ += maxTJ
-      totalMaxEX += maxEX
-      totalMaxTRIM += maxTRIM
-      totalMaxAnnuel += maxAnnuel
+    // Sommer les valeurs depuis les cellules du BULLETIN (pas depuis la DB)
+    for (const rowNum of allCourseRowsForMaxima) {
+      totalMaxTJ += readCellNum(rowNum, 2)   // B = maxTJ
+      totalMaxEX += readCellNum(rowNum, 5)    // E = maxEX T1
+      totalMaxTRIM += readCellNum(rowNum, 7)  // G = maxTRIM T1
+      totalMaxAnnuel += readCellNum(rowNum, 21) // U = maxAnnuel
     }
-    console.log(`[BULLETIN_FILL] MAXIMA from DB: maxTJ=${totalMaxTJ}, maxEX=${totalMaxEX}, maxTRIM=${totalMaxTRIM}, maxAnnuel=${totalMaxAnnuel}`)
+    console.log(`[BULLETIN_FILL] MAXIMA from cells: maxTJ=${totalMaxTJ}, maxEX=${totalMaxEX}, maxTRIM=${totalMaxTRIM}, maxAnnuel=${totalMaxAnnuel} (from ${allCourseRowsForMaxima.size} course rows)`)
 
     // Si aucun sujet matché, fallback : sommer depuis les sous-totaux + isolés
     if (!hasAnyMatchedSubject) {
