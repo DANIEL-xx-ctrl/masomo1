@@ -2252,7 +2252,9 @@ export async function renderBulletinFromTemplate(params: {
     // APPLICATION, CONDUITE, SIGNATURE doivent avoir la MÊME hauteur que MAXIMA GENERAUX.
     
     // Trouver dynamiquement les rows MAXIMA, TOTAUX, POURCETAGE, PLACE, APPLICATION, CONDUITE, SIGNATURE, FOOTER
-    let maximaRow = 46, totauxRow = 47, pourcetageRow = 48, placeRow = 49, applicationRow = 50, conduiteRow = -1, signatureRow = -1, footerRow = 53
+    // ⚠ IMPORTANT : footerRow = -1 par défaut (pas de footer si non trouvé)
+    // Sinon, le défaut 53 pourrait correspondre à TOTAUX dans certains templates
+    let maximaRow = 46, totauxRow = 47, pourcetageRow = 48, placeRow = 49, applicationRow = 50, conduiteRow = -1, signatureRow = -1, footerRow = -1
     for (let r = 40; r <= 60; r++) {
       const aVal = bulletinWsExceljs.getRow(r).getCell(1).value
       let aStr = ''
@@ -2271,7 +2273,8 @@ export async function renderBulletinFromTemplate(params: {
       if (upper === 'APPLICATION') applicationRow = r
       if (upper === 'CONDUITE') conduiteRow = r
       if (upper === 'SIGNATURE') signatureRow = r
-      if (upper.includes('L ÉLÈVE PASSE') || upper.includes('L\'ÉLÈVE PASSE') || upper.includes('CLASSE SUPÉRIEURE') || upper.includes('BULLETIN EST SANS VALEUR')) footerRow = r
+      // Footer = ligne avec texte long contenant des mentions légales
+      if (upper.includes('L ÉLÈVE PASSE') || upper.includes('L\'ÉLÈVE PASSE') || upper.includes('CLASSE SUPÉRIEURE') || upper.includes('BULLETIN EST SANS VALEUR') || upper.includes('BIFER LA MENTION')) footerRow = r
     }
     
     console.log(`[BULLETIN_RENDER] Rows trouvés: MAXIMA=${maximaRow}, TOTAUX=${totauxRow}, POURC=${pourcetageRow}, PLACE=${placeRow}, APP=${applicationRow}, COND=${conduiteRow}, SIGN=${signatureRow}, FOOTER=${footerRow}`)
@@ -2281,17 +2284,15 @@ export async function renderBulletinFromTemplate(params: {
       bulletinWsExceljs.getRow(r).height = 16
     }
     // Rows entre MAXIMA et APPLICATION (TOTAUX, POURCETAGE, PLACE) — même hauteur que MAXIMA (16)
+    // ⚠ NE PAS vider TOTAUX, POURCETAGE, PLACE — ils contiennent les valeurs calculées
     for (let r = maximaRow + 1; r < applicationRow; r++) {
       bulletinWsExceljs.getRow(r).height = 16
     }
-    // APPLICATION — même hauteur que MAXIMA
+    // APPLICATION — même hauteur que MAXIMA + vider données erronées
     bulletinWsExceljs.getRow(applicationRow).height = 16
-    // ⚠ VIDER les données erronées dans APPLICATION (cols B-V)
     for (let c = 2; c <= 22; c++) {
       const cell = bulletinWsExceljs.getRow(applicationRow).getCell(c)
-      if (cell.value !== null && cell.value !== undefined) {
-        cell.value = null
-      }
+      if (cell.value !== null && cell.value !== undefined) cell.value = null
     }
     // CONDUITE (si elle existe) — même hauteur + vider données
     if (conduiteRow > 0) {
@@ -2309,20 +2310,21 @@ export async function renderBulletinFromTemplate(params: {
         if (cell.value !== null && cell.value !== undefined) cell.value = null
       }
     }
-    // Footer — grande hauteur pour le texte long
-    const footerOriginalHeight = bulletinWsExceljs.getRow(footerRow).height
-    bulletinWsExceljs.getRow(footerRow).height = footerOriginalHeight && footerOriginalHeight > 50 ? footerOriginalHeight : 100
-    // Vider les données erronées dans le footer (cols B-V — garder seulement col A)
-    for (let c = 2; c <= 22; c++) {
-      const cell = bulletinWsExceljs.getRow(footerRow).getCell(c)
-      if (cell.value !== null && cell.value !== undefined) cell.value = null
-    }
-    // Vider les hauteurs et données des rows après le footer
-    for (let r = footerRow + 1; r <= bulletinWsExceljs.rowCount; r++) {
-      bulletinWsExceljs.getRow(r).height = 16
-      for (let c = 1; c <= 22; c++) {
-        const cell = bulletinWsExceljs.getRow(r).getCell(c)
+    // Footer (si trouvé) — grande hauteur + vider cols B-V
+    if (footerRow > 0) {
+      const footerOriginalHeight = bulletinWsExceljs.getRow(footerRow).height
+      bulletinWsExceljs.getRow(footerRow).height = footerOriginalHeight && footerOriginalHeight > 50 ? footerOriginalHeight : 100
+      for (let c = 2; c <= 22; c++) {
+        const cell = bulletinWsExceljs.getRow(footerRow).getCell(c)
         if (cell.value !== null && cell.value !== undefined) cell.value = null
+      }
+      // Vider les hauteurs et données des rows après le footer
+      for (let r = footerRow + 1; r <= bulletinWsExceljs.rowCount; r++) {
+        bulletinWsExceljs.getRow(r).height = 16
+        for (let c = 1; c <= 22; c++) {
+          const cell = bulletinWsExceljs.getRow(r).getCell(c)
+          if (cell.value !== null && cell.value !== undefined) cell.value = null
+        }
       }
     }
     
