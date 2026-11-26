@@ -894,6 +894,26 @@ async function fillBulletinSheetDirectly(
       continue
     }
 
+    // Ignorer les lignes récapitulatives et de pied de page situées après TOTAUX
+    // (POURCETAGE, PLACE, APPLICATION, CONDUITE, SIGNATURE, mentions légales)
+    // afin d'éviter qu'elles ne soient traitées comme des matières et ne reçoivent un "60".
+    const upperFooterCheck = colAStr.toUpperCase().trim()
+    if (
+      upperFooterCheck.startsWith('POURC') ||
+      upperFooterCheck.startsWith('PLACE') ||
+      upperFooterCheck.startsWith('RANG') ||
+      upperFooterCheck === 'APPLICATION' ||
+      upperFooterCheck === 'CONDUITE' ||
+      upperFooterCheck === 'SIGNATURE' ||
+      upperFooterCheck.includes('CLASSE SUP') ||
+      upperFooterCheck.includes('DOUBLE LA CLASSE') ||
+      upperFooterCheck.includes('BULLETIN EST SANS VALEUR') ||
+      upperFooterCheck.includes('CHEF D') ||
+      upperFooterCheck.includes('SCEAU DE L')
+    ) {
+      break
+    }
+
     // Détecter les en-têtes de domaine (DOMAINE DES LANGUES, MATHEMATIQUES, etc.)
     // ⚠ IMPORTANT : Ne PAS clear courseRowsForSousTotal sur les sous-domaines
     // (MATHEMATIQUES, SCIENCES, TECHNOLOGIE, FRANCAIS, LANGUES CONGOLAISES)
@@ -2244,9 +2264,8 @@ export async function renderBulletinFromTemplate(params: {
     
     // Trouver dynamiquement les rows MAXIMA, TOTAUX, POURCETAGE, PLACE, APPLICATION, CONDUITE, SIGNATURE, FOOTER
     // ⚠ IMPORTANT : footerRow = -1 par défaut (pas de footer si non trouvé)
-    // Sinon, le défaut 53 pourrait correspondre à TOTAUX dans certains templates
     let maximaRow = 46, totauxRow = 47, pourcetageRow = 48, placeRow = 49, applicationRow = 50, conduiteRow = -1, signatureRow = -1, footerRow = -1
-    for (let r = 40; r <= 60; r++) {
+    for (let r = 40; r <= Math.max(bulletinWsExceljs.rowCount, 62); r++) {
       const aVal = bulletinWsExceljs.getRow(r).getCell(1).value
       let aStr = ''
       if (aVal) {
@@ -2265,11 +2284,23 @@ export async function renderBulletinFromTemplate(params: {
       if (upper === 'CONDUITE') conduiteRow = r
       if (upper === 'SIGNATURE') signatureRow = r
       // Footer = ligne avec texte long contenant des mentions légales
-      if (upper.includes('ÉLÈVE PASSE') || upper.includes('ELEVE PASSE') || upper.includes('CLASSE SUPÉRIEURE') || upper.includes('CLASSE SUPERIEURE') || upper.includes('BULLETIN EST SANS VALEUR') || upper.includes('BIFFER LA MENTION') || upper.includes('CHEF D\'ETABLISSEMENT') || upper.includes('CHEF D ETABLISSEMENT') || upper.includes('SCEAU DE L')) footerRow = r
+      if (
+        upper.includes('ÉLÈVE PASSE') ||
+        upper.includes('ELEVE PASSE') ||
+        upper.includes('CLASSE SUPÉRIEURE') ||
+        upper.includes('CLASSE SUPERIEURE') ||
+        upper.includes('BULLETIN EST SANS VALEUR') ||
+        upper.includes('BIFFER LA MENTION') ||
+        upper.includes("CHEF D'ETABLISSEMENT") ||
+        upper.includes('CHEF D ETABLISSEMENT') ||
+        upper.includes("SCEAU DE L'ECOLE")
+      ) {
+        footerRow = r
+      }
     }
-    
+
     console.log(`[BULLETIN_RENDER] Rows trouvés: MAXIMA=${maximaRow}, TOTAUX=${totauxRow}, POURC=${pourcetageRow}, PLACE=${placeRow}, APP=${applicationRow}, COND=${conduiteRow}, SIGN=${signatureRow}, FOOTER=${footerRow}`)
-    
+
     // Hauteur des lignes de données (11 à MAXIMA) — 16
     for (let r = 11; r <= maximaRow; r++) {
       bulletinWsExceljs.getRow(r).height = 16
@@ -2301,22 +2332,16 @@ export async function renderBulletinFromTemplate(params: {
         if (cell.value !== null && cell.value !== undefined) cell.value = null
       }
     }
-    // Footer (si trouvé) — grande hauteur + préserver/écrire le texte en col A
-    if (footerRow > 0) {
-      const footerOriginalHeight = bulletinWsExceljs.getRow(footerRow).height
-      bulletinWsExceljs.getRow(footerRow).height = footerOriginalHeight && footerOriginalHeight > 50 ? footerOriginalHeight : 120
-    }
-    // ⚠ Si aucun footer trouvé, utiliser la row directement APRÈS SIGNATURE
-    // (ou après APPLICATION si pas de SIGNATURE)
-    let actualFooterRow = footerRow
+
+    // La ligne du pied de page est toujours la ligne immédiatement en dessous de SIGNATURE
+    // (ex: Row 59 dans le template 3ème primaire, juste sous SIGNATURE en Row 58)
+    let actualFooterRow = signatureRow > 0 ? signatureRow + 1 : footerRow
     if (actualFooterRow < 0) {
-      // La row après SIGNATURE contient toujours le pied de page dans le template
-      if (signatureRow > 0) {
-        actualFooterRow = signatureRow + 1
+      if (conduiteRow > 0) {
+        actualFooterRow = conduiteRow + 1
       } else if (applicationRow > 0) {
         actualFooterRow = applicationRow + 1
       } else {
-        // Dernier recours : chercher une row vide
         for (let r = maximaRow + 5; r <= maximaRow + 15; r++) {
           const val = bulletinWsExceljs.getRow(r).getCell(1).value
           if (val === null || val === undefined || String(val).trim() === '') {
@@ -2326,19 +2351,65 @@ export async function renderBulletinFromTemplate(params: {
         }
       }
     }
-    // ⚠ Écrire le texte du pied de page TOUJOURS (même si déjà présent)
-    // Le texte peut avoir été écrasé par replaceFormulasWithValues ou
-    // recalculateBulletinFormulas (si la cellule avait une VLOOKUP qui a échoué)
+
+    // Écrire et formater le texte du pied de page dans la cellule fusionnée sous SIGNATURE
     if (actualFooterRow > 0) {
-      const footerCell = bulletinWsExceljs.getRow(actualFooterRow).getCell(1)
-      const footerText = '- L\'élève passe dans la classe supérieure (1)\n- L\'élève double la classe (1)\nFait à...................................., le......./........20......\nLE CHEF D\'ETABLISSEMENT\nNOM & SIGNATURE\nSCEAU DE L\'ECOLE\n(1) Biffer la mention inutile\nNOTE IMPORTANTE : Le bulletin est sans valeur s\'il est raturé ou surchargé'
-      footerCell.value = footerText
-      bulletinWsExceljs.getRow(actualFooterRow).height = 120
-      // Vider cols B-V du footer (au cas où des valeurs erronées comme "60" s'y trouvent)
-      for (let c = 2; c <= 22; c++) {
-        bulletinWsExceljs.getRow(actualFooterRow).getCell(c).value = null
+      const targetRow = bulletinWsExceljs.getRow(actualFooterRow)
+      const footerCell = targetRow.getCell(1)
+
+      // Texte officiel complet avec la mise en page exacte du template original
+      const defaultFooterText =
+        "\n- L'élève passe dans la classe supérieure (1)\n" +
+        "- L'élève double la classe (1)                                                                                                                                       Fait à...................................., le......./........20......\n\n" +
+        "                                                                                                                                                                                                     LE CHEF D'ETABLISSEMENT                                                                                                                                     \n" +
+        "                                                                    \n" +
+        "                                                                                                                                                                                                           NOM & SIGNATURE\n" +
+        "                                                                                                                        SCEAU DE L'ECOLE\n\n" +
+        "(1) Biffer la mention inutile\n" +
+        "NOTE IMPORTANTE : Le bulletin est sans valeur s'il est raturé ou surchargé"
+
+      // Conserver le texte original du template s'il est déjà intact (avec sa mise en page),
+      // sinon le réinjecter (ex. s'il a été écrasé par "60" ou vidé)
+      const currentValStr =
+        typeof footerCell.value === 'string'
+          ? footerCell.value
+          : footerCell.value && typeof footerCell.value === 'object' && 'richText' in footerCell.value
+            ? (footerCell.value as { richText: { text: string }[] }).richText.map((rt) => rt.text).join('')
+            : ''
+
+      const isAlreadyValidFooter =
+        currentValStr.includes('classe supérieure') ||
+        currentValStr.includes('CHEF D') ||
+        currentValStr.includes('NOTE IMPORTANTE')
+
+      if (!isAlreadyValidFooter) {
+        footerCell.value = defaultFooterText
       }
-      // Aussi vider toutes les rows APRÈS le footer (où le "60" pourrait apparaître)
+
+      // S'assurer que toute la largeur A{row}:V{row} est bien fusionnée
+      const mergeRange = `A${actualFooterRow}:V${actualFooterRow}`
+      try {
+        bulletinWsExceljs.unMergeCells(mergeRange)
+      } catch {
+        // Ignorer si la plage n'était pas fusionnée
+      }
+      bulletinWsExceljs.mergeCells(mergeRange)
+
+      // Appliquer la police, l'alignement et la hauteur d'origine du template
+      footerCell.font = {
+        name: 'Times New Roman',
+        size: 10,
+        bold: false,
+      }
+      footerCell.alignment = {
+        horizontal: 'left',
+        vertical: 'top',
+        wrapText: true,
+      }
+      const origHeight = targetRow.height
+      targetRow.height = origHeight && origHeight >= 140 ? origHeight : 150
+
+      // Vider toute ligne résiduelle située APRÈS le pied de page (ex: row 60)
       for (let r = actualFooterRow + 1; r <= bulletinWsExceljs.rowCount; r++) {
         for (let c = 1; c <= 22; c++) {
           const cell = bulletinWsExceljs.getRow(r).getCell(c)
@@ -2346,9 +2417,13 @@ export async function renderBulletinFromTemplate(params: {
         }
         bulletinWsExceljs.getRow(r).height = 16
       }
-      console.log(`[BULLETIN_RENDER] Pied de page écrit à row ${actualFooterRow}`)
+
+      // Mettre à jour la zone d'impression jusqu'à la ligne du pied de page incluse
+      bulletinWsExceljs.pageSetup.printArea = `A1:V${actualFooterRow}`
+
+      console.log(`[BULLETIN_RENDER] Pied de page écrit à row ${actualFooterRow} (plage A${actualFooterRow}:V${actualFooterRow})`)
     }
-    
+
     console.log(`[BULLETIN_RENDER] Hauteurs définies: APPLICATION=${16}, CONDUITE=${16}, SIGNATURE=${16}`)
 
     // ⚠ RÉÉCRIRE l'en-tête APRÈS fillBulletinSheetDirectly pour garantir
