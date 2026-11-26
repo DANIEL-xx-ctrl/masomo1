@@ -894,9 +894,6 @@ async function fillBulletinSheetDirectly(
       continue
     }
 
-    // Ignorer les lignes récapitulatives et de pied de page situées après TOTAUX
-    // (POURCETAGE, PLACE, APPLICATION, CONDUITE, SIGNATURE, mentions légales)
-    // afin d'éviter qu'elles ne soient traitées comme des matières et ne reçoivent un "60".
     const upperFooterCheck = colAStr.toUpperCase().trim()
     if (
       upperFooterCheck.startsWith('POURC') ||
@@ -2283,7 +2280,6 @@ export async function renderBulletinFromTemplate(params: {
       if (upper === 'APPLICATION') applicationRow = r
       if (upper === 'CONDUITE') conduiteRow = r
       if (upper === 'SIGNATURE') signatureRow = r
-      // Footer = ligne avec texte long contenant des mentions légales
       if (
         upper.includes('ÉLÈVE PASSE') ||
         upper.includes('ELEVE PASSE') ||
@@ -2305,18 +2301,14 @@ export async function renderBulletinFromTemplate(params: {
     for (let r = 11; r <= maximaRow; r++) {
       bulletinWsExceljs.getRow(r).height = 16
     }
-    // Rows entre MAXIMA et APPLICATION (TOTAUX, POURCETAGE, PLACE) — même hauteur que MAXIMA (16)
-    // ⚠ NE PAS vider TOTAUX, POURCETAGE, PLACE — ils contiennent les valeurs calculées
     for (let r = maximaRow + 1; r < applicationRow; r++) {
       bulletinWsExceljs.getRow(r).height = 16
     }
-    // APPLICATION — même hauteur que MAXIMA + vider données erronées
     bulletinWsExceljs.getRow(applicationRow).height = 16
     for (let c = 2; c <= 22; c++) {
       const cell = bulletinWsExceljs.getRow(applicationRow).getCell(c)
       if (cell.value !== null && cell.value !== undefined) cell.value = null
     }
-    // CONDUITE (si elle existe) — même hauteur + vider données
     if (conduiteRow > 0) {
       bulletinWsExceljs.getRow(conduiteRow).height = 16
       for (let c = 2; c <= 22; c++) {
@@ -2324,7 +2316,6 @@ export async function renderBulletinFromTemplate(params: {
         if (cell.value !== null && cell.value !== undefined) cell.value = null
       }
     }
-    // SIGNATURE (si elle existe) — même hauteur + vider données
     if (signatureRow > 0) {
       bulletinWsExceljs.getRow(signatureRow).height = 16
       for (let c = 2; c <= 22; c++) {
@@ -2333,8 +2324,6 @@ export async function renderBulletinFromTemplate(params: {
       }
     }
 
-    // La ligne du pied de page est toujours la ligne immédiatement en dessous de SIGNATURE
-    // (ex: Row 59 dans le template 3ème primaire, juste sous SIGNATURE en Row 58)
     let actualFooterRow = signatureRow > 0 ? signatureRow + 1 : footerRow
     if (actualFooterRow < 0) {
       if (conduiteRow > 0) {
@@ -2352,12 +2341,10 @@ export async function renderBulletinFromTemplate(params: {
       }
     }
 
-    // Écrire et formater le texte du pied de page dans la cellule fusionnée sous SIGNATURE
     if (actualFooterRow > 0) {
       const targetRow = bulletinWsExceljs.getRow(actualFooterRow)
       const footerCell = targetRow.getCell(1)
 
-      // Texte officiel complet avec la mise en page exacte du template original
       const defaultFooterText =
         "\n- L'élève passe dans la classe supérieure (1)\n" +
         "- L'élève double la classe (1)                                                                                                                                       Fait à...................................., le......./........20......\n\n" +
@@ -2368,8 +2355,6 @@ export async function renderBulletinFromTemplate(params: {
         "(1) Biffer la mention inutile\n" +
         "NOTE IMPORTANTE : Le bulletin est sans valeur s'il est raturé ou surchargé"
 
-      // Conserver le texte original du template s'il est déjà intact (avec sa mise en page),
-      // sinon le réinjecter (ex. s'il a été écrasé par "60" ou vidé)
       const currentValStr =
         typeof footerCell.value === 'string'
           ? footerCell.value
@@ -2386,16 +2371,14 @@ export async function renderBulletinFromTemplate(params: {
         footerCell.value = defaultFooterText
       }
 
-      // S'assurer que toute la largeur A{row}:V{row} est bien fusionnée
       const mergeRange = `A${actualFooterRow}:V${actualFooterRow}`
       try {
         bulletinWsExceljs.unMergeCells(mergeRange)
       } catch {
-        // Ignorer si la plage n'était pas fusionnée
+        // Ignorer si non fusionnée
       }
       bulletinWsExceljs.mergeCells(mergeRange)
 
-      // Appliquer la police, l'alignement et la hauteur d'origine du template
       footerCell.font = {
         name: 'Times New Roman',
         size: 10,
@@ -2409,6 +2392,45 @@ export async function renderBulletinFromTemplate(params: {
       const origHeight = targetRow.height
       targetRow.height = origHeight && origHeight >= 140 ? origHeight : 150
 
+      // Appliquer le quadrillage complet (haut, bas, gauche, droite) sur la zone du bas
+      // (de APPLICATION/CONDUITE/SIGNATURE jusqu'à actualFooterRow, colonnes A à V)
+      const gridStartRow = applicationRow > 0 ? applicationRow : (signatureRow > 0 ? signatureRow : actualFooterRow)
+      const thinSide = { style: 'thin' as const, color: { argb: 'FF000000' } }
+      for (let r = gridStartRow; r <= actualFooterRow; r++) {
+        const rowObj = bulletinWsExceljs.getRow(r)
+        for (let c = 1; c <= 22; c++) {
+          const cell = rowObj.getCell(c)
+          const prevBorder = cell.border || {}
+          cell.border = {
+            top: prevBorder.top || (r === gridStartRow ? thinSide : undefined),
+            bottom: prevBorder.bottom || (r === actualFooterRow ? thinSide : thinSide),
+            left: prevBorder.left || (c === 1 ? thinSide : undefined),
+            right: prevBorder.right || (c === 22 ? thinSide : undefined),
+          }
+        }
+      }
+      // Garantir explicitement la bordure droite sur la dernière colonne V (col 22) et la bordure basse sur tout A:V de la ligne du pied de page
+      for (let c = 1; c <= 22; c++) {
+        const botCell = targetRow.getCell(c)
+        const b = botCell.border || {}
+        botCell.border = {
+          top: b.top,
+          left: b.left || (c === 1 ? thinSide : undefined),
+          right: b.right || (c === 22 ? thinSide : undefined),
+          bottom: thinSide,
+        }
+      }
+      for (let r = gridStartRow; r <= actualFooterRow; r++) {
+        const rightCell = bulletinWsExceljs.getRow(r).getCell(22)
+        const b = rightCell.border || {}
+        rightCell.border = {
+          top: b.top,
+          bottom: b.bottom,
+          left: b.left,
+          right: thinSide,
+        }
+      }
+
       // Vider toute ligne résiduelle située APRÈS le pied de page (ex: row 60)
       for (let r = actualFooterRow + 1; r <= bulletinWsExceljs.rowCount; r++) {
         for (let c = 1; c <= 22; c++) {
@@ -2418,10 +2440,9 @@ export async function renderBulletinFromTemplate(params: {
         bulletinWsExceljs.getRow(r).height = 16
       }
 
-      // Mettre à jour la zone d'impression jusqu'à la ligne du pied de page incluse
       bulletinWsExceljs.pageSetup.printArea = `A1:V${actualFooterRow}`
 
-      console.log(`[BULLETIN_RENDER] Pied de page écrit à row ${actualFooterRow} (plage A${actualFooterRow}:V${actualFooterRow})`)
+      console.log(`[BULLETIN_RENDER] Pied de page et bordures appliqués à row ${actualFooterRow} (plage A${actualFooterRow}:V${actualFooterRow})`)
     }
 
     console.log(`[BULLETIN_RENDER] Hauteurs définies: APPLICATION=${16}, CONDUITE=${16}, SIGNATURE=${16}`)
