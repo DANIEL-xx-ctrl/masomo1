@@ -1392,12 +1392,17 @@ async function fillBulletinSheetDirectly(
     if (totauxRowNum > 0 && totauxRowNum !== maximaRowNum) {
       const totauxRow = bulletinWs.getRow(totauxRowNum)
       
-      // Collecter toutes les lignes cours (depuis sous-totaux + isolés)
-      const allCourseRows = new Set<number>()
+      // ⚠ TOTAUX = somme des SOUS-TOTAUX + cours isolés (pas des cours individuels)
+      // Les sous-totaux ont déjà été recalculés (ils contiennent les sommes correctes
+      // des cours de leur section). Les cours isolés (comme LECT-ECRIT) sont ajoutés
+      // directement. Cela correspond à la structure du template.
+      const rowsToSumForTotaux: number[] = []
       for (const st of sousTotalsToRecalc) {
-        for (const cr of st.courseRows) allCourseRows.add(cr)
+        rowsToSumForTotaux.push(st.rowNum)  // sous-total row
       }
-      for (const ir of isolatedCourseRows) allCourseRows.add(ir)
+      for (const ir of isolatedCourseRows) {
+        rowsToSumForTotaux.push(ir)  // isolated course row
+      }
       
       // Colonnes de notes à sommer
       const gradeColsToSum = [3, 4, 6, 8, 9, 10, 12, 14, 15, 16, 18, 20, 22]
@@ -1405,7 +1410,7 @@ async function fillBulletinSheetDirectly(
       for (const col of gradeColsToSum) {
         let sum = 0
         let hasValue = false
-        for (const rowNum of allCourseRows) {
+        for (const rowNum of rowsToSumForTotaux) {
           const cellVal = bulletinWs.getRow(rowNum).getCell(col).value
           let numVal = 0
           if (typeof cellVal === 'number') { numVal = cellVal; hasValue = true }
@@ -1416,20 +1421,19 @@ async function fillBulletinSheetDirectly(
           sum += numVal
         }
         const tCell = totauxRow.getCell(col)
-        tCell.value = hasValue ? sum : null
+        tCell.value = hasValue ? Math.round(sum * 10) / 10 : null
         // ⚠ Réduire la police pour TOTAUX (les valeurs sont grandes)
         tCell.font = { size: 7, bold: true }
         tCell.alignment = { horizontal: 'center', vertical: 'middle' }
       }
       
       // Vider les colonnes MAX (B, E, G, K, M, Q, S, U) pour TOTAUX
-      // (TOTAUX ne contient que les notes réelles, pas les MAX)
       for (const col of [2, 5, 7, 11, 13, 17, 19, 21]) {
         totauxRow.getCell(col).value = null
       }
       
       totauxRow.commit()
-      console.log(`[BULLETIN_FILL] TOTAUX row ${totauxRowNum}: summed actual grades from ${allCourseRows.size} course rows`)
+      console.log(`[BULLETIN_FILL] TOTAUX row ${totauxRowNum}: summed ${rowsToSumForTotaux.length} rows (${sousTotalsToRecalc.length} sous-totaux + ${isolatedCourseRows.length} isolés)`)
     }
   }
   try {
