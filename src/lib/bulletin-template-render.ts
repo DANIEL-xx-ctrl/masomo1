@@ -594,79 +594,64 @@ async function fillPourcentagePerColumn(
   schoolYear: string,
   db: typeof import('@/lib/db').db,
 ): Promise<void> {
-  // Mapping colonne → (trimester, type) pour calculer le total depuis la DB
-  const colToGrade: { col: number; trimester: string; type: string | null }[] = [
-    { col: 3, trimester: '1er', type: '1ère période' },    // C
-    { col: 4, trimester: '1er', type: '2ème période' },    // D
-    { col: 6, trimester: '1er', type: 'examen' },          // F
-    { col: 8, trimester: '1er', type: null },              // H = trim T1 (somme)
-    { col: 9, trimester: '2eme', type: '3ème période' },   // I
-    { col: 10, trimester: '2eme', type: '4ème période' },  // J
-    { col: 12, trimester: '2eme', type: 'examen' },        // L
-    { col: 14, trimester: '2eme', type: null },             // N = trim T2
-    { col: 15, trimester: '3eme', type: '5ème période' },  // O
-    { col: 16, trimester: '3eme', type: '6ème période' },  // P
-    { col: 18, trimester: '3eme', type: 'examen' },        // R
-    { col: 20, trimester: '3eme', type: null },             // T = trim T3
-    { col: 22, trimester: null, type: null },              // V = annuel
-  ]
+  // ⚠ IMPORTANT : On calcule les pourcentages depuis les CELLULES du BULLETIN
+  // (TOTAUX / MAXIMA) au lieu de la DB. Les valeurs du template peuvent différer
+  // des valeurs DB (ex: 3ème a maxTJ=5 pour Orth. Rédaction, mais DB a maxTJ=10).
+  // Pourcentage = TOTAUX[col] / MAXIMA[col] × 100
 
-  for (const cm of colToGrade) {
-    if (cm.col <= startCol) continue
-
-    let studentTotal = 0
-    let maxTotal = 0
-
-    if (cm.type === null && cm.trimester !== null) {
-      // Trim = somme des 3 types du trimestre
-      const types = ['1ère période', '2ème période', 'examen']
-      const trim = cm.trimester
-      const trimTypes = trim === '1er' ? ['1ère période', '2ème période', 'examen']
-        : trim === '2eme' ? ['3ème période', '4ème période', 'examen']
-        : ['5ème période', '6ème période', 'examen']
-      for (const t of trimTypes) {
-        const grades = await db.grade.findMany({
-          where: { studentId: student.id, schoolYear, trimester: trim, type: t },
-          select: { value: true, maxValue: true },
-        })
-        for (const g of grades) {
-          studentTotal += g.value
-          maxTotal += g.maxValue
-        }
-      }
-    } else if (cm.trimester === null) {
-      // Annuel = toutes les notes
-      const grades = await db.grade.findMany({
-        where: { studentId: student.id, schoolYear },
-        select: { value: true, maxValue: true },
-      })
-      for (const g of grades) {
-        studentTotal += g.value
-        maxTotal += g.maxValue
-      }
-    } else {
-      // Une seule période/examen
-      const grades = await db.grade.findMany({
-        where: { studentId: student.id, schoolYear, trimester: cm.trimester, type: cm.type },
-        select: { value: true, maxValue: true },
-      })
-      for (const g of grades) {
-        studentTotal += g.value
-        maxTotal += g.maxValue
-      }
+  // Trouver les rows TOTAUX et MAXIMA
+  let totauxRowNum = -1
+  let maximaRowNum = -1
+  for (let r = 40; r <= 60; r++) {
+    const aVal = bulletinWs.getRow(r).getCell(1).value
+    let aStr = ''
+    if (aVal) {
+      if (typeof aVal === 'object') {
+        if ('result' in aVal) aStr = String((aVal as { result?: unknown }).result ?? '')
+        else aStr = String(aVal)
+      } else aStr = String(aVal)
     }
+    const upper = aStr.toUpperCase().trim()
+    if (upper === 'TOTAUX') totauxRowNum = r
+    if (upper.includes('MAXIMA')) maximaRowNum = r
+  }
 
-    if (maxTotal > 0) {
-      const pct = Math.round((studentTotal / maxTotal) * 1000) / 10
-      const cell = bulletinWs.getRow(rankRowNum).getCell(cm.col)
+  if (totauxRowNum < 0 || maximaRowNum < 0) {
+    console.warn('[POURC] TOTAUX or MAXIMA row not found, skipping pourcentage')
+    return
+  }
+
+  // Helper : lire une valeur numérique depuis une cellule
+  const readNum = (rowNum: number, col: number): number => {
+    const v = bulletinWs.getRow(rowNum).getCell(col).value
+    if (v === null || v === undefined) return 0
+    if (typeof v === 'number') return v
+    if (typeof v === 'object' && 'result' in v) {
+      const r = Number((v as { result?: unknown }).result)
+      return isNaN(r) ? 0 : r
+    }
+    const n = parseFloat(String(v))
+    return isNaN(n) ? 0 : n
+  }
+
+  // Colonnes de notes à calculer
+  const gradeCols = [3, 4, 6, 8, 9, 10, 12, 14, 15, 16, 18, 20, 22]
+
+  for (const col of gradeCols) {
+    if (col <= startCol) continue
+
+    const totauxVal = readNum(totauxRowNum, col)
+    const maximaVal = readNum(maximaRowNum, col)
+
+    if (maximaVal > 0 && totauxVal > 0) {
+      const pct = Math.round((totauxVal / maximaVal) * 1000) / 10
+      const cell = bulletinWs.getRow(rankRowNum).getCell(col)
       cell.value = pct
-      // ⚠ Police réduite (size 6) pour que le pourcentage tienne dans la cellule
-      // ⚠ PAS de signe % — juste le nombre
       cell.font = { size: 6, bold: true }
       cell.alignment = { horizontal: 'center', vertical: 'middle', textRotation: 0, wrapText: false }
-      cell.numFmt = '0.0'  // Affiche juste le nombre, sans %
+      cell.numFmt = '0.0'
     } else {
-      bulletinWs.getRow(rankRowNum).getCell(cm.col).value = null
+      bulletinWs.getRow(rankRowNum).getCell(col).value = null
     }
   }
 }
