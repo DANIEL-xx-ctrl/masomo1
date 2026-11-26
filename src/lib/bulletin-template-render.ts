@@ -2320,22 +2320,27 @@ export async function renderBulletinFromTemplate(params: {
         }
       }
     }
-    // ⚠ Écrire le texte du pied de page si la cellule est vide
+    // ⚠ Écrire le texte du pied de page TOUJOURS (même si déjà présent)
+    // Le texte peut avoir été écrasé par replaceFormulasWithValues ou
+    // recalculateBulletinFormulas (si la cellule avait une VLOOKUP qui a échoué)
     if (actualFooterRow > 0) {
       const footerCell = bulletinWsExceljs.getRow(actualFooterRow).getCell(1)
-      let footerText = ''
-      if (footerCell.value) {
-        if (typeof footerCell.value === 'string') footerText = footerCell.value
-        else if (typeof footerCell.value === 'object' && 'result' in footerCell.value) {
-          footerText = String((footerCell.value as { result?: unknown }).result ?? '')
+      const footerText = '- L\'élève passe dans la classe supérieure (1)\n- L\'élève double la classe (1)\nFait à...................................., le......./........20......\nLE CHEF D\'ETABLISSEMENT\nNOM & SIGNATURE\nSCEAU DE L\'ECOLE\n(1) Biffer la mention inutile\nNOTE IMPORTANTE : Le bulletin est sans valeur s\'il est raturé ou surchargé'
+      footerCell.value = footerText
+      bulletinWsExceljs.getRow(actualFooterRow).height = 120
+      // Vider cols B-V du footer (au cas où des valeurs erronées comme "60" s'y trouvent)
+      for (let c = 2; c <= 22; c++) {
+        bulletinWsExceljs.getRow(actualFooterRow).getCell(c).value = null
+      }
+      // Aussi vider toutes les rows APRÈS le footer (où le "60" pourrait apparaître)
+      for (let r = actualFooterRow + 1; r <= bulletinWsExceljs.rowCount; r++) {
+        for (let c = 1; c <= 22; c++) {
+          const cell = bulletinWsExceljs.getRow(r).getCell(c)
+          if (cell.value !== null && cell.value !== undefined) cell.value = null
         }
+        bulletinWsExceljs.getRow(r).height = 16
       }
-      if (!footerText || footerText.trim() === '') {
-        // Écrire le texte du pied de page standard
-        footerCell.value = '- L\'élève passe dans la classe supérieure (1)\n- L\'élève double la classe (1)\nFait à...................................., le......./........20......\nLE CHEF D\'ETABLISSEMENT\nNOM & SIGNATURE\nSCEAU DE L\'ECOLE\n(1) Biffer la mention inutile\nNOTE IMPORTANTE : Le bulletin est sans valeur s\'il est raturé ou surchargé'
-        bulletinWsExceljs.getRow(actualFooterRow).height = 120
-        console.log(`[BULLETIN_RENDER] Pied de page écrit à row ${actualFooterRow}`)
-      }
+      console.log(`[BULLETIN_RENDER] Pied de page écrit à row ${actualFooterRow}`)
     }
     
     console.log(`[BULLETIN_RENDER] Hauteurs définies: APPLICATION=${16}, CONDUITE=${16}, SIGNATURE=${16}`)
