@@ -2306,17 +2306,23 @@ export async function renderBulletinFromTemplate(params: {
       const footerOriginalHeight = bulletinWsExceljs.getRow(footerRow).height
       bulletinWsExceljs.getRow(footerRow).height = footerOriginalHeight && footerOriginalHeight > 50 ? footerOriginalHeight : 120
     }
-    // ⚠ Si aucun footer trouvé, chercher la première row vide après SIGNATURE (ou APPLICATION)
-    // et y écrire le texte du pied de page
+    // ⚠ Si aucun footer trouvé, utiliser la row directement APRÈS SIGNATURE
+    // (ou après APPLICATION si pas de SIGNATURE)
     let actualFooterRow = footerRow
     if (actualFooterRow < 0) {
-      // Chercher la première row vide après signatureRow (ou applicationRow si pas de SIGNATURE)
-      const searchStart = signatureRow > 0 ? signatureRow + 1 : applicationRow + 1
-      for (let r = searchStart; r <= searchStart + 5; r++) {
-        const val = bulletinWsExceljs.getRow(r).getCell(1).value
-        if (val === null || val === undefined || String(val).trim() === '') {
-          actualFooterRow = r
-          break
+      // La row après SIGNATURE contient toujours le pied de page dans le template
+      if (signatureRow > 0) {
+        actualFooterRow = signatureRow + 1
+      } else if (applicationRow > 0) {
+        actualFooterRow = applicationRow + 1
+      } else {
+        // Dernier recours : chercher une row vide
+        for (let r = maximaRow + 5; r <= maximaRow + 15; r++) {
+          const val = bulletinWsExceljs.getRow(r).getCell(1).value
+          if (val === null || val === undefined || String(val).trim() === '') {
+            actualFooterRow = r
+            break
+          }
         }
       }
     }
