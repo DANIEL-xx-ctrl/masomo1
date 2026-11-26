@@ -2301,14 +2301,41 @@ export async function renderBulletinFromTemplate(params: {
         if (cell.value !== null && cell.value !== undefined) cell.value = null
       }
     }
-    // Footer (si trouvé) — grande hauteur + préserver le texte en col A
+    // Footer (si trouvé) — grande hauteur + préserver/écrire le texte en col A
     if (footerRow > 0) {
       const footerOriginalHeight = bulletinWsExceljs.getRow(footerRow).height
-      bulletinWsExceljs.getRow(footerRow).height = footerOriginalHeight && footerOriginalHeight > 50 ? footerOriginalHeight : 100
-      // ⚠ NE PAS vider le footer — le texte en col A est dans une cellule merged (A:V)
-      // Vider seulement les cellules individuelles hors merge qui pourraient avoir des données erronées
-      // Mais ne PAS toucher à col A (qui contient le texte du footer)
-      // Les cellules merged ont leur valeur en col A uniquement, les autres sont vides par défaut
+      bulletinWsExceljs.getRow(footerRow).height = footerOriginalHeight && footerOriginalHeight > 50 ? footerOriginalHeight : 120
+    }
+    // ⚠ Si aucun footer trouvé, chercher la première row vide après SIGNATURE (ou APPLICATION)
+    // et y écrire le texte du pied de page
+    let actualFooterRow = footerRow
+    if (actualFooterRow < 0) {
+      // Chercher la première row vide après signatureRow (ou applicationRow si pas de SIGNATURE)
+      const searchStart = signatureRow > 0 ? signatureRow + 1 : applicationRow + 1
+      for (let r = searchStart; r <= searchStart + 5; r++) {
+        const val = bulletinWsExceljs.getRow(r).getCell(1).value
+        if (val === null || val === undefined || String(val).trim() === '') {
+          actualFooterRow = r
+          break
+        }
+      }
+    }
+    // ⚠ Écrire le texte du pied de page si la cellule est vide
+    if (actualFooterRow > 0) {
+      const footerCell = bulletinWsExceljs.getRow(actualFooterRow).getCell(1)
+      let footerText = ''
+      if (footerCell.value) {
+        if (typeof footerCell.value === 'string') footerText = footerCell.value
+        else if (typeof footerCell.value === 'object' && 'result' in footerCell.value) {
+          footerText = String((footerCell.value as { result?: unknown }).result ?? '')
+        }
+      }
+      if (!footerText || footerText.trim() === '') {
+        // Écrire le texte du pied de page standard
+        footerCell.value = '- L\'élève passe dans la classe supérieure (1)\n- L\'élève double la classe (1)\nFait à...................................., le......./........20......\nLE CHEF D\'ETABLISSEMENT\nNOM & SIGNATURE\nSCEAU DE L\'ECOLE\n(1) Biffer la mention inutile\nNOTE IMPORTANTE : Le bulletin est sans valeur s\'il est raturé ou surchargé'
+        bulletinWsExceljs.getRow(actualFooterRow).height = 120
+        console.log(`[BULLETIN_RENDER] Pied de page écrit à row ${actualFooterRow}`)
+      }
     }
     
     console.log(`[BULLETIN_RENDER] Hauteurs définies: APPLICATION=${16}, CONDUITE=${16}, SIGNATURE=${16}`)
