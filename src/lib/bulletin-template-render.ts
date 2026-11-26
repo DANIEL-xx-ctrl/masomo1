@@ -2141,7 +2141,9 @@ export async function renderBulletinFromTemplate(params: {
       footer: 0,
     }
     // Zone d'impression : A1 à V50 (tout le bulletin)
-    bulletinWsExceljs.printArea = 'A1:Y55'
+    // Zone d'impression : A1 jusqu'à la dernière row avec contenu
+    const lastPrintRow = Math.max(bulletinWsExceljs.rowCount, 60)
+    bulletinWsExceljs.printArea = `A1:V${lastPrintRow}`
     
     console.log('[BULLETIN_RENDER] Page setup: row height 16, footer 25-50, font 9, margins 0.15, fitToHeight=1')
   } else {
@@ -2263,7 +2265,7 @@ export async function renderBulletinFromTemplate(params: {
       if (upper === 'CONDUITE') conduiteRow = r
       if (upper === 'SIGNATURE') signatureRow = r
       // Footer = ligne avec texte long contenant des mentions légales
-      if (upper.includes('L ÉLÈVE PASSE') || upper.includes('L\'ÉLÈVE PASSE') || upper.includes('CLASSE SUPÉRIEURE') || upper.includes('BULLETIN EST SANS VALEUR') || upper.includes('BIFER LA MENTION')) footerRow = r
+      if (upper.includes('ÉLÈVE PASSE') || upper.includes('ELEVE PASSE') || upper.includes('CLASSE SUPÉRIEURE') || upper.includes('CLASSE SUPERIEURE') || upper.includes('BULLETIN EST SANS VALEUR') || upper.includes('BIFFER LA MENTION') || upper.includes('CHEF D\'ETABLISSEMENT') || upper.includes('CHEF D ETABLISSEMENT') || upper.includes('SCEAU DE L')) footerRow = r
     }
     
     console.log(`[BULLETIN_RENDER] Rows trouvés: MAXIMA=${maximaRow}, TOTAUX=${totauxRow}, POURC=${pourcetageRow}, PLACE=${placeRow}, APP=${applicationRow}, COND=${conduiteRow}, SIGN=${signatureRow}, FOOTER=${footerRow}`)
@@ -2299,22 +2301,14 @@ export async function renderBulletinFromTemplate(params: {
         if (cell.value !== null && cell.value !== undefined) cell.value = null
       }
     }
-    // Footer (si trouvé) — grande hauteur + vider cols B-V
+    // Footer (si trouvé) — grande hauteur + préserver le texte en col A
     if (footerRow > 0) {
       const footerOriginalHeight = bulletinWsExceljs.getRow(footerRow).height
       bulletinWsExceljs.getRow(footerRow).height = footerOriginalHeight && footerOriginalHeight > 50 ? footerOriginalHeight : 100
-      for (let c = 2; c <= 22; c++) {
-        const cell = bulletinWsExceljs.getRow(footerRow).getCell(c)
-        if (cell.value !== null && cell.value !== undefined) cell.value = null
-      }
-      // Vider les hauteurs et données des rows après le footer
-      for (let r = footerRow + 1; r <= bulletinWsExceljs.rowCount; r++) {
-        bulletinWsExceljs.getRow(r).height = 16
-        for (let c = 1; c <= 22; c++) {
-          const cell = bulletinWsExceljs.getRow(r).getCell(c)
-          if (cell.value !== null && cell.value !== undefined) cell.value = null
-        }
-      }
+      // ⚠ NE PAS vider le footer — le texte en col A est dans une cellule merged (A:V)
+      // Vider seulement les cellules individuelles hors merge qui pourraient avoir des données erronées
+      // Mais ne PAS toucher à col A (qui contient le texte du footer)
+      // Les cellules merged ont leur valeur en col A uniquement, les autres sont vides par défaut
     }
     
     console.log(`[BULLETIN_RENDER] Hauteurs définies: APPLICATION=${16}, CONDUITE=${16}, SIGNATURE=${16}`)
