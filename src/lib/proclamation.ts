@@ -1,377 +1,225 @@
-import { db } from './db'
-import { getInstitutionIdWithFallback } from './api-auth'
+import { db } from '@/lib/db'
 
-// ============================================================
-// Proclamation list — shared data layer
-// Used by: GET /api/bulletins/proclamation
-//          /api/bulletins/proclamation/export/{pdf,excel,word}
-// ============================================================
+export const ANNUAL_MAX_TOTAL = 3600
 
-export type ProclamationPeriod = 'trimester' | 'semester' | 'annual'
-
-export interface ProclamationParams {
-  institutionId: string
-  classId?: string | null
+export interface ProclamationOptions {
   schoolYear: string
-  period: ProclamationPeriod
-  trimester?: string | null // "1er" | "2eme" | "3eme"
-  semester?: string | null // "1" | "2"
+  period?: string | null
+  trimester?: string | null
+  semester?: string | null
+  classId?: string | null
+  studentIds?: string[] | null
 }
 
 export interface ProclamationEntry {
   rank: number
   studentId: string
-  firstName: string
+  studentName: string
   lastName: string
-  fullName: string
+  firstName: string
+  userCode: string | null
+  classId: string
   className: string
-  classLevel: string
-  average: number // /20
-  percentage: number // 0-100
-  appreciation: string
-  mention: string
-  passed: boolean
+  total: number
+  maxTotal: number
+  percentage: number
+  average: number
 }
 
 export interface ProclamationResult {
+  schoolYear: string
+  period: string
+  trimester: string | null
+  semester: string | null
+  classId: string | null
+  annualMaxTotal: number
   entries: ProclamationEntry[]
-  params: {
-    schoolYear: string
-    period: ProclamationPeriod
-    periodLabel: string
-    classLabel: string
-    trimester?: string | null
-    semester?: string | null
-  }
-  institution: {
-    name: string
-    address?: string | null
-    phone?: string | null
-    email?: string | null
-  } | null
   stats: {
     totalStudents: number
-    passedCount: number
-    failedCount: number
-    classAverage: number
-    successRate: number
-    highestAverage: number
-    lowestAverage: number
+    averagePercentage: number
+    highestTotal: number
+    lowestTotal: number
+    annualMaxTotal: number
   }
 }
 
-const TRIMESTER_LABELS: Record<string, string> = {
-  '1er': '1er Trimestre',
-  '2eme': '2ème Trimestre',
-  '3eme': '3ème Trimestre',
+export function applyTieRanks<T extends { total: number; rank: number }>(items: T[]): T[] {
+  for (let i = 0; i < items.length; i++) {
+    if (i > 0 && items[i].total === items[i - 1].total) {
+      items[i].rank = items[i - 1].rank
+    } else {
+      items[i].rank = i + 1
+    }
+  }
+  return items
 }
 
-const SEMESTER_LABELS: Record<string, string> = {
-  '1': '1er Semestre',
-  '2': '2ème Semestre',
-}
-
-// Map a semester to the list of trimesters it aggregates.
-// Standard francophone system: S1 = T1 + T2, S2 = T3
-const SEMESTER_TRIMESTERS: Record<string, string[]> = {
-  '1': ['1er', '2eme'],
-  '2': ['3eme'],
-}
-
-function appreciationFor(avg: number): string {
-  if (avg >= 16) return 'Très Bien'
-  if (avg >= 14) return 'Bien'
-  if (avg >= 12) return 'Assez Bien'
-  if (avg >= 10) return 'Passable'
-  return 'Insuffisant'
-}
-
-function mentionFor(avg: number): string {
-  if (avg >= 16) return 'Excellent'
-  if (avg >= 14) return 'Très bien'
-  if (avg >= 12) return 'Assez bien'
-  if (avg >= 10) return 'Passable'
-  return 'Insuffisant'
-}
-
-/**
- * Compute the proclamation list for a given period.
- *
- * Period handling:
- *  - trimester: grades filtered by the given trimester
- *  - semester:  grades aggregated across the trimesters belonging to that semester
- *  - annual:    grades aggregated across ALL trimesters of the school year
- *
- * The list is sorted by average DESCENDING (best first) and rank is assigned
- * ascending (1 = best).
- */
 export async function getProclamationData(
-  request: Request,
-  rawParams: {
-    classId?: string | null
-    schoolYear?: string | null
-    period?: string | null
-    trimester?: string | null
-    semester?: string | null
-    studentIds?: string[] | null
-  }
+  _request: Request,
+  options: ProclamationOptions
 ): Promise<ProclamationResult> {
-  const institutionId = await getInstitutionIdWithFallback(request)
-
-  const schoolYear = rawParams.schoolYear || '2024-2025'
-  const period: ProclamationPeriod =
-    rawParams.period === 'semester' || rawParams.period === 'annual'
-      ? rawParams.period
-      : 'trimester'
-
-  const classId = rawParams.classId || null
-  const trimester = rawParams.trimester || null
-  const semester = rawParams.semester || null
-  // Pre-selected student IDs (from the checkbox UI + "Passer à la proclamation").
-  // When provided, ALL these students must appear in the proclamation — even
-  // those without any grades (average = 0). NO payment filter is applied.
-  const preSelectedStudentIds = rawParams.studentIds || null
-
-  // Determine which trimesters to aggregate grades from
-  let targetTrimesters: string[] | null = null // null = all
-  if (period === 'trimester') {
-    targetTrimesters = trimester ? [trimester] : null
-  } else if (period === 'semester') {
-    targetTrimesters = semester ? SEMESTER_TRIMESTERS[semester] || null : null
-  }
-  // period === 'annual' → targetTrimesters stays null (all trimesters)
-
-  // Build the grade query
-  const gradeWhere: Record<string, unknown> = {
+  const {
     schoolYear,
-    student: { user: { institutionId } },
-  }
-  if (targetTrimesters) {
-    gradeWhere.trimester = { in: targetTrimesters }
-  }
+    period = 'trimester',
+    trimester = null,
+    semester = null,
+    classId = null,
+    studentIds = null,
+  } = options
 
-  // If a class is selected, restrict to students of that class
+  const normalizedPeriod = period || 'trimester'
+  const isAnnual = normalizedPeriod === 'annual'
+
+  const studentWhere: Record<string, unknown> = {
+    status: 'active',
+  }
   if (classId) {
-    ;(gradeWhere.student as Record<string, unknown>).classId = classId
+    studentWhere.classId = classId
+  }
+  if (studentIds && studentIds.length > 0) {
+    studentWhere.id = { in: studentIds }
   }
 
-  // Fetch all relevant grades with subject info (for coefficient weighting)
-  const grades = await db.grade.findMany({
-    where: gradeWhere,
-    include: {
-      subject: { select: { id: true, name: true, coefficient: true } },
-      student: {
+  const students = await db.student.findMany({
+    where: studentWhere,
+    select: {
+      id: true,
+      lastName: true,
+      firstName: true,
+      classId: true,
+      class: {
         select: {
           id: true,
-          firstName: true,
-          lastName: true,
-          class: { select: { id: true, name: true, level: true } },
+          name: true,
+        },
+      },
+      user: {
+        select: {
+          userCode: true,
         },
       },
     },
+    orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
   })
 
-  // Aggregate per student: weighted average on 20
-  // average = sum((value/maxValue)*20 * coeff) / sum(coeff)
-  const perStudent = new Map<
-    string,
-    {
-      studentId: string
-      firstName: string
-      lastName: string
-      className: string
-      classLevel: string
-      totalWeighted: number
-      totalCoeff: number
-      gradeCount: number
+  const gradeWhere: Record<string, unknown> = {
+    schoolYear,
+  }
+
+  if (studentIds && studentIds.length > 0) {
+    gradeWhere.studentId = { in: studentIds }
+  } else if (students.length > 0) {
+    gradeWhere.studentId = { in: students.map((s) => s.id) }
+  }
+
+  if (!isAnnual) {
+    if (normalizedPeriod === 'trimester' && trimester) {
+      gradeWhere.trimester = trimester
+    } else if (normalizedPeriod === 'semester' && semester) {
+      // Adaptez ce filtre si vos notes utilisent `semester` ou un mapping de trimestres
+      gradeWhere.trimester = semester === '1' ? { in: ['1er', '2eme'] } : { in: ['2eme', '3eme'] }
     }
+  }
+
+  const grades = await db.grade.findMany({
+    where: gradeWhere,
+    select: {
+      studentId: true,
+      subjectId: true,
+      trimester: true,
+      type: true,
+      value: true,
+      maxValue: true,
+      updatedAt: true,
+    },
+    orderBy: { updatedAt: 'desc' },
+  })
+
+  // Regroupement par élève et déduplication par (matière, trimestre, type)
+  const gradesByStudent = new Map<
+    string,
+    Map<string, { value: number; maxValue: number }>
   >()
 
   for (const g of grades) {
-    const coeff = g.subject?.coefficient || 1
-    const normalized = (g.value / g.maxValue) * 20 * coeff
-    const existing = perStudent.get(g.studentId)
-    if (existing) {
-      existing.totalWeighted += normalized
-      existing.totalCoeff += coeff
-      existing.gradeCount += 1
-    } else {
-      perStudent.set(g.studentId, {
-        studentId: g.studentId,
-        firstName: g.student.firstName,
-        lastName: g.student.lastName,
-        className: g.student.class?.name || '—',
-        classLevel: g.student.class?.level || '',
-        totalWeighted: normalized,
-        totalCoeff: coeff,
-        gradeCount: 1,
+    let studentMap = gradesByStudent.get(g.studentId)
+    if (!studentMap) {
+      studentMap = new Map()
+      gradesByStudent.set(g.studentId, studentMap)
+    }
+    const key = `${g.subjectId ?? ''}|${g.trimester ?? ''}|${g.type ?? ''}`
+    if (!studentMap.has(key)) {
+      studentMap.set(key, {
+        value: Number(g.value) || 0,
+        maxValue: Number(g.maxValue) || 0,
       })
     }
   }
 
-  // Build entries with computed average
-  const entries: ProclamationEntry[] = []
-  perStudent.forEach((s) => {
-    const avg = s.totalCoeff > 0 ? s.totalWeighted / s.totalCoeff : 0
-    const roundedAvg = Math.round(avg * 100) / 100
-    const percentage = Math.round((avg / 20) * 1000) / 10
-    entries.push({
-      rank: 0, // assigned after sorting
-      studentId: s.studentId,
-      firstName: s.firstName,
+  const entries: ProclamationEntry[] = students.map((s) => {
+    const studentMap = gradesByStudent.get(s.id)
+    const uniqueList = studentMap ? Array.from(studentMap.values()) : []
+
+    const rawTotal = uniqueList.reduce((acc, item) => acc + item.value, 0)
+    const rawMax = uniqueList.reduce((acc, item) => acc + item.maxValue, 0)
+
+    // Total annuel fixé à 3600
+    const maxTotal = isAnnual ? ANNUAL_MAX_TOTAL : rawMax
+    const total = Math.round(rawTotal * 100) / 100
+    const percentage =
+      maxTotal > 0 ? Math.round(((total / maxTotal) * 100) * 10) / 10 : 0
+    const average = percentage
+
+    return {
+      rank: 0,
+      studentId: s.id,
+      studentName: `${s.lastName} ${s.firstName}`.trim(),
       lastName: s.lastName,
-      fullName: `${s.lastName} ${s.firstName}`,
-      className: s.className,
-      classLevel: s.classLevel,
-      average: roundedAvg,
+      firstName: s.firstName,
+      userCode: s.user?.userCode ?? null,
+      classId: s.classId,
+      className: s.class?.name ?? '',
+      total,
+      maxTotal,
       percentage,
-      appreciation: appreciationFor(roundedAvg),
-      mention: mentionFor(roundedAvg),
-      passed: roundedAvg >= 10,
-    })
-  })
-
-  // ---- Include pre-selected students who have NO grades ----
-  // When the user selected specific students via the checkbox UI, ALL of them
-  // must appear in the proclamation — even those without any grades for the
-  // period (average = 0). We fetch their info from the Student table.
-  if (preSelectedStudentIds && preSelectedStudentIds.length > 0) {
-    const existingIds = new Set(entries.map((e) => e.studentId))
-    const missingIds = preSelectedStudentIds.filter((id) => !existingIds.has(id))
-    if (missingIds.length > 0) {
-      const missingStudents = await db.student.findMany({
-        where: { id: { in: missingIds } },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          class: { select: { name: true, level: true } },
-        },
-      })
-      for (const s of missingStudents) {
-        entries.push({
-          rank: 0,
-          studentId: s.id,
-          firstName: s.firstName,
-          lastName: s.lastName,
-          fullName: `${s.lastName} ${s.firstName}`,
-          className: s.class?.name || '—',
-          classLevel: s.class?.level || '',
-          average: 0,
-          percentage: 0,
-          appreciation: appreciationFor(0),
-          mention: mentionFor(0),
-          passed: false,
-        })
-      }
+      average,
     }
-  }
-
-  // Sort DESCENDING by average (best first). Rank 1 = best.
-  // The rank numbers then ascend (1, 2, 3, …) which is the universal
-  // proclamation convention.
-  entries.sort((a, b) => b.average - a.average)
-  entries.forEach((e, idx) => {
-    e.rank = idx + 1
   })
 
-  // Institution info for headers
-  const institution = await db.institution.findFirst({
-    where: { id: institutionId },
-    select: { name: true, address: true, phone: true, email: true },
-  })
+  entries.sort((a, b) =>
+    b.total !== a.total
+      ? b.total - a.total
+      : a.studentName.localeCompare(b.studentName)
+  )
 
-  // Stats
-  const averages = entries.map((e) => e.average)
-  const classAverage =
-    averages.length > 0
-      ? Math.round((averages.reduce((a, b) => a + b, 0) / averages.length) * 100) / 100
+  applyTieRanks(entries)
+
+  const totalStudents = entries.length
+  const averagePercentage =
+    totalStudents > 0
+      ? Math.round(
+          (entries.reduce((acc, e) => acc + e.percentage, 0) / totalStudents) * 10
+        ) / 10
       : 0
-  const passedCount = entries.filter((e) => e.passed).length
-  const successRate =
-    entries.length > 0 ? Math.round((passedCount / entries.length) * 1000) / 10 : 0
-
-  // Period label
-  let periodLabel = 'Année scolaire complète'
-  if (period === 'trimester' && trimester) {
-    periodLabel = TRIMESTER_LABELS[trimester] || `Trimestre ${trimester}`
-  } else if (period === 'semester' && semester) {
-    periodLabel = SEMESTER_LABELS[semester] || `Semestre ${semester}`
-  }
-
-  // Class label
-  let classLabel = 'Toutes les classes'
-  if (classId) {
-    const cls = await db.class.findUnique({
-      where: { id: classId },
-      select: { name: true, level: true },
-    })
-    if (cls) classLabel = cls.level ? `${cls.name} (${cls.level})` : cls.name
-  }
+  const highestTotal =
+    totalStudents > 0 ? Math.max(...entries.map((e) => e.total)) : 0
+  const lowestTotal =
+    totalStudents > 0 ? Math.min(...entries.map((e) => e.total)) : 0
 
   return {
+    schoolYear,
+    period: normalizedPeriod,
+    trimester,
+    semester,
+    classId,
+    annualMaxTotal: ANNUAL_MAX_TOTAL,
     entries,
-    params: {
-      schoolYear,
-      period,
-      periodLabel,
-      classLabel,
-      trimester,
-      semester,
-    },
-    institution: institution || null,
     stats: {
-      totalStudents: entries.length,
-      passedCount,
-      failedCount: entries.length - passedCount,
-      classAverage,
-      successRate,
-      highestAverage: averages.length > 0 ? Math.max(...averages) : 0,
-      lowestAverage: averages.length > 0 ? Math.min(...averages) : 0,
+      totalStudents,
+      averagePercentage,
+      highestTotal,
+      lowestTotal,
+      annualMaxTotal: ANNUAL_MAX_TOTAL,
     },
-  }
-}
-
-export { TRIMESTER_LABELS, SEMESTER_LABELS }
-
-/**
- * Apply the pre-selected studentIds filter on top of a ProclamationResult.
- * NO payment / solvency filter is applied — only the user's selection
- * matters. Ranks are re-computed after filtering.
- *
- * Shared by the list endpoint AND the 3 export endpoints so the exported
- * files always match what the user sees in the dialog.
- */
-export async function applyProclamationFilters(
-  result: ProclamationResult,
-  opts: {
-    selectedStudentIds?: string[]
-  }
-): Promise<void> {
-  const { selectedStudentIds } = opts
-
-  // ---- Filter by pre-selected student IDs ----
-  // Only the students the user selected (via the checkbox UI + "Passer à la
-  // proclamation" button) appear in the proclamation. NO payment filter.
-  if (selectedStudentIds && selectedStudentIds.length > 0 && result.entries.length > 0) {
-    const allowed = new Set(selectedStudentIds)
-    result.entries = result.entries.filter((e) => allowed.has(e.studentId))
-  }
-
-  // ---- Re-rank + recompute stats ----
-  result.entries.forEach((entry, i) => {
-    entry.rank = i + 1
-  })
-  const averages = result.entries.map((e) => e.average || 0)
-  const passedCount = averages.filter((a) => a >= 10).length
-  result.stats = {
-    ...result.stats,
-    totalStudents: result.entries.length,
-    passedCount,
-    failedCount: result.entries.length - passedCount,
-    classAverage: averages.length > 0 ? averages.reduce((a, b) => a + b, 0) / averages.length : 0,
-    successRate: averages.length > 0 ? (passedCount / averages.length) * 100 : 0,
-    highestAverage: averages.length > 0 ? Math.max(...averages) : 0,
-    lowestAverage: averages.length > 0 ? Math.min(...averages) : 0,
   }
 }
