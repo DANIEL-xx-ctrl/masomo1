@@ -71,15 +71,15 @@ export async function GET(request: Request) {
       periodLabel = s.l
     }
 
-    // Récupération groupée de toutes les notes de la classe pour l'année scolaire
+    const studentIdsList = students.map((s) => s.id)
     const baseGradeWhere: Record<string, unknown> = {
-      studentId: { in: students.map((s) => s.id) },
-      schoolYear,
+      studentId: { in: studentIdsList },
+      schoolYear: schoolYear.trim(),
     }
     if (gf.trimester) baseGradeWhere.trimester = gf.trimester
     if (gf.type) baseGradeWhere.type = gf.type
 
-    const allGrades = await db.grade.findMany({
+    let allGrades = await db.grade.findMany({
       where: baseGradeWhere,
       select: {
         id: true,
@@ -88,6 +88,23 @@ export async function GET(request: Request) {
         maxValue: true,
       },
     })
+
+    if (allGrades.length === 0) {
+      const fallbackWhere: Record<string, unknown> = {
+        studentId: { in: studentIdsList },
+      }
+      if (gf.trimester) fallbackWhere.trimester = gf.trimester
+      if (gf.type) fallbackWhere.type = gf.type
+      allGrades = await db.grade.findMany({
+        where: fallbackWhere,
+        select: {
+          id: true,
+          studentId: true,
+          value: true,
+          maxValue: true,
+        },
+      })
+    }
 
     const gradesByStudent = new Map<
       string,
@@ -112,6 +129,7 @@ export async function GET(request: Request) {
       firstName: string
       userCode: string | null
       total: number
+      pointsObtenus: number
       maxTotal: number
       percentage: number
     }[] = students.map((s) => {
@@ -129,6 +147,7 @@ export async function GET(request: Request) {
         firstName: s.firstName,
         userCode: s.user?.userCode || null,
         total,
+        pointsObtenus: total,
         maxTotal,
         percentage,
       }
@@ -157,6 +176,7 @@ export async function GET(request: Request) {
           name: `${r.lastName} ${r.firstName}`,
           userCode: r.userCode,
           total: r.total,
+          pointsObtenus: r.pointsObtenus,
           maxTotal: r.maxTotal,
           percentage: r.percentage,
         })),
@@ -171,7 +191,7 @@ export async function GET(request: Request) {
         { header: 'N° ID', key: 'uc', width: 15 },
         { header: 'Nom', key: 'ln', width: 20 },
         { header: 'Prénom', key: 'fn', width: 20 },
-        { header: 'Total obtenu', key: 't', width: 14 },
+        { header: 'Points obtenus', key: 't', width: 16 },
         { header: 'Total max', key: 'm', width: 12 },
         { header: 'Pourcentage', key: 'p', width: 14 },
       ]
@@ -223,7 +243,7 @@ export async function GET(request: Request) {
     }
 
     if (format === 'word') {
-      let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial}h2{text-align:center}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px;text-align:center}th{background:#0B1A2E;color:#fff}.r1{background:#FFD700;font-weight:bold}.r2{background:#C0C0C0}.r3{background:#CD7F32}</style></head><body><h2>Classement — ${cls.name} — ${periodLabel} — ${schoolYear}</h2><table><tr><th>Rang</th><th>N° ID</th><th>Nom</th><th>Prénom</th><th>Total</th><th>Max</th><th>%</th></tr>`
+      let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial}h2{text-align:center}table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px;text-align:center}th{background:#0B1A2E;color:#fff}.r1{background:#FFD700;font-weight:bold}.r2{background:#C0C0C0}.r3{background:#CD7F32}</style></head><body><h2>Classement — ${cls.name} — ${periodLabel} — ${schoolYear}</h2><table><tr><th>Rang</th><th>N° ID</th><th>Nom</th><th>Prénom</th><th>Points obtenus</th><th>Max</th><th>%</th></tr>`
       for (const r of ranking) {
         const rc = r.rank <= 3 ? ` class="r${r.rank}"` : ''
         html += `<tr${rc}><td>${r.rank}${r.rank === 1 ? 'er' : 'ème'}</td><td>${r.userCode || ''}</td><td>${r.lastName}</td><td>${r.firstName}</td><td>${r.total}</td><td>${r.maxTotal}</td><td>${r.percentage}%</td></tr>`
@@ -254,7 +274,7 @@ export async function GET(request: Request) {
           { header: 'N° ID', key: 'uc', width: 15 },
           { header: 'Nom', key: 'ln', width: 20 },
           { header: 'Prénom', key: 'fn', width: 20 },
-          { header: 'Total', key: 't', width: 12 },
+          { header: 'Points obtenus', key: 't', width: 14 },
           { header: 'Max', key: 'm', width: 10 },
           { header: '%', key: 'p', width: 10 },
         ]
@@ -298,7 +318,7 @@ export async function GET(request: Request) {
           doc.setFontSize(14)
           doc.text(`Classement — ${cls.name} — ${periodLabel}`, 14, 15)
           autoTable(doc, {
-            head: [['Rang', 'N° ID', 'Nom', 'Prénom', 'Total', 'Max', '%']],
+            head: [['Rang', 'N° ID', 'Nom', 'Prénom', 'Points obtenus', 'Max', '%']],
             body: ranking.map((r) => [
               `${r.rank}${r.rank === 1 ? 'er' : 'ème'}`,
               r.userCode || '',
