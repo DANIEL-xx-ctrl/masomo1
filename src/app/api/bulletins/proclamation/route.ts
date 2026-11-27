@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getProclamationData } from '@/lib/proclamation'
+import { ANNUAL_MAX_TOTAL, applyTieRanks, getProclamationData } from '@/lib/proclamation'
 
 /**
  * GET /api/bulletins/proclamation
@@ -15,22 +15,24 @@ import { getProclamationData } from '@/lib/proclamation'
  *    pre-selection checkbox UI). NO solvency/payment filter is applied —
  *    the list only reflects what the user selected.
  *
- * Returns a proclamation list sorted by average DESC (rank 1 = best).
+ * Returns a proclamation list sorted by total DESC (rank 1 = best),
+ * with annual max fixed at 3600 when period="annual".
  */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const schoolYear = searchParams.get('schoolYear')
-    const period = searchParams.get('period')
+    const period = searchParams.get('period') || 'trimester'
     const trimester = searchParams.get('trimester')
     const semester = searchParams.get('semester')
     const classId = searchParams.get('classId')
-    // Pre-selected student IDs (comma-separated). When provided, the
-    // proclamation list is restricted to only these students. NO payment
-    // / solvency filter is applied — only the user's selection matters.
+
     const studentIdsParam = searchParams.get('studentIds')
     const selectedStudentIds = studentIdsParam
-      ? studentIdsParam.split(',').map((s) => s.trim()).filter(Boolean)
+      ? studentIdsParam
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
       : []
 
     if (!schoolYear) {
@@ -62,27 +64,73 @@ export async function GET(request: Request) {
       studentIds: selectedStudentIds.length > 0 ? selectedStudentIds : null,
     })
 
-    // ---- Filter by pre-selected student IDs ----
-    // When the admin passed specific students via the checkbox UI, only
-    // those students appear in the proclamation list. NO payment / solvency
-    // filter is applied — only the user's selection matters.
-    if (selectedStudentIds.length > 0 && result.entries.length > 0) {
+    let entries = Array.isArray(result.entries) ? result.entries : []
+
+    // Filtrage par liste d'élèves sélectionnés (sans filtre de paiement/solvabilité)
+    if (selectedStudentIds.length > 0 && entries.length > 0) {
       const allowed = new Set(selectedStudentIds)
-      const filtered = result.entries.filter(
-        (e: { studentId: string }) => allowed.has(e.studentId)
-      )
-      // Re-rank
-      filtered.forEach((entry: { rank: number }, i: number) => {
-        entry.rank = i + 1
-      })
-      result.entries = filtered
-      result.stats = {
-        ...result.stats,
-        totalStudents: filtered.length,
-      }
+      entries = entries.filter((e: { studentId: string }) => allowed.has(e.studentId))
     }
 
-    return NextResponse.json(result)
+    // Garantie du total annuel à 3600 lorsque period === 'annual'
+    if (period === 'annual') {
+      entries = entries.map((entry) => {
+        const total = Number(entry.total) || 0
+        const percentage =
+          Math.round(((total / ANNUAL_MAX_TOTAL) * 100) * 10) / 10
+        return {
+          ...entry,
+          total,
+          maxTotal: ANNUAL_MAX_TOTAL,
+          percentage,
+          average: percentage,
+        }
+      })
+    }
+
+    entries.sort((a: { total?: number }, b: { total?: number }) => {
+      const diff = (Number(b.total) || 0) - (Number(a.total) || 0)
+      return diff
+    })
+
+    applyTieRanks(entries as { total: number; rank: number }[])
+
+    const totalStudents = entries.length
+    const averagePercentage =
+      totalStudents > 0
+        ? Math.round(
+            (entries.reduce(
+              (acc: number, e: { percentage?: number }) =>
+                acc + (Number(e.percentage) || 0),
+              0
+            ) /
+              totalStudents) *
+              10
+          ) / 10
+        : 0
+    const highestTotal =
+      totalStudents > 0
+        ? Math.max(...entries.map((e: { total?: number }) => Number(e.total) || 0))
+        : 0
+    const lowestTotal =
+      totalStudents > 0
+        ? Math.min(...entries.map((e: { total?: number }) => Number(e.total) || 0))
+        : 0
+
+    return NextResponse.json({
+      ...result,
+      period,
+      annualMaxTotal: period === 'annual' ? ANNUAL_MAX_TOTAL : result.annualMaxTotal,
+      entries,
+      stats: {
+        ...result.stats,
+        totalStudents,
+        averagePercentage,
+        highestTotal,
+        lowestTotal,
+        ...(period === 'annual' ? { annualMaxTotal: ANNUAL_MAX_TOTAL } : {}),
+      },
+    })
   } catch (error) {
     console.error('Get proclamation error:', error)
     return NextResponse.json(
