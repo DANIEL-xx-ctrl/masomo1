@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { ANNUAL_MAX_TOTAL, applyTieRanks, sumGradeValues } from '@/lib/proclamation'
 import HTMLtoDOCX from 'html-to-docx'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -10,9 +11,6 @@ import ExcelJS from 'exceljs'
 
 const execAsync = promisify(exec)
 
-// Barème annuel officiel de référence (RDC)
-const ANNUAL_MAX_TOTAL = 3600
-
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -21,17 +19,31 @@ export async function GET(request: Request) {
     const selection = searchParams.get('selection') || 'all'
     const format = (searchParams.get('format') || 'json').toLowerCase()
 
-    if (!classId) return NextResponse.json({ error: 'classId requis' }, { status: 400 })
+    if (!classId) {
+      return NextResponse.json({ error: 'classId requis' }, { status: 400 })
+    }
 
-    const cls = await db.class.findUnique({ where: { id: classId }, select: { id: true, name: true } })
-    if (!cls) return NextResponse.json({ error: 'Classe introuvable' }, { status: 404 })
+    const cls = await db.class.findUnique({
+      where: { id: classId },
+      select: { id: true, name: true },
+    })
+    if (!cls) {
+      return NextResponse.json({ error: 'Classe introuvable' }, { status: 404 })
+    }
 
     const students = await db.student.findMany({
       where: { classId, status: 'active' },
-      select: { id: true, lastName: true, firstName: true, user: { select: { userCode: true } } },
-      orderBy: { lastName: 'asc' },
+      select: {
+        id: true,
+        lastName: true,
+        firstName: true,
+        user: { select: { userCode: true } },
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     })
-    if (students.length === 0) return NextResponse.json({ error: 'Aucun élève' }, { status: 400 })
+    if (students.length === 0) {
+      return NextResponse.json({ error: 'Aucun élève' }, { status: 400 })
+    }
 
     const isAnnual = selection === 'all' || selection === 'annual'
 
@@ -59,73 +71,76 @@ export async function GET(request: Request) {
       periodLabel = s.l
     }
 
+    // Récupération groupée de toutes les notes de la classe pour l'année scolaire
+    const baseGradeWhere: Record<string, unknown> = {
+      studentId: { in: students.map((s) => s.id) },
+      schoolYear,
+    }
+    if (gf.trimester) baseGradeWhere.trimester = gf.trimester
+    if (gf.type) baseGradeWhere.type = gf.type
+
+    const allGrades = await db.grade.findMany({
+      where: baseGradeWhere,
+      select: {
+        id: true,
+        studentId: true,
+        value: true,
+        maxValue: true,
+      },
+    })
+
+    const gradesByStudent = new Map<
+      string,
+      Array<{ value: number; maxValue: number }>
+    >()
+    for (const g of allGrades) {
+      let list = gradesByStudent.get(g.studentId)
+      if (!list) {
+        list = []
+        gradesByStudent.set(g.studentId, list)
+      }
+      list.push({
+        value: Number(g.value) || 0,
+        maxValue: Number(g.maxValue) || 0,
+      })
+    }
+
     const ranking: {
       rank: number
+      studentId: string
       lastName: string
       firstName: string
       userCode: string | null
       total: number
       maxTotal: number
       percentage: number
-    }[] = []
+    }[] = students.map((s) => {
+      const studentGrades = gradesByStudent.get(s.id) ?? []
+      const { total, rawMaxTotal } = sumGradeValues(studentGrades)
 
-    for (const s of students) {
-      const where: Record<string, unknown> = { studentId: s.id, schoolYear }
-      if (gf.trimester) where.trimester = gf.trimester
-      if (gf.type) where.type = gf.type
+      const maxTotal = isAnnual ? ANNUAL_MAX_TOTAL : rawMaxTotal
+      const percentage =
+        maxTotal > 0 ? Math.round(((total / maxTotal) * 100) * 10) / 10 : 0
 
-      const grades = await db.grade.findMany({
-        where,
-        select: {
-          subjectId: true,
-          trimester: true,
-          type: true,
-          value: true,
-          maxValue: true,
-          updatedAt: true,
-        },
-        orderBy: { updatedAt: 'desc' },
-      })
-
-      // Évite les doublons éventuels pour une même (matière, trimestre, type)
-      const uniqueGrades = new Map<string, { value: number; maxValue: number }>()
-      for (const g of grades) {
-        const key = `${g.subjectId ?? ''}|${g.trimester ?? ''}|${g.type ?? ''}`
-        if (!uniqueGrades.has(key)) {
-          uniqueGrades.set(key, { value: Number(g.value) || 0, maxValue: Number(g.maxValue) || 0 })
-        }
-      }
-
-      const rawTotal = Array.from(uniqueGrades.values()).reduce((sum, g) => sum + g.value, 0)
-      const rawMax = Array.from(uniqueGrades.values()).reduce((sum, g) => sum + g.maxValue, 0)
-
-      // En mode annuel, le dénominateur est strictement fixé à 3600
-      const maxTotal = isAnnual ? ANNUAL_MAX_TOTAL : rawMax
-      const total = Math.round(rawTotal * 100) / 100
-      const percentage = maxTotal > 0 ? Math.round((total / maxTotal) * 1000) / 10 : 0
-
-      ranking.push({
+      return {
         rank: 0,
+        studentId: s.id,
         lastName: s.lastName,
         firstName: s.firstName,
         userCode: s.user?.userCode || null,
         total,
         maxTotal,
         percentage,
-      })
-    }
-
-    // Tri décroissant par total obtenu (puis nom alphabétique)
-    ranking.sort((a, b) => (b.total !== a.total ? b.total - a.total : a.lastName.localeCompare(b.lastName)))
-
-    // Attribution des rangs avec gestion des ex æquo
-    for (let i = 0; i < ranking.length; i++) {
-      if (i > 0 && ranking[i].total === ranking[i - 1].total) {
-        ranking[i].rank = ranking[i - 1].rank
-      } else {
-        ranking[i].rank = i + 1
       }
-    }
+    })
+
+    ranking.sort((a, b) =>
+      b.total !== a.total
+        ? b.total - a.total
+        : a.lastName.localeCompare(b.lastName)
+    )
+
+    applyTieRanks(ranking)
 
     const baseName = `classement_${cls.name.replace(/\s+/g, '_')}_${selection}`
 
@@ -136,8 +151,9 @@ export async function GET(request: Request) {
         periodLabel,
         selection,
         annualMaxTotal: isAnnual ? ANNUAL_MAX_TOTAL : undefined,
-        ranking: ranking.map(r => ({
+        ranking: ranking.map((r) => ({
           rank: r.rank,
+          studentId: r.studentId,
           name: `${r.lastName} ${r.firstName}`,
           userCode: r.userCode,
           total: r.total,
@@ -160,9 +176,13 @@ export async function GET(request: Request) {
         { header: 'Pourcentage', key: 'p', width: 14 },
       ]
       ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
-      ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B1A2E' } }
+      ws.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0B1A2E' },
+      }
       for (const r of ranking) {
-        ws.addRow({
+        const row = ws.addRow({
           rank: `${r.rank}${r.rank === 1 ? 'er' : 'ème'}`,
           uc: r.userCode || '',
           ln: r.lastName,
@@ -171,13 +191,19 @@ export async function GET(request: Request) {
           m: r.maxTotal,
           p: r.percentage,
         })
-        const lastRow = ws.lastRow
-        if (lastRow && r.rank <= 3) {
-          lastRow.eachCell(c => {
+        if (r.rank <= 3) {
+          row.eachCell((c) => {
             c.fill = {
               type: 'pattern',
               pattern: 'solid',
-              fgColor: { argb: r.rank === 1 ? 'FFFFD700' : r.rank === 2 ? 'FFC0C0C0' : 'FFCD7F32' },
+              fgColor: {
+                argb:
+                  r.rank === 1
+                    ? 'FFFFD700'
+                    : r.rank === 2
+                    ? 'FFC0C0C0'
+                    : 'FFCD7F32',
+              },
             }
           })
         }
@@ -188,7 +214,10 @@ export async function GET(request: Request) {
       ws.getRow(1).alignment = { horizontal: 'center' }
       const buffer = await wb.xlsx.writeBuffer()
       const h = new Headers()
-      h.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      h.set(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      )
       h.set('Content-Disposition', `attachment; filename="${baseName}.xlsx"`)
       return new NextResponse(new Uint8Array(buffer), { headers: h })
     }
@@ -200,9 +229,15 @@ export async function GET(request: Request) {
         html += `<tr${rc}><td>${r.rank}${r.rank === 1 ? 'er' : 'ème'}</td><td>${r.userCode || ''}</td><td>${r.lastName}</td><td>${r.firstName}</td><td>${r.total}</td><td>${r.maxTotal}</td><td>${r.percentage}%</td></tr>`
       }
       html += '</table></body></html>'
-      const docxBuffer = await HTMLtoDOCX(html, null, { footer: false, pageNumber: false })
+      const docxBuffer = await HTMLtoDOCX(html, null, {
+        footer: false,
+        pageNumber: false,
+      })
       const h = new Headers()
-      h.set('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+      h.set(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      )
       h.set('Content-Disposition', `attachment; filename="${baseName}.docx"`)
       return new NextResponse(new Uint8Array(docxBuffer), { headers: h })
     }
@@ -238,9 +273,15 @@ export async function GET(request: Request) {
         ws.mergeCells('A1:G1')
         ws.getRow(1).font = { bold: true, size: 14 }
         const xlsxPath = join(tmpDir, 'c.xlsx')
-        await writeFile(xlsxPath, Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer))
+        await writeFile(
+          xlsxPath,
+          Buffer.from((await wb.xlsx.writeBuffer()) as ArrayBuffer)
+        )
         try {
-          await execAsync(`soffice --headless --convert-to pdf --outdir ${tmpDir} ${xlsxPath}`, { timeout: 60000 })
+          await execAsync(
+            `soffice --headless --convert-to pdf --outdir ${tmpDir} ${xlsxPath}`,
+            { timeout: 60000 }
+          )
           const pdfBuffer = await readFile(join(tmpDir, 'c.pdf'))
           const h = new Headers()
           h.set('Content-Type', 'application/pdf')
@@ -249,12 +290,16 @@ export async function GET(request: Request) {
         } catch {
           const { default: jsPDF } = await import('jspdf')
           const autoTable = (await import('jspdf-autotable')).default
-          const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+          const doc = new jsPDF({
+            orientation: 'landscape',
+            unit: 'mm',
+            format: 'a4',
+          })
           doc.setFontSize(14)
           doc.text(`Classement — ${cls.name} — ${periodLabel}`, 14, 15)
           autoTable(doc, {
             head: [['Rang', 'N° ID', 'Nom', 'Prénom', 'Total', 'Max', '%']],
-            body: ranking.map(r => [
+            body: ranking.map((r) => [
               `${r.rank}${r.rank === 1 ? 'er' : 'ème'}`,
               r.userCode || '',
               r.lastName,
@@ -281,6 +326,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Format non supporté' }, { status: 400 })
   } catch (error) {
     console.error('Class ranking error:', error)
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Erreur' }, { status: 500 })
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Erreur' },
+      { status: 500 }
+    )
   }
 }
