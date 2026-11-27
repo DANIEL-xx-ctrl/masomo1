@@ -54,6 +54,29 @@ export function applyTieRanks<T extends { total: number; rank: number }>(items: 
   return items
 }
 
+export function sumGradeValues(
+  grades: Array<{ value: number | string | null | undefined; maxValue?: number | string | null | undefined }>
+): { total: number; rawMaxTotal: number } {
+  let rawTotal = 0
+  let rawMax = 0
+
+  for (const g of grades) {
+    const val = Number(g.value)
+    if (Number.isFinite(val)) {
+      rawTotal += val
+    }
+    const maxVal = Number(g.maxValue)
+    if (Number.isFinite(maxVal)) {
+      rawMax += maxVal
+    }
+  }
+
+  return {
+    total: Math.round(rawTotal * 100) / 100,
+    rawMaxTotal: Math.round(rawMax * 100) / 100,
+  }
+}
+
 export async function getProclamationData(
   _request: Request,
   options: ProclamationOptions
@@ -116,56 +139,45 @@ export async function getProclamationData(
     if (normalizedPeriod === 'trimester' && trimester) {
       gradeWhere.trimester = trimester
     } else if (normalizedPeriod === 'semester' && semester) {
-      // Adaptez ce filtre si vos notes utilisent `semester` ou un mapping de trimestres
-      gradeWhere.trimester = semester === '1' ? { in: ['1er', '2eme'] } : { in: ['2eme', '3eme'] }
+      gradeWhere.trimester =
+        semester === '1' ? { in: ['1er', '2eme'] } : { in: ['2eme', '3eme'] }
     }
   }
 
+  // On récupère toutes les lignes d'évaluation sans écraser plusieurs notes d'une même matière/période
   const grades = await db.grade.findMany({
     where: gradeWhere,
     select: {
+      id: true,
       studentId: true,
-      subjectId: true,
-      trimester: true,
-      type: true,
       value: true,
       maxValue: true,
-      updatedAt: true,
     },
-    orderBy: { updatedAt: 'desc' },
   })
 
-  // Regroupement par élève et déduplication par (matière, trimestre, type)
   const gradesByStudent = new Map<
     string,
-    Map<string, { value: number; maxValue: number }>
+    Array<{ value: number; maxValue: number }>
   >()
 
   for (const g of grades) {
-    let studentMap = gradesByStudent.get(g.studentId)
-    if (!studentMap) {
-      studentMap = new Map()
-      gradesByStudent.set(g.studentId, studentMap)
+    let list = gradesByStudent.get(g.studentId)
+    if (!list) {
+      list = []
+      gradesByStudent.set(g.studentId, list)
     }
-    const key = `${g.subjectId ?? ''}|${g.trimester ?? ''}|${g.type ?? ''}`
-    if (!studentMap.has(key)) {
-      studentMap.set(key, {
-        value: Number(g.value) || 0,
-        maxValue: Number(g.maxValue) || 0,
-      })
-    }
+    list.push({
+      value: Number(g.value) || 0,
+      maxValue: Number(g.maxValue) || 0,
+    })
   }
 
   const entries: ProclamationEntry[] = students.map((s) => {
-    const studentMap = gradesByStudent.get(s.id)
-    const uniqueList = studentMap ? Array.from(studentMap.values()) : []
+    const studentGrades = gradesByStudent.get(s.id) ?? []
+    const { total, rawMaxTotal } = sumGradeValues(studentGrades)
 
-    const rawTotal = uniqueList.reduce((acc, item) => acc + item.value, 0)
-    const rawMax = uniqueList.reduce((acc, item) => acc + item.maxValue, 0)
-
-    // Total annuel fixé à 3600
-    const maxTotal = isAnnual ? ANNUAL_MAX_TOTAL : rawMax
-    const total = Math.round(rawTotal * 100) / 100
+    // Total annuel fixé à 3600 en mode annuel
+    const maxTotal = isAnnual ? ANNUAL_MAX_TOTAL : rawMaxTotal
     const percentage =
       maxTotal > 0 ? Math.round(((total / maxTotal) * 100) * 10) / 10 : 0
     const average = percentage
