@@ -21,6 +21,7 @@ export interface ProclamationEntry {
   classId: string
   className: string
   total: number
+  pointsObtenus: number
   maxTotal: number
   percentage: number
   average: number
@@ -125,14 +126,16 @@ export async function getProclamationData(
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
   })
 
-  const gradeWhere: Record<string, unknown> = {
-    schoolYear,
-  }
+  const studentIdsList = students.map((s) => s.id)
 
+  const gradeWhere: Record<string, unknown> = {}
+  if (schoolYear) {
+    gradeWhere.schoolYear = schoolYear.trim()
+  }
   if (studentIds && studentIds.length > 0) {
     gradeWhere.studentId = { in: studentIds }
-  } else if (students.length > 0) {
-    gradeWhere.studentId = { in: students.map((s) => s.id) }
+  } else if (studentIdsList.length > 0) {
+    gradeWhere.studentId = { in: studentIdsList }
   }
 
   if (!isAnnual) {
@@ -144,8 +147,7 @@ export async function getProclamationData(
     }
   }
 
-  // On récupère toutes les lignes d'évaluation sans écraser plusieurs notes d'une même matière/période
-  const grades = await db.grade.findMany({
+  let grades = await db.grade.findMany({
     where: gradeWhere,
     select: {
       id: true,
@@ -154,6 +156,25 @@ export async function getProclamationData(
       maxValue: true,
     },
   })
+
+  // Si aucune note n'est trouvée pour l'année exacte demandée, tente un repli sur les élèves de la classe/sélection
+  if (grades.length === 0 && studentIdsList.length > 0) {
+    const fallbackWhere: Record<string, unknown> = {
+      studentId: { in: studentIdsList },
+    }
+    if (!isAnnual && normalizedPeriod === 'trimester' && trimester) {
+      fallbackWhere.trimester = trimester
+    }
+    grades = await db.grade.findMany({
+      where: fallbackWhere,
+      select: {
+        id: true,
+        studentId: true,
+        value: true,
+        maxValue: true,
+      },
+    })
+  }
 
   const gradesByStudent = new Map<
     string,
@@ -176,7 +197,6 @@ export async function getProclamationData(
     const studentGrades = gradesByStudent.get(s.id) ?? []
     const { total, rawMaxTotal } = sumGradeValues(studentGrades)
 
-    // Total annuel fixé à 3600 en mode annuel
     const maxTotal = isAnnual ? ANNUAL_MAX_TOTAL : rawMaxTotal
     const percentage =
       maxTotal > 0 ? Math.round(((total / maxTotal) * 100) * 10) / 10 : 0
@@ -192,6 +212,7 @@ export async function getProclamationData(
       classId: s.classId,
       className: s.class?.name ?? '',
       total,
+      pointsObtenus: total,
       maxTotal,
       percentage,
       average,
