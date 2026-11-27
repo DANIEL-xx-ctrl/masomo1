@@ -771,8 +771,9 @@ async function fillBulletinSheetDirectly(
   selection: string,
   db: typeof import('@/lib/db').db,
   schoolYear: string,
+  level: number,
 ): Promise<void> {
-  console.log(`[BULLETIN_FILL] Starting direct fill, selection: ${selection}`)
+  console.log(`[BULLETIN_FILL] Starting direct fill, selection: ${selection}, level: ${level}`)
 
   // Mapping des types DB → colonnes BULLETIN (1-based)
   // T1: C=1èP(3), D=2èP(4), F=EX(6), H=TRIM(8)
@@ -1444,6 +1445,33 @@ async function fillBulletinSheetDirectly(
       
       totauxRow.commit()
       console.log(`[BULLETIN_FILL] TOTAUX row ${totauxRowNum}: summed ${rowsToSumForTotaux.length} rows (${sousTotalsToRecalc.length} sous-totaux + ${isolatedCourseRows.length} isolés)`)
+
+      // ⚠ SPÉCIAL 3ème : RÉCOPIER les valeurs de la ligne TOTAUX vers la ligne
+      // MAXIMA GENERAUX. Dans le template 3ème, MAXIMA GENERAUX ne doit pas
+      // afficher les MAX calculés (ex: 300 en col B), mais les MÊMES valeurs
+      // que TOTAUX (MAX cols vides, NOTES cols = somme des notes).
+      if (level === 3 && maximaRowNum > 0) {
+        const maximaRowCopy = bulletinWs.getRow(maximaRowNum)
+        // Copier TOUTES les colonnes 1-22 de TOTAUX → MAXIMA GENERAUX
+        for (let c = 2; c <= 22; c++) {
+          const srcCell = totauxRow.getCell(c)
+          const dstCell = maximaRowCopy.getCell(c)
+          // Copier valeur (number, string, ou null pour vider)
+          if (srcCell.value === null || srcCell.value === undefined) {
+            dstCell.value = null
+          } else if (typeof srcCell.value === 'object' && 'result' in srcCell.value) {
+            // Formule → copier le résultat calculé
+            const r = (srcCell.value as { result?: unknown }).result
+            dstCell.value = (typeof r === 'number') ? r : (r !== null && r !== undefined ? String(r) : null)
+          } else {
+            dstCell.value = srcCell.value
+          }
+          dstCell.font = { size: 7, bold: true }
+          dstCell.alignment = { horizontal: 'center', vertical: 'middle' }
+        }
+        maximaRowCopy.commit()
+        console.log(`[BULLETIN_FILL] [3ème] MAXIMA GENERAUX row ${maximaRowNum} COPIÉ depuis TOTAUX row ${totauxRowNum}`)
+      }
     }
   }
   try {
@@ -2275,6 +2303,7 @@ export async function renderBulletinFromTemplate(params: {
       selection,
       db,
       schoolYear,
+      level,
     )
 
     // ⚠ Définir les hauteurs de lignes APRÈS fillBulletinSheetDirectly
