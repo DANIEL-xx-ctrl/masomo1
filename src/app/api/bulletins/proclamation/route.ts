@@ -5,23 +5,6 @@ import {
   getProclamationData,
 } from '@/lib/proclamation'
 
-/**
- * GET /api/bulletins/proclamation
- *
- * Query params:
- *  - schoolYear (required)
- *  - period: "trimester" | "semester" | "annual"  (default: trimester)
- *  - trimester: "1er" | "2eme" | "3eme"            (when period=trimester)
- *  - semester: "1" | "2"                            (when period=semester)
- *  - classId: optional — restrict to a single class
- *  - studentIds: comma-separated list of student IDs — when provided, only
- *    those students are included in the proclamation list (used by the
- *    pre-selection checkbox UI). NO solvency/payment filter is applied —
- *    the list only reflects what the user selected.
- *
- * Returns a proclamation list sorted by total DESC (rank 1 = best),
- * with annual max fixed at 3600 when period="annual".
- */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -70,7 +53,6 @@ export async function GET(request: Request) {
 
     let entries = Array.isArray(result.entries) ? result.entries : []
 
-    // Filtrage par liste d'élèves sélectionnés (sans filtre de paiement/solvabilité)
     if (selectedStudentIds.length > 0 && entries.length > 0) {
       const allowed = new Set(selectedStudentIds)
       entries = entries.filter((e: { studentId: string }) =>
@@ -78,21 +60,21 @@ export async function GET(request: Request) {
       )
     }
 
-    // Garantie du total annuel à 3600 lorsque period === 'annual'
-    if (period === 'annual') {
-      entries = entries.map((entry) => {
-        const total = Math.round((Number(entry.total) || 0) * 100) / 100
-        const percentage =
-          Math.round(((total / ANNUAL_MAX_TOTAL) * 100) * 10) / 10
-        return {
-          ...entry,
-          total,
-          maxTotal: ANNUAL_MAX_TOTAL,
-          percentage,
-          average: percentage,
-        }
-      })
-    }
+    entries = entries.map((entry) => {
+      const total = Math.round((Number(entry.total) || 0) * 100) / 100
+      const maxTotal =
+        period === 'annual' ? ANNUAL_MAX_TOTAL : Number(entry.maxTotal) || 0
+      const percentage =
+        maxTotal > 0 ? Math.round(((total / maxTotal) * 100) * 10) / 10 : 0
+      return {
+        ...entry,
+        total,
+        pointsObtenus: total,
+        maxTotal,
+        percentage,
+        average: percentage,
+      }
+    })
 
     entries.sort((a: { total?: number }, b: { total?: number }) => {
       return (Number(b.total) || 0) - (Number(a.total) || 0)
