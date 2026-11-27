@@ -1334,11 +1334,32 @@ async function fillBulletinSheetDirectly(
     let hasAnyMatchedSubject = allCourseRowsForMaxima.size > 0
 
     // Sommer les valeurs depuis les cellules du BULLETIN (pas depuis la DB)
+    // ⚠ IMPORTANT : Les colonnes E/K/Q (MAX EX) et G/M/S (MAX TRIM) peuvent
+    // être NULL si le trimestre correspondant n'est pas sélectionné.
+    // On lit depuis la PREMIÈRE colonne non-null parmi E/K/Q (maxEX) et G/M/S (maxTRIM).
+    // Si toutes sont null, on calcule depuis maxTJ : maxEX = maxTJ*2, maxTRIM = maxTJ*4.
     for (const rowNum of allCourseRowsForMaxima) {
-      totalMaxTJ += readCellNum(rowNum, 2)   // B = maxTJ
-      totalMaxEX += readCellNum(rowNum, 5)    // E = maxEX T1
-      totalMaxTRIM += readCellNum(rowNum, 7)  // G = maxTRIM T1
-      totalMaxAnnuel += readCellNum(rowNum, 21) // U = maxAnnuel
+      const maxTJ = readCellNum(rowNum, 2)   // B = maxTJ (toujours présent)
+      totalMaxTJ += maxTJ
+
+      // Lire maxEX depuis la première colonne non-null parmi E(5), K(11), Q(17)
+      let maxEX = readCellNum(rowNum, 5)     // E = MAX EX T1
+      if (maxEX === 0) maxEX = readCellNum(rowNum, 11)  // K = MAX EX T2
+      if (maxEX === 0) maxEX = readCellNum(rowNum, 17)  // Q = MAX EX T3
+      if (maxEX === 0) maxEX = maxTJ * 2     // Fallback : maxEX = maxTJ * 2
+      totalMaxEX += maxEX
+
+      // Lire maxTRIM depuis la première colonne non-null parmi G(7), M(13), S(19)
+      let maxTRIM = readCellNum(rowNum, 7)   // G = MAX TRIM T1
+      if (maxTRIM === 0) maxTRIM = readCellNum(rowNum, 13)  // M = MAX TRIM T2
+      if (maxTRIM === 0) maxTRIM = readCellNum(rowNum, 19)  // S = MAX TRIM T3
+      if (maxTRIM === 0) maxTRIM = maxTJ * 4  // Fallback : maxTRIM = maxTJ * 4
+      totalMaxTRIM += maxTRIM
+
+      // Lire maxAnnuel depuis U(21)
+      let maxAnnuel = readCellNum(rowNum, 21) // U = MAX ANNUEL
+      if (maxAnnuel === 0) maxAnnuel = maxTRIM * 3  // Fallback : maxAnnuel = maxTRIM * 3
+      totalMaxAnnuel += maxAnnuel
     }
     console.log(`[BULLETIN_FILL] MAXIMA from cells: maxTJ=${totalMaxTJ}, maxEX=${totalMaxEX}, maxTRIM=${totalMaxTRIM}, maxAnnuel=${totalMaxAnnuel} (from ${allCourseRowsForMaxima.size} course rows)`)
 
@@ -2032,16 +2053,30 @@ export async function renderBulletinFromTemplate(params: {
     // Col A (rows 3-5) — étiquettes gauche EN MAJUSCULES
     writeWithLabel(3, 1, 'VILLE :', ville)
     writeWithLabel(4, 1, 'COMMUNE :', commune)
-    // Row 5 col A = École (garde la valeur du template, ajoute étiquette si pas déjà présente)
-    const ecoleVal = bulletinWsExceljs.getRow(5).getCell(1).value
-    let ecoleStr = ''
-    if (ecoleVal) {
-      if (typeof ecoleVal === 'object' && 'result' in ecoleVal) ecoleStr = String((ecoleVal as { result?: unknown }).result ?? '')
-      else if (typeof ecoleVal === 'string') ecoleStr = ecoleVal
-      else ecoleStr = String(ecoleVal)
-    }
-    if (ecoleStr && !ecoleStr.toLowerCase().startsWith('école') && !ecoleStr.toLowerCase().startsWith('ecole')) {
-      writeWithLabel(5, 1, 'ÉCOLE :', ecoleStr)
+    // Row 5 col A = École — utiliser le nom de l'institution depuis la DB
+    // (pas "C.S EXCEL" du template)
+    let institutionName = ''
+    try {
+      const inst = await db.institution.findUnique({
+        where: { id: student.class?.institutionId || '' },
+        select: { name: true }
+      })
+      institutionName = inst?.name || ''
+    } catch { institutionName = '' }
+    if (institutionName) {
+      writeWithLabel(5, 1, 'ÉCOLE :', institutionName)
+    } else {
+      // Fallback : utiliser la valeur du template
+      const ecoleVal = bulletinWsExceljs.getRow(5).getCell(1).value
+      let ecoleStr = ''
+      if (ecoleVal) {
+        if (typeof ecoleVal === 'object' && 'result' in ecoleVal) ecoleStr = String((ecoleVal as { result?: unknown }).result ?? '')
+        else if (typeof ecoleVal === 'string') ecoleStr = ecoleVal
+        else ecoleStr = String(ecoleVal)
+      }
+      if (ecoleStr && !ecoleStr.toLowerCase().startsWith('école') && !ecoleStr.toLowerCase().startsWith('ecole')) {
+        writeWithLabel(5, 1, 'ÉCOLE :', ecoleStr)
+      }
     }
 
     // ⚠ Code et N° PERM écrits en TEXTE SIMPLE (sans cases quadrillées) pour éviter le débordement.
@@ -2494,18 +2529,33 @@ export async function renderBulletinFromTemplate(params: {
     }
 
     // Row 5: ÉCOLE (gauche) | CLASSE (droite) | SEXE (Q5)
-    const ecoleVal2 = bulletinWsExceljs.getRow(5).getCell(1).value
-    let ecoleStr2 = ''
-    if (ecoleVal2) {
-      if (typeof ecoleVal2 === 'object' && 'result' in ecoleVal2) ecoleStr2 = String((ecoleVal2 as { result?: unknown }).result ?? '')
-      else if (typeof ecoleVal2 === 'string') ecoleStr2 = ecoleVal2
-      else ecoleStr2 = String(ecoleVal2)
-    }
-    // Si la valeur a déjà "ÉCOLE :", la garder, sinon ajouter l'étiquette
-    if (ecoleStr2 && !ecoleStr2.toUpperCase().startsWith('ÉCOLE') && !ecoleStr2.toUpperCase().startsWith('ECOLE')) {
+    // ⚠ Utiliser le nom de l'institution depuis la DB (pas "C.S EXCEL" du template)
+    let institutionName2 = ''
+    try {
+      const inst2 = await db.institution.findUnique({
+        where: { id: student.class?.institutionId || '' },
+        select: { name: true }
+      })
+      institutionName2 = inst2?.name || ''
+    } catch { institutionName2 = '' }
+    if (institutionName2) {
       const eCell = bulletinWsExceljs.getRow(5).getCell(1)
-      eCell.value = `ÉCOLE : ${ecoleStr2}`
+      eCell.value = `ÉCOLE : ${institutionName2}`
       eCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
+    } else {
+      // Fallback : utiliser la valeur du template
+      const ecoleVal2 = bulletinWsExceljs.getRow(5).getCell(1).value
+      let ecoleStr2 = ''
+      if (ecoleVal2) {
+        if (typeof ecoleVal2 === 'object' && 'result' in ecoleVal2) ecoleStr2 = String((ecoleVal2 as { result?: unknown }).result ?? '')
+        else if (typeof ecoleVal2 === 'string') ecoleStr2 = ecoleVal2
+        else ecoleStr2 = String(ecoleVal2)
+      }
+      if (ecoleStr2 && !ecoleStr2.toUpperCase().startsWith('ÉCOLE') && !ecoleStr2.toUpperCase().startsWith('ECOLE')) {
+        const eCell = bulletinWsExceljs.getRow(5).getCell(1)
+        eCell.value = `ÉCOLE : ${ecoleStr2}`
+        eCell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1, wrapText: false }
+      }
     }
     const className2 = student.class?.name || ''
     if (className2) {
