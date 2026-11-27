@@ -1475,14 +1475,17 @@ async function fillBulletinSheetDirectly(
       totauxRow.commit()
       console.log(`[BULLETIN_FILL] TOTAUX row ${totauxRowNum}: summed ${rowsToSumForTotaux.length} rows (${sousTotalsToRecalc.length} sous-totaux + ${isolatedCourseRows.length} isolés)`)
 
-      // ⚠ SPÉCIAL 3ème : TOTAUX et MAXIMA GENERAUX doivent CORRESPONDRE.
-      // Pour le 3ème, les MAX sont des valeurs FIXES (pas calculées depuis les cours) :
-      //   - MAX per (B)       = 300  (pour toutes les périodes : C, D, I, J, O, P)
-      //   - MAX EX  (E, K, Q) = 600  (pour tous les examens : F, L, R)
-      //   - MAX TRIM (G, M, S)= 1200 (pour tous les trimestres : H, N, T)
-      //   - MAX ANNUEL (U)    = 3600 (pour l'annuel : V)
-      // On ÉCRIT ces valeurs fixes dans les MAX cols de MAXIMA GENERAUX
-      // ET dans les MAX cols de TOTAUX (pour que les deux lignes correspondent).
+      // ⚠ SPÉCIAL 3ème : TOTAUX et MAXIMA GENERAUX doivent être IDENTIQUES.
+      // Pour le 3ème :
+      //   - MAX cols (B, E, G, K, M, Q, S, U) = valeurs FIXES
+      //       B = 300  (MAX per, pour toutes les périodes C/D/I/J/O/P)
+      //       E/K/Q = 600 (MAX EX, pour tous les examens F/L/R)
+      //       G/M/S = 1200 (MAX TRIM, pour tous les trimestres H/N/T)
+      //       U = 3600 (MAX ANNUEL, pour V)
+      //   - NOTES cols (C, D, F, H, I, J, L, N, O, P, R, T, V) = COPIÉES de TOTAUX
+      //     (PTS OBT = sommes des notes réelles)
+      // On ÉCRIT ces valeurs dans MAXIMA GENERAUX ET TOTAUX (les deux lignes
+      // correspondent exactement).
       if (level === 3 && maximaRowNum > 0) {
         // Map : chaque MAX col → sa valeur fixe
         const fixedMaxByCol: { [col: number]: number } = {
@@ -1495,25 +1498,46 @@ async function fillBulletinSheetDirectly(
           19: 1200, // S = MAX TRIM T3
           21: 3600, // U = MAX ANNUEL
         }
+        // NOTES cols à recopier de TOTAUX → MAXIMA GENERAL
+        const notesColsToCopy = [3, 4, 6, 8, 9, 10, 12, 14, 15, 16, 18, 20, 22]
         const maximaRowFix = bulletinWs.getRow(maximaRowNum)
         const totauxRowFix = bulletinWs.getRow(totauxRowNum)
+
+        // 1) MAX cols = valeurs fixes (dans les deux lignes)
         for (const colStr of Object.keys(fixedMaxByCol)) {
           const col = Number(colStr)
           const val = fixedMaxByCol[col]
-          // MAXIMA GENERAUX — col MAX = valeur fixe
           const mCell = maximaRowFix.getCell(col)
           mCell.value = val
           mCell.font = { size: 7, bold: true }
           mCell.alignment = { horizontal: 'center', vertical: 'middle' }
-          // TOTAUX — col MAX = MÊME valeur fixe (pour correspondre à MAXIMA)
           const tCell = totauxRowFix.getCell(col)
           tCell.value = val
           tCell.font = { size: 7, bold: true }
           tCell.alignment = { horizontal: 'center', vertical: 'middle' }
         }
+
+        // 2) NOTES cols = COPIÉES de TOTAUX → MAXIMA GENERAL
+        //    (récopie PTS OBT : 1èP, 2èP, EX, TRIM, ..., ANNUEL)
+        for (const col of notesColsToCopy) {
+          const srcVal = totauxRowFix.getCell(col).value
+          const dstCell = maximaRowFix.getCell(col)
+          // Copier la valeur telle quelle (number, null, ou résultat de formule)
+          if (srcVal === null || srcVal === undefined) {
+            dstCell.value = null
+          } else if (typeof srcVal === 'object' && 'result' in srcVal) {
+            const r = (srcVal as { result?: unknown }).result
+            dstCell.value = (typeof r === 'number') ? r : (r !== null && r !== undefined ? String(r) : null)
+          } else {
+            dstCell.value = srcVal
+          }
+          dstCell.font = { size: 7, bold: true }
+          dstCell.alignment = { horizontal: 'center', vertical: 'middle' }
+        }
+
         maximaRowFix.commit()
         totauxRowFix.commit()
-        console.log(`[BULLETIN_FILL] [3ème] MAX fixes appliquées: B=300, E/K/Q=600, G/M/S=1200, U=3600 (sur TOTAUX row ${totauxRowNum} ET MAXIMA row ${maximaRowNum})`)
+        console.log(`[BULLETIN_FILL] [3ème] MAXIMA GENERAUX = TOTAUX (identiques): MAX fixes (B=300, E/K/Q=600, G/M/S=1200, U=3600) + NOTES cols copiées depuis TOTAUX`)
       }
     }
   }
