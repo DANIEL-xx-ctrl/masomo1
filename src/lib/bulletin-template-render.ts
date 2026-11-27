@@ -1333,33 +1333,20 @@ async function fillBulletinSheetDirectly(
     let totalMaxAnnuel = 0
     let hasAnyMatchedSubject = allCourseRowsForMaxima.size > 0
 
-    // Sommer les valeurs depuis les cellules du BULLETIN (pas depuis la DB)
-    // ⚠ IMPORTANT : Les colonnes E/K/Q (MAX EX) et G/M/S (MAX TRIM) peuvent
-    // être NULL si le trimestre correspondant n'est pas sélectionné.
-    // On lit depuis la PREMIÈRE colonne non-null parmi E/K/Q (maxEX) et G/M/S (maxTRIM).
-    // Si toutes sont null, on calcule depuis maxTJ : maxEX = maxTJ*2, maxTRIM = maxTJ*4.
+    // ⠂ Calculer MAXIMA depuis les cellules du BULLETIN
+    // ⚠ IMPORTANT : maxEX et maxTRIM sont calculés DIRECTEMENT depuis maxTJ
+    // car la relation est constante dans tous les templates :
+    //   maxEX = maxTJ × 2 (ex: maxTJ=10 → maxEX=20)
+    //   maxTRIM = maxTJ × 4 (ex: maxTJ=10 → maxTRIM=40 = 10×2 + 10×2)
+    //   maxAnnuel = maxTJ × 12 (ex: maxTJ=10 → maxAnnuel=120 = 40×3)
+    // Cela évite les problèmes de lecture des colonnes E/G/K/M/Q/S qui peuvent
+    // être NULL selon la sélection de période.
     for (const rowNum of allCourseRowsForMaxima) {
       const maxTJ = readCellNum(rowNum, 2)   // B = maxTJ (toujours présent)
       totalMaxTJ += maxTJ
-
-      // Lire maxEX depuis la première colonne non-null parmi E(5), K(11), Q(17)
-      let maxEX = readCellNum(rowNum, 5)     // E = MAX EX T1
-      if (maxEX === 0) maxEX = readCellNum(rowNum, 11)  // K = MAX EX T2
-      if (maxEX === 0) maxEX = readCellNum(rowNum, 17)  // Q = MAX EX T3
-      if (maxEX === 0) maxEX = maxTJ * 2     // Fallback : maxEX = maxTJ * 2
-      totalMaxEX += maxEX
-
-      // Lire maxTRIM depuis la première colonne non-null parmi G(7), M(13), S(19)
-      let maxTRIM = readCellNum(rowNum, 7)   // G = MAX TRIM T1
-      if (maxTRIM === 0) maxTRIM = readCellNum(rowNum, 13)  // M = MAX TRIM T2
-      if (maxTRIM === 0) maxTRIM = readCellNum(rowNum, 19)  // S = MAX TRIM T3
-      if (maxTRIM === 0) maxTRIM = maxTJ * 4  // Fallback : maxTRIM = maxTJ * 4
-      totalMaxTRIM += maxTRIM
-
-      // Lire maxAnnuel depuis U(21)
-      let maxAnnuel = readCellNum(rowNum, 21) // U = MAX ANNUEL
-      if (maxAnnuel === 0) maxAnnuel = maxTRIM * 3  // Fallback : maxAnnuel = maxTRIM * 3
-      totalMaxAnnuel += maxAnnuel
+      totalMaxEX += maxTJ * 2               // maxEX = maxTJ × 2
+      totalMaxTRIM += maxTJ * 4             // maxTRIM = maxTJ × 4
+      totalMaxAnnuel += maxTJ * 12          // maxAnnuel = maxTJ × 12
     }
     console.log(`[BULLETIN_FILL] MAXIMA from cells: maxTJ=${totalMaxTJ}, maxEX=${totalMaxEX}, maxTRIM=${totalMaxTRIM}, maxAnnuel=${totalMaxAnnuel} (from ${allCourseRowsForMaxima.size} course rows)`)
 
