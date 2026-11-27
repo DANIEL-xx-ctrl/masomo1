@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
-import { ANNUAL_MAX_TOTAL, applyTieRanks, getProclamationData } from '@/lib/proclamation'
+import {
+  ANNUAL_MAX_TOTAL,
+  applyTieRanks,
+  getProclamationData,
+} from '@/lib/proclamation'
 
 /**
  * GET /api/bulletins/proclamation
@@ -69,13 +73,15 @@ export async function GET(request: Request) {
     // Filtrage par liste d'élèves sélectionnés (sans filtre de paiement/solvabilité)
     if (selectedStudentIds.length > 0 && entries.length > 0) {
       const allowed = new Set(selectedStudentIds)
-      entries = entries.filter((e: { studentId: string }) => allowed.has(e.studentId))
+      entries = entries.filter((e: { studentId: string }) =>
+        allowed.has(e.studentId)
+      )
     }
 
     // Garantie du total annuel à 3600 lorsque period === 'annual'
     if (period === 'annual') {
       entries = entries.map((entry) => {
-        const total = Number(entry.total) || 0
+        const total = Math.round((Number(entry.total) || 0) * 100) / 100
         const percentage =
           Math.round(((total / ANNUAL_MAX_TOTAL) * 100) * 10) / 10
         return {
@@ -89,8 +95,7 @@ export async function GET(request: Request) {
     }
 
     entries.sort((a: { total?: number }, b: { total?: number }) => {
-      const diff = (Number(b.total) || 0) - (Number(a.total) || 0)
-      return diff
+      return (Number(b.total) || 0) - (Number(a.total) || 0)
     })
 
     applyTieRanks(entries as { total: number; rank: number }[])
@@ -110,17 +115,22 @@ export async function GET(request: Request) {
         : 0
     const highestTotal =
       totalStudents > 0
-        ? Math.max(...entries.map((e: { total?: number }) => Number(e.total) || 0))
+        ? Math.max(
+            ...entries.map((e: { total?: number }) => Number(e.total) || 0)
+          )
         : 0
     const lowestTotal =
       totalStudents > 0
-        ? Math.min(...entries.map((e: { total?: number }) => Number(e.total) || 0))
+        ? Math.min(
+            ...entries.map((e: { total?: number }) => Number(e.total) || 0)
+          )
         : 0
 
     return NextResponse.json({
       ...result,
       period,
-      annualMaxTotal: period === 'annual' ? ANNUAL_MAX_TOTAL : result.annualMaxTotal,
+      annualMaxTotal:
+        period === 'annual' ? ANNUAL_MAX_TOTAL : result.annualMaxTotal,
       entries,
       stats: {
         ...result.stats,
