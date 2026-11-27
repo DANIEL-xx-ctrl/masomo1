@@ -597,7 +597,16 @@ async function fillPourcentagePerColumn(
   // ⚠ IMPORTANT : On calcule les pourcentages depuis les CELLULES du BULLETIN
   // (TOTAUX / MAXIMA) au lieu de la DB. Les valeurs du template peuvent différer
   // des valeurs DB (ex: 3ème a maxTJ=5 pour Orth. Rédaction, mais DB a maxTJ=10).
-  // Pourcentage = TOTAUX[col] / MAXIMA[col] × 100
+  //
+  // ⚠ CRITIQUE — Pourcentage = TOTAUX[grade_col] / MAXIMA[MAX_col] × 100
+  //   où MAX_col est la colonne MAX correspondant au TYPE de la grade_col :
+  //     - Périodes (C, D, I, J, O, P) → MAXIMA[B] (MAX per)
+  //     - Examens  (F, L, R)          → MAXIMA[E/K/Q] (MAX EX du trimestre)
+  //     - Trims    (H, N, T)          → MAXIMA[G/M/S] (MAX TRIM du trimestre)
+  //     - Annuel   (V)                → MAXIMA[U] (MAX ANNUEL)
+  //   On ne divise JAMAIS par MAXIMA[grade_col] (qui contient la SOMME des notes,
+  //   pas le MAX). Cela correspond aux formules du template :
+  //     C53/B52, D53/B52, F53/E52, H53/G52, I53/B52, ..., V53/U52
 
   // Trouver les rows TOTAUX et MAXIMA
   let totauxRowNum = -1
@@ -634,14 +643,34 @@ async function fillPourcentagePerColumn(
     return isNaN(n) ? 0 : n
   }
 
-  // Colonnes de notes à calculer
-  const gradeCols = [3, 4, 6, 8, 9, 10, 12, 14, 15, 16, 18, 20, 22]
+  // ⚠ Map : chaque grade_col → la MAX_col correspondante (à diviser)
+  // Périodes : toutes divisent par B (2) — MAX per
+  // Examens  : F→E(5), L→K(11), R→Q(17)
+  // Trims    : H→G(7), N→M(13), T→S(19)
+  // Annuel   : V→U(21)
+  const gradeColToMaxCol: { [gradeCol: number]: number } = {
+    3: 2,   // C → B
+    4: 2,   // D → B
+    9: 2,   // I → B
+    10: 2,  // J → B
+    15: 2,  // O → B
+    16: 2,  // P → B
+    6: 5,   // F → E
+    12: 11, // L → K
+    18: 17, // R → Q
+    8: 7,   // H → G
+    14: 13, // N → M
+    20: 19, // T → S
+    22: 21, // V → U
+  }
 
-  for (const col of gradeCols) {
+  for (const colStr of Object.keys(gradeColToMaxCol)) {
+    const col = Number(colStr)
     if (col <= startCol) continue
 
     const totauxVal = readNum(totauxRowNum, col)
-    const maximaVal = readNum(maximaRowNum, col)
+    const maxCol = gradeColToMaxCol[col]
+    const maximaVal = readNum(maximaRowNum, maxCol)
 
     if (maximaVal > 0 && totauxVal > 0) {
       const pct = Math.round((totauxVal / maximaVal) * 1000) / 10
@@ -1446,31 +1475,45 @@ async function fillBulletinSheetDirectly(
       totauxRow.commit()
       console.log(`[BULLETIN_FILL] TOTAUX row ${totauxRowNum}: summed ${rowsToSumForTotaux.length} rows (${sousTotalsToRecalc.length} sous-totaux + ${isolatedCourseRows.length} isolés)`)
 
-      // ⚠ SPÉCIAL 3ème : RÉCOPIER les valeurs de la ligne TOTAUX vers la ligne
-      // MAXIMA GENERAUX. Dans le template 3ème, MAXIMA GENERAUX ne doit pas
-      // afficher les MAX calculés (ex: 300 en col B), mais les MÊMES valeurs
-      // que TOTAUX (MAX cols vides, NOTES cols = somme des notes).
+      // ⚠ SPÉCIAL 3ème : TOTAUX et MAXIMA GENERAUX doivent CORRESPONDRE.
+      // Pour le 3ème, les MAX sont des valeurs FIXES (pas calculées depuis les cours) :
+      //   - MAX per (B)       = 300  (pour toutes les périodes : C, D, I, J, O, P)
+      //   - MAX EX  (E, K, Q) = 600  (pour tous les examens : F, L, R)
+      //   - MAX TRIM (G, M, S)= 1200 (pour tous les trimestres : H, N, T)
+      //   - MAX ANNUEL (U)    = 3600 (pour l'annuel : V)
+      // On ÉCRIT ces valeurs fixes dans les MAX cols de MAXIMA GENERAUX
+      // ET dans les MAX cols de TOTAUX (pour que les deux lignes correspondent).
       if (level === 3 && maximaRowNum > 0) {
-        const maximaRowCopy = bulletinWs.getRow(maximaRowNum)
-        // Copier TOUTES les colonnes 1-22 de TOTAUX → MAXIMA GENERAUX
-        for (let c = 2; c <= 22; c++) {
-          const srcCell = totauxRow.getCell(c)
-          const dstCell = maximaRowCopy.getCell(c)
-          // Copier valeur (number, string, ou null pour vider)
-          if (srcCell.value === null || srcCell.value === undefined) {
-            dstCell.value = null
-          } else if (typeof srcCell.value === 'object' && 'result' in srcCell.value) {
-            // Formule → copier le résultat calculé
-            const r = (srcCell.value as { result?: unknown }).result
-            dstCell.value = (typeof r === 'number') ? r : (r !== null && r !== undefined ? String(r) : null)
-          } else {
-            dstCell.value = srcCell.value
-          }
-          dstCell.font = { size: 7, bold: true }
-          dstCell.alignment = { horizontal: 'center', vertical: 'middle' }
+        // Map : chaque MAX col → sa valeur fixe
+        const fixedMaxByCol: { [col: number]: number } = {
+          2: 300,   // B = MAX per
+          5: 600,   // E = MAX EX T1
+          7: 1200,  // G = MAX TRIM T1
+          11: 600,  // K = MAX EX T2
+          13: 1200, // M = MAX TRIM T2
+          17: 600,  // Q = MAX EX T3
+          19: 1200, // S = MAX TRIM T3
+          21: 3600, // U = MAX ANNUEL
         }
-        maximaRowCopy.commit()
-        console.log(`[BULLETIN_FILL] [3ème] MAXIMA GENERAUX row ${maximaRowNum} COPIÉ depuis TOTAUX row ${totauxRowNum}`)
+        const maximaRowFix = bulletinWs.getRow(maximaRowNum)
+        const totauxRowFix = bulletinWs.getRow(totauxRowNum)
+        for (const colStr of Object.keys(fixedMaxByCol)) {
+          const col = Number(colStr)
+          const val = fixedMaxByCol[col]
+          // MAXIMA GENERAUX — col MAX = valeur fixe
+          const mCell = maximaRowFix.getCell(col)
+          mCell.value = val
+          mCell.font = { size: 7, bold: true }
+          mCell.alignment = { horizontal: 'center', vertical: 'middle' }
+          // TOTAUX — col MAX = MÊME valeur fixe (pour correspondre à MAXIMA)
+          const tCell = totauxRowFix.getCell(col)
+          tCell.value = val
+          tCell.font = { size: 7, bold: true }
+          tCell.alignment = { horizontal: 'center', vertical: 'middle' }
+        }
+        maximaRowFix.commit()
+        totauxRowFix.commit()
+        console.log(`[BULLETIN_FILL] [3ème] MAX fixes appliquées: B=300, E/K/Q=600, G/M/S=1200, U=3600 (sur TOTAUX row ${totauxRowNum} ET MAXIMA row ${maximaRowNum})`)
       }
     }
   }
