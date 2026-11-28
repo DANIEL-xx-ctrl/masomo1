@@ -556,7 +556,8 @@ export async function GET(request: Request) {
 
         // ⚠ Fallback DB : toujours calculer le total + maxTotal depuis la DB
         // pour avoir un pourcentage réaliste même quand le matching de matières
-        // template ↔ DB échoue (ex: classe secondaire avec template primaire).
+        // template ↔ DB échoue (ex: classe secondaire avec template primaire,
+        // ou notes DB avec maxValue ≠ template maxTJ).
         const allGrades = await db.grade.findMany({
           where: { studentId: s.id, schoolYear },
           select: { value: true, maxValue: true },
@@ -565,16 +566,31 @@ export async function GET(request: Request) {
           Math.round(allGrades.reduce((sum, g) => sum + (Number(g.value) || 0), 0) * 10) / 10
         const dbMaxTotal = allGrades.reduce((sum, g) => sum + (Number(g.maxValue) || 0), 0)
 
-        // Utiliser le templateTotal s'il est >= au dbTotal (matching réussi).
-        // Sinon, utiliser le dbTotal + dbMaxTotal (matching a échoué).
+        // ⚠ Priorité DB : utiliser dbTotal + dbMaxTotal quand les maxValues
+        // sont disponibles dans la DB. C'est plus fiable que le templateTotal
+        // car :
+        //   1. Le matching de matières template ↔ DB peut échouer
+        //   2. Les types DB (devoir/controle/examen) ≠ types template (1ère période/examen)
+        //   3. Les maxValue DB peuvent différer du maxTJ template
+        // On ne garde le templateTotal (avec max=3600) que si la DB n'a PAS de
+        // maxValues (dbMaxTotal = 0) et que le templateTotal est valide.
         let total: number
         let maxTotal: number
-        if (templateTotal >= dbTotal && templateTotal > 0) {
+        if (dbMaxTotal > 0) {
+          // DB a des maxValues → utiliser les valeurs DB (pourcentage réaliste)
+          total = dbTotal
+          maxTotal = dbMaxTotal
+        } else if (
+          templateTotal > 0 &&
+          templateTotal <= ANNUAL_MAX_TOTAL
+        ) {
+          // DB n'a pas de maxValues, mais le template a un total valide
           total = templateTotal
           maxTotal = ANNUAL_MAX_TOTAL
         } else {
+          // Dernier recours : dbTotal avec max fixe
           total = dbTotal
-          maxTotal = dbMaxTotal > 0 ? dbMaxTotal : ANNUAL_MAX_TOTAL
+          maxTotal = ANNUAL_MAX_TOTAL
         }
 
         const percentage =
