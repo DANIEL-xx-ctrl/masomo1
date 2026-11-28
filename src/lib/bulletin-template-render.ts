@@ -52,6 +52,10 @@ export interface RenderResult {
   subjectsCount: number
   /** Nombre de notes insérées pour l'élève. */
   gradesInserted: number
+  /** Total obtenu annuel (TOTAUX col V) — lu directement depuis le bulletin rendu. */
+  annualTotal: number
+  /** Max annuel (MAXIMA col U) — lu directement depuis le bulletin rendu. */
+  annualMax: number
 }
 
 export interface RenderError {
@@ -2699,6 +2703,54 @@ export async function renderBulletinFromTemplate(params: {
   console.log('[BULLETIN_RENDER] addFullCalcOnLoad appliqué au buffer de sortie')
   console.log('[BULLETIN_RENDER] Taille du buffer final:', outBuffer.length, 'octets (template original:', xlsxBuffer.length, 'octets)')
 
+  // ⚠ Extraire TOTAUX et MAXIMA directement depuis la feuille BULLETIN rendue,
+  // pour que l'API classement puisse utiliser ces valeurs sans avoir à recharger
+  // le buffer. On lit les valeurs depuis bulletinWsExceljs (déjà remplie par
+  // fillBulletinSheetDirectly).
+  let annualTotal = 0
+  let annualMax = 0
+  if (bulletinWsExceljs) {
+    let totauxRowNum = -1
+    let maximaRowNum = -1
+    for (let r = 11; r <= bulletinWsExceljs.rowCount; r++) {
+      const aVal = bulletinWsExceljs.getRow(r).getCell(1).value
+      let aStr = ''
+      if (aVal !== null && aVal !== undefined) {
+        if (typeof aVal === 'object' && 'result' in aVal) {
+          aStr = String((aVal as { result?: unknown }).result ?? '')
+        } else {
+          aStr = String(aVal)
+        }
+      }
+      const upper = aStr.toUpperCase().trim()
+      if (upper === 'TOTAUX' || (upper.includes('TOTAUX') && !upper.includes('MAXIMA'))) {
+        totauxRowNum = r
+      }
+      if (upper.includes('MAXIMA') && (upper.includes('GENERAL') || upper.includes('GENERAUX'))) {
+        maximaRowNum = r
+      }
+    }
+    // Helper pour lire une valeur numérique
+    const readNum = (rowNum: number, col: number): number => {
+      const v = bulletinWsExceljs!.getRow(rowNum).getCell(col).value
+      if (v === null || v === undefined) return 0
+      if (typeof v === 'number') return v
+      if (typeof v === 'object' && 'result' in v) {
+        const r = Number((v as { result?: unknown }).result)
+        return isNaN(r) ? 0 : r
+      }
+      const n = parseFloat(String(v))
+      return isNaN(n) ? 0 : n
+    }
+    if (totauxRowNum > 0) {
+      annualTotal = readNum(totauxRowNum, 22) // col V
+    }
+    if (maximaRowNum > 0) {
+      annualMax = readNum(maximaRowNum, 21) // col U
+    }
+    console.log(`[BULLETIN_RENDER] TOTAUX row=${totauxRowNum}, annualTotal=${annualTotal}; MAXIMA row=${maximaRowNum}, annualMax=${annualMax}`)
+  }
+
   return {
     buffer: outBuffer,
     sheetName,
@@ -2707,5 +2759,7 @@ export async function renderBulletinFromTemplate(params: {
     templateName: template.name,
     subjectsCount: subjectColumns.length,
     gradesInserted,
+    annualTotal,
+    annualMax,
   }
 }
