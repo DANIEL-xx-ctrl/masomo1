@@ -551,6 +551,8 @@ export async function GET(request: Request) {
         // et exporté en Excel) pour extraire le TOTAUX et le MAXIMA.
         // Cela garantit que le classement correspond EXACTEMENT à ce que
         // l'utilisateur voit dans le bulletin.
+        // renderBulletinFromTemplate retourne maintenant annualTotal et annualMax
+        // directement (lus depuis la feuille BULLETIN après remplissage).
         let total = 0
         let maxTotal = ANNUAL_MAX_TOTAL
         let rendered = false
@@ -562,62 +564,18 @@ export async function GET(request: Request) {
             selection: 'all',
           })
           if (!('error' in renderResult)) {
-            // Charger le buffer xlsx rendu avec ExcelJS
-            const wb = new ExcelJS.Workbook()
-            await wb.xlsx.load(renderResult.buffer as unknown as ArrayBuffer)
-            // ⚠ IMPORTANT : renderResult.sheetName est le nom de la feuille LISTE,
-            // PAS la feuille BULLETIN. Le TOTAUX et MAXIMA sont dans la feuille
-            // BULLETIN. On cherche la feuille BULLETIN explicitement.
-            let ws: ExcelJS.Worksheet | undefined
-            for (const sheet of wb.worksheets) {
-              if (sheet.name.toUpperCase() === 'BULLETIN') {
-                ws = sheet
-                break
-              }
+            // Utiliser directement les valeurs retournées par renderBulletinFromTemplate
+            total = renderResult.annualTotal || 0
+            if (renderResult.annualMax > 0) {
+              maxTotal = renderResult.annualMax
             }
-            if (!ws) ws = wb.worksheets[0]
-            if (ws) {
-              // Trouver les rows TOTAUX et MAXIMA
-              let totauxRowNum = -1
-              let maximaRowNum = -1
-              for (let r = 11; r <= ws.rowCount; r++) {
-                const aVal = ws.getRow(r).getCell(1).value
-                let aStr = ''
-                if (aVal !== null && aVal !== undefined) {
-                  if (typeof aVal === 'object' && 'result' in aVal) {
-                    aStr = String((aVal as { result?: unknown }).result ?? '')
-                  } else {
-                    aStr = String(aVal)
-                  }
-                }
-                const upper = aStr.toUpperCase().trim()
-                if (upper === 'TOTAUX' || (upper.includes('TOTAUX') && !upper.includes('MAXIMA'))) {
-                  totauxRowNum = r
-                }
-                if (upper.includes('MAXIMA') && (upper.includes('GENERAL') || upper.includes('GENERAUX'))) {
-                  maximaRowNum = r
-                }
-              }
-              // Lire TOTAUX col V (22) = total obtenu annuel
-              if (totauxRowNum > 0) {
-                const vVal = ws.getRow(totauxRowNum).getCell(22).value
-                total = toNum(vVal)
-                console.log(`[CLASS_RANKING] Student ${s.id}: TOTAUX row=${totauxRowNum}, col V(22)=${JSON.stringify(vVal)} → total=${total}`)
-              } else {
-                console.warn(`[CLASS_RANKING] Student ${s.id}: TOTAUX row NOT found in BULLETIN sheet`)
-              }
-              // Lire MAXIMA col U (21) = max annuel
-              if (maximaRowNum > 0) {
-                const uVal = ws.getRow(maximaRowNum).getCell(21).value
-                const maxVal = toNum(uVal)
-                if (maxVal > 0) maxTotal = maxVal
-                console.log(`[CLASS_RANKING] Student ${s.id}: MAXIMA row=${maximaRowNum}, col U(21)=${JSON.stringify(uVal)} → maxTotal=${maxTotal}`)
-              }
-              rendered = true
-            }
+            rendered = true
+            console.log(`[CLASS_RANKING] Student ${s.id}: annualTotal=${total}, annualMax=${maxTotal} (from rendered bulletin, gradesInserted=${renderResult.gradesInserted})`)
+          } else {
+            console.warn(`[CLASS_RANKING] Student ${s.id}: render error: ${renderResult.error}`)
           }
         } catch (renderErr) {
-          console.warn(`[CLASS_RANKING] Render failed for student ${s.id}:`, renderErr instanceof Error ? renderErr.message : renderErr)
+          console.warn(`[CLASS_RANKING] Student ${s.id}: render failed:`, renderErr instanceof Error ? renderErr.message : renderErr)
         }
         // Fallback DB si le rendu a échoué ou retourné une erreur
         if (!rendered) {
