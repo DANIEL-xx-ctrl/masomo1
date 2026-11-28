@@ -520,7 +520,7 @@ export async function GET(request: Request) {
     })
 
     const gf: { trimester?: string; type?: string } = {}
-    let periodLabel = 'Total Annuel (3600)'
+    let periodLabel = 'Total Annuel'
     const selMap: Record<string, { t?: string; ty?: string; l: string }> = {
       '1er': { t: '1er', l: '1er trimestre' },
       '2eme': { t: '2eme', l: '2ème trimestre' },
@@ -546,14 +546,37 @@ export async function GET(request: Request) {
     const ranking: RankingItem[] = []
     for (const s of students) {
       if (isAnnual) {
-        const total = await computeBulletinAnnualTotalForStudent({
+        const templateTotal = await computeBulletinAnnualTotalForStudent({
           studentId: s.id,
           schoolYear,
           level,
           templateWs: bulletinWs,
           allDbSubjects,
         })
-        const maxTotal = ANNUAL_MAX_TOTAL
+
+        // ⚠ Fallback DB : toujours calculer le total + maxTotal depuis la DB
+        // pour avoir un pourcentage réaliste même quand le matching de matières
+        // template ↔ DB échoue (ex: classe secondaire avec template primaire).
+        const allGrades = await db.grade.findMany({
+          where: { studentId: s.id, schoolYear },
+          select: { value: true, maxValue: true },
+        })
+        const dbTotal =
+          Math.round(allGrades.reduce((sum, g) => sum + (Number(g.value) || 0), 0) * 10) / 10
+        const dbMaxTotal = allGrades.reduce((sum, g) => sum + (Number(g.maxValue) || 0), 0)
+
+        // Utiliser le templateTotal s'il est >= au dbTotal (matching réussi).
+        // Sinon, utiliser le dbTotal + dbMaxTotal (matching a échoué).
+        let total: number
+        let maxTotal: number
+        if (templateTotal >= dbTotal && templateTotal > 0) {
+          total = templateTotal
+          maxTotal = ANNUAL_MAX_TOTAL
+        } else {
+          total = dbTotal
+          maxTotal = dbMaxTotal > 0 ? dbMaxTotal : ANNUAL_MAX_TOTAL
+        }
+
         const percentage =
           maxTotal > 0 ? Math.round(((total / maxTotal) * 100) * 10) / 10 : 0
         ranking.push({
@@ -614,7 +637,7 @@ export async function GET(request: Request) {
         schoolYear,
         periodLabel,
         selection,
-        annualMaxTotal: isAnnual ? ANNUAL_MAX_TOTAL : undefined,
+        annualMaxTotal: isAnnual ? ranking[0]?.maxTotal || ANNUAL_MAX_TOTAL : undefined,
         ranking: ranking.map((r) => ({
           rank: r.rank,
           studentId: r.studentId,
