@@ -1941,6 +1941,38 @@ export async function renderBulletinFromTemplate(params: {
     }
   }
 
+  // ⚠ Calculer le total annuel DIRECTEMENT depuis les notes placées dans la
+  // LISTE (les mêmes notes que le bulletin visualisé utilise via VLOOKUP).
+  // On ne PAS se base sur fillBulletinSheetDirectly (qui fait son propre
+  // matching et peut donner des résultats différents).
+  // Pour chaque matière matched, on somme les 9 notes (6 périodes + 3 examens).
+  let computedAnnualTotal = 0
+  const usedSubjectIdsForTotal = new Set<string>()
+  for (const { column, dbSubjects } of matchedSubjects) {
+    if (dbSubjects.length === 0) continue
+    // Choisir la même matière DB que le remplissage LISTE
+    let bestDbSub = dbSubjects.find(s =>
+      !usedSubjectIdsForTotal.has(s.id) && gradesBySubject.has(s.id)
+    )
+    if (!bestDbSub) {
+      bestDbSub = dbSubjects.find(s => gradesBySubject.has(s.id)) || dbSubjects[0]
+    }
+    usedSubjectIdsForTotal.add(bestDbSub.id)
+    const subjGrades = gradesBySubject.get(bestDbSub.id)
+    if (subjGrades) {
+      for (let i = 0; i < 9; i++) {
+        const { trimester, type } = cellTypeMap[i]
+        const key = `${trimester}|${type}`.normalize('NFC').trim()
+        const cellValues = subjGrades.get(key)
+        if (cellValues && cellValues.length > 0) {
+          computedAnnualTotal += cellValues[cellValues.length - 1]
+        }
+      }
+    }
+  }
+  computedAnnualTotal = Math.round(computedAnnualTotal * 10) / 10
+  console.log(`[BULLETIN_RENDER] Computed annual total from matched subjects: ${computedAnnualTotal} (gradesInserted=${gradesInserted})`)
+
   // 12. ⚠ CRITIQUE — Utiliser ExcelJS pour modifier le template (pas SheetJS).
   //     SheetJS community perd 89% du formatage (styles, bordures, fusions,
   //     largeurs de colonnes) pendant le round-trip lecture→écriture.
@@ -2703,14 +2735,13 @@ export async function renderBulletinFromTemplate(params: {
   console.log('[BULLETIN_RENDER] addFullCalcOnLoad appliqué au buffer de sortie')
   console.log('[BULLETIN_RENDER] Taille du buffer final:', outBuffer.length, 'octets (template original:', xlsxBuffer.length, 'octets)')
 
-  // ⚠ Extraire TOTAUX et MAXIMA directement depuis la feuille BULLETIN rendue,
-  // pour que l'API classement puisse utiliser ces valeurs sans avoir à recharger
-  // le buffer. On lit les valeurs depuis bulletinWsExceljs (déjà remplie par
-  // fillBulletinSheetDirectly).
-  let annualTotal = 0
+  // ⚠ Extraire MAXIMA directement depuis la feuille BULLETIN rendue.
+  // Le total (annualTotal) est calculé depuis les matières matched (computedAnnualTotal),
+  // PAS depuis le TOTAUX du BULLETIN (qui utilise un matching différent).
+  // Le max (annualMax) est lu depuis MAXIMA col U (3600 pour le 3ème).
+  let annualTotal = computedAnnualTotal
   let annualMax = 0
   if (bulletinWsExceljs) {
-    let totauxRowNum = -1
     let maximaRowNum = -1
     for (let r = 11; r <= bulletinWsExceljs.rowCount; r++) {
       const aVal = bulletinWsExceljs.getRow(r).getCell(1).value
@@ -2723,32 +2754,19 @@ export async function renderBulletinFromTemplate(params: {
         }
       }
       const upper = aStr.toUpperCase().trim()
-      if (upper === 'TOTAUX' || (upper.includes('TOTAUX') && !upper.includes('MAXIMA'))) {
-        totauxRowNum = r
-      }
       if (upper.includes('MAXIMA') && (upper.includes('GENERAL') || upper.includes('GENERAUX'))) {
         maximaRowNum = r
+        break
       }
-    }
-    // Helper pour lire une valeur numérique
-    const readNum = (rowNum: number, col: number): number => {
-      const v = bulletinWsExceljs!.getRow(rowNum).getCell(col).value
-      if (v === null || v === undefined) return 0
-      if (typeof v === 'number') return v
-      if (typeof v === 'object' && 'result' in v) {
-        const r = Number((v as { result?: unknown }).result)
-        return isNaN(r) ? 0 : r
-      }
-      const n = parseFloat(String(v))
-      return isNaN(n) ? 0 : n
-    }
-    if (totauxRowNum > 0) {
-      annualTotal = readNum(totauxRowNum, 22) // col V
     }
     if (maximaRowNum > 0) {
-      annualMax = readNum(maximaRowNum, 21) // col U
+      const uVal = bulletinWsExceljs.getRow(maximaRowNum).getCell(21).value // col U
+      if (typeof uVal === 'number') annualMax = uVal
+      else if (uVal !== null && typeof uVal === 'object' && 'result' in uVal) {
+        annualMax = Number((uVal as { result?: unknown }).result) || 0
+      }
     }
-    console.log(`[BULLETIN_RENDER] TOTAUX row=${totauxRowNum}, annualTotal=${annualTotal}; MAXIMA row=${maximaRowNum}, annualMax=${annualMax}`)
+    console.log(`[BULLETIN_RENDER] annualTotal=${annualTotal} (from matched subjects), annualMax=${annualMax} (from MAXIMA row ${maximaRowNum})`)
   }
 
   return {
